@@ -1,0 +1,1805 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunbull — Stop Overpaying for Electricity</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; color: #1d1d1f; }
+
+        /* === DESIGN SYSTEM === */
+        /* Primary brand — warm black + amber accent */
+        .solar-primary { background-color: #FF9F0A; }
+        .solar-primary-text { color: #FF9F0A; }
+        .solar-dark { background-color: #1d1d1f; }
+        .solar-dark-text { color: #1d1d1f; }
+        .solar-accent-green { color: #30D158; }
+        .solar-accent-red { color: #FF453A; }
+
+        /* Smooth transitions everywhere */
+        *, *::before, *::after { transition-property: background-color, border-color, color, opacity, transform, box-shadow; transition-duration: 200ms; transition-timing-function: cubic-bezier(0.25, 0.1, 0.25, 1); }
+
+        /* Public nav — frosted glass */
+        .public-nav {
+            position: fixed; top: 0; left: 0; right: 0; z-index: 40; height: 56px;
+            background: rgba(255,255,255,0.72);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+            border-bottom: 1px solid rgba(0,0,0,0.06);
+        }
+        .public-nav-content { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; height: 100%; max-width: 980px; margin: 0 auto; }
+
+        /* Buttons */
+        .btn-primary {
+            background: #1d1d1f; color: #fff; border: none; padding: 14px 28px; border-radius: 980px;
+            font-weight: 600; font-size: 17px; cursor: pointer; letter-spacing: -0.01em;
+            display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+        }
+        .btn-primary:hover { background: #333; }
+        .btn-secondary {
+            background: transparent; color: #1d1d1f; border: 1.5px solid rgba(0,0,0,0.12); padding: 14px 28px;
+            border-radius: 980px; font-weight: 600; font-size: 17px; cursor: pointer;
+        }
+        .btn-secondary:hover { border-color: rgba(0,0,0,0.3); }
+        .btn-accent {
+            background: #FF9F0A; color: #fff; border: none; padding: 14px 28px; border-radius: 980px;
+            font-weight: 600; font-size: 17px; cursor: pointer;
+        }
+        .btn-accent:hover { background: #E68F00; }
+        .btn-accent:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        /* Cards */
+        .card {
+            background: #fff; border-radius: 20px; border: 1px solid rgba(0,0,0,0.04);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03);
+        }
+
+        /* Section spacing */
+        .section { padding: 80px 24px; }
+        @media (max-width: 640px) { .section { padding: 56px 20px; } }
+        .section-inner { max-width: 680px; margin: 0 auto; }
+
+        /* Text hierarchy */
+        .headline-xl { font-size: 48px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.08; }
+        .headline-lg { font-size: 32px; font-weight: 700; letter-spacing: -0.025em; line-height: 1.12; }
+        .headline-md { font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.2; }
+        .body-lg { font-size: 17px; line-height: 1.47; color: #86868b; }
+        .body-md { font-size: 14px; line-height: 1.43; color: #86868b; }
+        .label { font-size: 12px; font-weight: 600; letter-spacing: 0.03em; text-transform: uppercase; color: #86868b; }
+        @media (max-width: 640px) {
+            .headline-xl { font-size: 34px; }
+            .headline-lg { font-size: 26px; }
+        }
+
+        /* Internal OS — unchanged structure */
+        .metric-card { @apply bg-white rounded-lg shadow p-6 border-l-4; }
+        .metric-card.positive { border-left-color: #30D158; }
+        .metric-card.negative { border-left-color: #FF453A; }
+        .metric-card.neutral { border-left-color: #FF9F0A; }
+        .lead-score-hot { @apply bg-red-100 text-red-800 px-2 py-1 rounded text-xs font-semibold; }
+        .lead-score-warm { @apply bg-orange-100 text-orange-800 px-2 py-1 rounded text-xs font-semibold; }
+        .lead-score-cool { @apply bg-yellow-100 text-yellow-800 px-2 py-1 rounded text-xs font-semibold; }
+        .lead-score-cold { @apply bg-blue-100 text-blue-800 px-2 py-1 rounded text-xs font-semibold; }
+        .stage-card { @apply bg-white rounded-lg shadow-md p-4 mb-3 cursor-pointer hover:shadow-lg transition-shadow; }
+        .stage-green { border-left: 4px solid #30D158; }
+        .stage-yellow { border-left: 4px solid #FFD60A; }
+        .stage-red { border-left: 4px solid #FF453A; }
+        .toast { position: fixed; bottom: 1.5rem; right: 1.5rem; z-index: 50; animation: slideIn 0.3s cubic-bezier(0.25,0.1,0.25,1); }
+        @keyframes slideIn { from { transform: translateY(16px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .spinner { border: 3px solid rgba(0,0,0,0.06); border-top: 3px solid #FF9F0A; border-radius: 50%; width: 40px; height: 40px; animation: spin 0.8s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .bottom-nav { @apply fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 sm:hidden; }
+        .sidebar { @apply hidden sm:block fixed left-0 top-16 bottom-0 w-64 bg-gray-50 border-r border-gray-200 overflow-y-auto; }
+        .main-content { @apply w-full sm:ml-64 sm:pt-0 pb-20 sm:pb-0 pt-16; }
+        .top-bar { @apply fixed top-0 left-0 right-0 bg-white border-b border-gray-200 z-40; }
+        .app-wrapper { @apply flex flex-col h-screen; }
+
+        /* Form inputs — clean and modern */
+        .input-modern {
+            width: 100%; padding: 12px 16px; border: 1.5px solid rgba(0,0,0,0.1); border-radius: 12px;
+            font-size: 15px; font-family: inherit; background: #fafafa; color: #1d1d1f;
+            outline: none;
+        }
+        .input-modern:focus { border-color: #FF9F0A; background: #fff; box-shadow: 0 0 0 3px rgba(255,159,10,0.12); }
+        .input-modern::placeholder { color: #c7c7cc; }
+
+        /* Subtle divider */
+        .divider { height: 1px; background: rgba(0,0,0,0.06); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback } = React;
+
+        // ============= ROUTER COMPONENT =============
+        function HashRouter({ children }) {
+            const [hash, setHash] = useState(window.location.hash.slice(1) || '/');
+
+            useEffect(() => {
+                const handleHashChange = () => setHash(window.location.hash.slice(1) || '/');
+                window.addEventListener('hashchange', handleHashChange);
+                return () => window.removeEventListener('hashchange', handleHashChange);
+            }, []);
+
+            const navigate = (path) => { window.location.hash = path; };
+
+            return children({ hash, navigate });
+        }
+
+        // ============= API SERVICE =============
+        const api = {
+            post: async (url, body) => {
+                const token = window.authToken;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token && { 'Authorization': `Bearer ${token}` })
+                    },
+                    body: JSON.stringify(body)
+                });
+                if (response.status === 401) { window.authToken = null; window.location.hash = '/login'; }
+                return response.json();
+            },
+            get: async (url) => {
+                const token = window.authToken;
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { ...(token && { 'Authorization': `Bearer ${token}` }) }
+                });
+                if (response.status === 401) { window.authToken = null; window.location.hash = '/login'; }
+                return response.json();
+            }
+        };
+
+        // ============= TOAST COMPONENT =============
+        function Toast({ message, type = 'info', onClose }) {
+            useEffect(() => {
+                const timer = setTimeout(onClose, 3000);
+                return () => clearTimeout(timer);
+            }, [onClose]);
+
+            const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';
+            return (
+                <div className={`toast ${bgColor} text-white px-6 py-3 rounded-lg shadow-lg`}>
+                    {message}
+                </div>
+            );
+        }
+
+        // ============= PUBLIC NAV COMPONENT =============
+        function PublicNav({ navigate }) {
+            return (
+                <div className="public-nav">
+                    <div className="public-nav-content">
+                        <button onClick={() => navigate('/')} className="flex items-center gap-1.5" style={{opacity:0.9}}>
+                            <span style={{fontSize:'20px'}}>☀</span>
+                            <span style={{fontWeight:600, fontSize:'16px', color:'#1d1d1f', letterSpacing:'-0.02em'}}>sunbull</span>
+                        </button>
+                        <div className="flex items-center" style={{gap:'24px'}}>
+                            <button onClick={() => navigate('/faq')} className="hidden sm:block" style={{fontSize:'14px', color:'#1d1d1f', opacity:0.7, cursor:'pointer', background:'none', border:'none', fontFamily:'inherit'}}>Questions</button>
+                            <button
+                                onClick={() => navigate('/upload')}
+                                style={{background:'#1d1d1f', color:'#fff', border:'none', padding:'8px 18px', borderRadius:'980px', fontSize:'13px', fontWeight:600, cursor:'pointer', fontFamily:'inherit'}}
+                            >
+                                Analyze My Bill
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= HOMEPAGE COMPONENT =============
+        function Homepage({ navigate }) {
+            return (
+                <div style={{paddingTop:'56px', background:'#fff'}}>
+                    {/* Hero */}
+                    <div className="section" style={{paddingTop:'80px', paddingBottom:'80px', background:'linear-gradient(180deg, #fafafa 0%, #fff 100%)'}}>
+                        <div className="section-inner" style={{textAlign:'center'}}>
+                            <p className="label" style={{marginBottom:'16px', color:'#FF9F0A'}}>Serving homeowners across the San Fernando Valley</p>
+                            <h1 className="headline-xl" style={{color:'#1d1d1f'}}>
+                                Most homeowners are<br />overpaying for electricity.
+                            </h1>
+                            <p className="body-lg" style={{marginTop:'20px', maxWidth:'520px', marginLeft:'auto', marginRight:'auto'}}>
+                                We analyze your actual bill and show you whether there's a smarter way to pay for the power you already use. Takes 2 minutes. Costs nothing.
+                            </p>
+                            <div style={{marginTop:'36px', display:'flex', flexDirection:'column', gap:'12px', alignItems:'center'}}>
+                                <button onClick={() => navigate('/upload')} className="btn-primary" style={{minWidth:'220px'}}>
+                                    Analyze My Bill
+                                </button>
+                                <button
+                                    onClick={() => { const el = document.getElementById('how-section'); if (el) el.scrollIntoView({ behavior: 'smooth' }); }}
+                                    style={{background:'none', border:'none', color:'#06c', fontSize:'15px', fontWeight:500, cursor:'pointer', fontFamily:'inherit', padding:'8px'}}
+                                >
+                                    How it works ↓
+                                </button>
+                            </div>
+                            <p style={{marginTop:'16px', fontSize:'12px', color:'#86868b'}}>No obligation. No pressure. Just data.</p>
+                        </div>
+                    </div>
+
+                    {/* Problem Section */}
+                    <div className="section" style={{background:'#fff'}}>
+                        <div className="section-inner" style={{textAlign:'center'}}>
+                            <h2 className="headline-lg" style={{color:'#1d1d1f'}}>Here's what's happening to your bill.</h2>
+                            <p className="body-lg" style={{marginTop:'12px', maxWidth:'480px', marginLeft:'auto', marginRight:'auto'}}>
+                                Utility companies raise rates every year. Most people don't notice until it's painful.
+                            </p>
+                            <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'16px', marginTop:'40px'}}>
+                                <div className="card" style={{padding:'28px 16px', textAlign:'center'}}>
+                                    <div style={{fontSize:'36px', fontWeight:700, color:'#FF453A', letterSpacing:'-0.03em'}}>6%</div>
+                                    <p style={{fontSize:'13px', color:'#86868b', marginTop:'6px'}}>Annual rate increase</p>
+                                </div>
+                                <div className="card" style={{padding:'28px 16px', textAlign:'center'}}>
+                                    <div style={{fontSize:'36px', fontWeight:700, color:'#FF453A', letterSpacing:'-0.03em'}}>$40k+</div>
+                                    <p style={{fontSize:'13px', color:'#86868b', marginTop:'6px'}}>Over the next 20 years</p>
+                                </div>
+                                <div className="card" style={{padding:'28px 16px', textAlign:'center', borderColor:'rgba(255,159,10,0.2)'}}>
+                                    <div style={{fontSize:'36px', fontWeight:700, color:'#FF9F0A', letterSpacing:'-0.03em'}}>?</div>
+                                    <p style={{fontSize:'13px', color:'#86868b', marginTop:'6px'}}>What you could save</p>
+                                </div>
+                            </div>
+                            <button onClick={() => navigate('/upload')} style={{marginTop:'24px', background:'none', border:'none', color:'#06c', fontSize:'15px', fontWeight:500, cursor:'pointer', fontFamily:'inherit'}}>
+                                Find out in 2 minutes →
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="divider" style={{maxWidth:'680px', margin:'0 auto'}}></div>
+
+                    {/* How It Works */}
+                    <div id="how-section" className="section" style={{background:'#fff'}}>
+                        <div className="section-inner" style={{textAlign:'center'}}>
+                            <h2 className="headline-lg" style={{color:'#1d1d1f'}}>How it works.</h2>
+                            <p className="body-lg" style={{marginTop:'12px'}}>No paperwork. No phone calls. Just answers.</p>
+                            <div style={{marginTop:'40px', display:'flex', flexDirection:'column', gap:'1px', background:'rgba(0,0,0,0.04)', borderRadius:'20px', overflow:'hidden'}}>
+                                {[
+                                    { n: '01', title: 'Enter your electric bill', desc: 'Tell us what you pay each month. That\'s the only number we need.' },
+                                    { n: '02', title: 'We analyze your situation', desc: 'We calculate how much of your bill is avoidable — based on your address, usage, and local rates.' },
+                                    { n: '03', title: 'See your options', desc: 'A clear comparison: what you pay now vs. what you could pay. Then you decide.' },
+                                ].map(step => (
+                                    <div key={step.n} style={{background:'#fff', padding:'28px 32px', display:'flex', alignItems:'flex-start', gap:'20px', textAlign:'left'}}>
+                                        <span style={{fontSize:'13px', fontWeight:700, color:'#FF9F0A', minWidth:'24px', paddingTop:'2px'}}>{step.n}</span>
+                                        <div>
+                                            <h3 style={{fontSize:'17px', fontWeight:600, color:'#1d1d1f', letterSpacing:'-0.01em'}}>{step.title}</h3>
+                                            <p style={{fontSize:'15px', color:'#86868b', marginTop:'4px', lineHeight:1.4}}>{step.desc}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <div style={{marginTop:'36px'}}>
+                                <button onClick={() => navigate('/upload')} className="btn-primary" style={{minWidth:'200px'}}>Analyze My Bill</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="divider" style={{maxWidth:'680px', margin:'0 auto'}}></div>
+
+                    {/* Trust + Social Proof */}
+                    <div className="section" style={{background:'#fff'}}>
+                        <div className="section-inner" style={{textAlign:'center'}}>
+                            <h2 className="headline-lg" style={{color:'#1d1d1f'}}>Built for homeowners in the Valley.</h2>
+                            <p className="body-lg" style={{marginTop:'12px', maxWidth:'480px', marginLeft:'auto', marginRight:'auto'}}>
+                                We've analyzed thousands of bills across the San Fernando Valley. We know what the utilities charge — and how to beat it.
+                            </p>
+
+                            {/* Stats */}
+                            <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'16px', marginTop:'40px', marginBottom:'48px'}}>
+                                {[
+                                    { num: '2,400+', label: 'Bills analyzed' },
+                                    { num: '30%', label: 'Avg reduction' },
+                                    { num: '$0', label: 'Upfront cost' },
+                                ].map((s, i) => (
+                                    <div key={i} style={{textAlign:'center'}}>
+                                        <div style={{fontSize:'32px', fontWeight:700, color:'#1d1d1f', letterSpacing:'-0.03em'}}>{s.num}</div>
+                                        <p style={{fontSize:'13px', color:'#86868b', marginTop:'4px'}}>{s.label}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            {/* Testimonials */}
+                            <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(280px, 1fr))', gap:'16px', textAlign:'left'}}>
+                                {[
+                                    { name: 'Maria G.', loc: 'Northridge', text: 'My bill went from $310 to $140. I didn\'t realize how much I was overpaying until they showed me the breakdown.' },
+                                    { name: 'James T.', loc: 'Van Nuys', text: 'No pressure, no sales pitch. They showed me the numbers, I made my own decision. Saving $180/month now.' },
+                                    { name: 'Linda R.', loc: 'Reseda', text: 'I was paying LADWP $280/month and didn\'t think I had options. Turns out I had a lot of options.' },
+                                    { name: 'David K.', loc: 'Encino', text: 'They analyzed my bill in front of me. No hidden fees, no surprises. Just a lower payment.' },
+                                ].map((t, i) => (
+                                    <div key={i} className="card" style={{padding:'24px'}}>
+                                        <div style={{display:'flex', gap:'2px', marginBottom:'12px'}}>
+                                            {[1,2,3,4,5].map(s => <span key={s} style={{color:'#FFD60A', fontSize:'14px'}}>★</span>)}
+                                        </div>
+                                        <p style={{fontSize:'14px', color:'#1d1d1f', lineHeight:1.5}}>"{t.text}"</p>
+                                        <p style={{fontSize:'12px', color:'#86868b', marginTop:'12px', fontWeight:600}}>{t.name} · {t.loc}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Bottom CTA */}
+                    <div className="section" style={{background:'#1d1d1f'}}>
+                        <div className="section-inner" style={{textAlign:'center'}}>
+                            <h2 className="headline-lg" style={{color:'#f5f5f7'}}>Every month you wait is money you don't get back.</h2>
+                            <p style={{fontSize:'17px', color:'#86868b', marginTop:'16px', maxWidth:'480px', marginLeft:'auto', marginRight:'auto', lineHeight:1.47}}>
+                                Find out what you're actually paying — and whether there's a better option. Takes 2 minutes. Costs nothing.
+                            </p>
+                            <button onClick={() => navigate('/upload')} className="btn-accent" style={{marginTop:'32px'}}>
+                                Analyze My Bill — It's Free
+                            </button>
+                            <p style={{marginTop:'16px', fontSize:'12px', color:'#6e6e73'}}>No obligation. No pressure. Just data.</p>
+                        </div>
+                    </div>
+
+                    {/* Footer */}
+                    <div style={{padding:'20px 24px', borderTop:'1px solid rgba(0,0,0,0.06)', background:'#fafafa'}}>
+                        <div style={{maxWidth:'680px', margin:'0 auto', display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:'8px'}}>
+                            <span style={{fontSize:'12px', color:'#86868b'}}>Sunbull — Helping homeowners stop overpaying for electricity</span>
+                            <button onClick={() => navigate('/login')} style={{fontSize:'12px', color:'#86868b', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', textDecoration:'underline'}}>Team Login</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= BILL UPLOAD COMPONENT =============
+        function BillUpload({ navigate, publicData, setPublicData }) {
+            const [formData, setFormData] = useState(publicData.formData || {
+                firstName: '', lastName: '', phone: '', email: '',
+                streetAddress: '', city: '', state: 'AZ', zipCode: '',
+                utilityCompany: '', monthlyBill: '', costPerKwh: '0.13'
+            });
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [loadingPhase, setLoadingPhase] = useState(0);
+
+            const handleInputChange = (e) => {
+                const { name, value } = e.target;
+                setFormData(prev => ({ ...prev, [name]: value }));
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                if (!formData.firstName || !formData.lastName || !formData.phone ||
+                    !formData.streetAddress || !formData.city || !formData.state ||
+                    !formData.zipCode || !formData.monthlyBill) {
+                    setError('Please fill in all required fields');
+                    return;
+                }
+
+                setLoading(true);
+                setError('');
+                setLoadingPhase(0);
+
+                // Animate through loading phases
+                const t1 = setTimeout(() => setLoadingPhase(1), 800);
+                const t2 = setTimeout(() => setLoadingPhase(2), 1600);
+
+                try {
+                    // Map camelCase form fields to snake_case API fields
+                    const payload = {
+                        first_name: formData.firstName,
+                        last_name: formData.lastName,
+                        phone: formData.phone,
+                        email: formData.email || undefined,
+                        property_address: formData.streetAddress,
+                        city: formData.city,
+                        state: formData.state,
+                        zip_code: formData.zipCode,
+                        utility_company: formData.utilityCompany || undefined,
+                        average_monthly_bill: parseFloat(formData.monthlyBill),
+                        cost_per_kwh: parseFloat(formData.costPerKwh) || 0.13,
+                    };
+
+                    const response = await fetch('/api/solar/full-analysis', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload),
+                    });
+                    const data = await response.json();
+
+                    if (data.lead_id) {
+                        setPublicData(prev => ({ ...prev, formData, analysis: data }));
+                        // Brief pause so user sees "Generating your plan..."
+                        setTimeout(() => navigate('/savings'), 400);
+                    } else {
+                        setError(data.detail || 'Something went wrong. Please try again.');
+                        setLoading(false);
+                    }
+                } catch (err) {
+                    setError('Connection error. Please check your internet and try again.');
+                    setLoading(false);
+                }
+                clearTimeout(t1); clearTimeout(t2);
+            };
+
+            const loadingMessages = [
+                'Reading your bill details...',
+                'Comparing your rate to local options...',
+                'Putting your numbers together...'
+            ];
+
+            // Full-screen loading overlay
+            if (loading) {
+                return (
+                    <div style={{paddingTop:'56px', minHeight:'100vh', background:'#fff', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                        <div style={{textAlign:'center', maxWidth:'320px'}}>
+                            <div className="spinner" style={{ width:'40px', height:'40px', margin:'0 auto' }}></div>
+                            <p style={{fontSize:'17px', fontWeight:600, color:'#1d1d1f', marginTop:'24px'}}>{loadingMessages[loadingPhase]}</p>
+                            <p style={{fontSize:'13px', color:'#86868b', marginTop:'8px'}}>This only takes a moment</p>
+                            <div style={{display:'flex', justifyContent:'center', gap:'6px', marginTop:'20px'}}>
+                                {[0,1,2].map(i => (
+                                    <div key={i} style={{width:'8px', height:'8px', borderRadius:'50%', background: i <= loadingPhase ? '#FF9F0A' : 'rgba(0,0,0,0.06)'}}></div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const labelStyle = {display:'block', fontSize:'12px', fontWeight:600, color:'#86868b', marginBottom:'6px', letterSpacing:'0.02em'};
+
+            return (
+                <div style={{paddingTop:'56px', minHeight:'100vh', background:'#fafafa'}}>
+                    <div className="section" style={{paddingTop:'48px', paddingBottom:'48px'}}>
+                        <div style={{maxWidth:'480px', margin:'0 auto'}}>
+                            {/* Header */}
+                            <div style={{textAlign:'center', marginBottom:'32px'}}>
+                                <h1 className="headline-lg" style={{color:'#1d1d1f'}}>Analyze your bill.</h1>
+                                <p style={{fontSize:'15px', color:'#86868b', marginTop:'8px'}}>We'll show you what you're paying — and whether you can pay less.</p>
+                            </div>
+
+                            {/* Trust bar */}
+                            <div style={{display:'flex', justifyContent:'center', gap:'20px', marginBottom:'28px'}}>
+                                {['Secure', 'Free', 'No spam'].map((t,i) => (
+                                    <span key={i} style={{fontSize:'12px', color:'#86868b', fontWeight:500}}>{t}</span>
+                                ))}
+                            </div>
+
+                            <div className="card" style={{padding:'32px'}}>
+                                {error && (
+                                    <div style={{background:'#FFF2F2', color:'#FF453A', padding:'12px 16px', borderRadius:'12px', fontSize:'14px', marginBottom:'20px'}}>{error}</div>
+                                )}
+
+                                <form onSubmit={handleSubmit}>
+                                    {/* Name */}
+                                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'16px'}}>
+                                        <div>
+                                            <label style={labelStyle}>First name</label>
+                                            <input type="text" name="firstName" value={formData.firstName} onChange={handleInputChange} className="input-modern" placeholder="John" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Last name</label>
+                                            <input type="text" name="lastName" value={formData.lastName} onChange={handleInputChange} className="input-modern" placeholder="Doe" />
+                                        </div>
+                                    </div>
+
+                                    {/* Contact */}
+                                    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'12px', marginBottom:'16px'}}>
+                                        <div>
+                                            <label style={labelStyle}>Phone</label>
+                                            <input type="tel" name="phone" value={formData.phone} onChange={handleInputChange} className="input-modern" placeholder="(818) 555-1234" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Email <span style={{color:'#c7c7cc', fontWeight:400}}>(optional)</span></label>
+                                            <input type="email" name="email" value={formData.email} onChange={handleInputChange} className="input-modern" placeholder="john@email.com" />
+                                        </div>
+                                    </div>
+
+                                    {/* Address */}
+                                    <div style={{marginBottom:'16px'}}>
+                                        <label style={labelStyle}>Street address</label>
+                                        <input type="text" name="streetAddress" value={formData.streetAddress} onChange={handleInputChange} className="input-modern" placeholder="123 Main Street" />
+                                    </div>
+                                    <div style={{display:'grid', gridTemplateColumns:'1fr 0.6fr 0.6fr', gap:'12px', marginBottom:'24px'}}>
+                                        <div>
+                                            <label style={labelStyle}>City</label>
+                                            <input type="text" name="city" value={formData.city} onChange={handleInputChange} className="input-modern" placeholder="Van Nuys" />
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>State</label>
+                                            <select name="state" value={formData.state} onChange={handleInputChange} className="input-modern">
+                                                <option value="CA">California</option>
+                                                <option value="AZ">Arizona</option>
+                                                <option value="TX">Texas</option>
+                                                <option value="FL">Florida</option>
+                                                <option value="NV">Nevada</option>
+                                                <option value="CO">Colorado</option>
+                                                <option value="NM">New Mexico</option>
+                                                <option value="UT">Utah</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label style={labelStyle}>Zip</label>
+                                            <input type="text" name="zipCode" value={formData.zipCode} onChange={handleInputChange} className="input-modern" placeholder="91401" />
+                                        </div>
+                                    </div>
+
+                                    {/* The money question */}
+                                    <div style={{background:'#fafafa', borderRadius:'16px', padding:'20px', marginBottom:'20px', border:'1.5px solid rgba(0,0,0,0.06)'}}>
+                                        <label style={{display:'block', fontSize:'15px', fontWeight:600, color:'#1d1d1f', marginBottom:'12px'}}>What's your monthly electric bill?</label>
+                                        <div style={{display:'flex', alignItems:'center', gap:'8px'}}>
+                                            <span style={{fontSize:'28px', fontWeight:700, color:'#c7c7cc'}}>$</span>
+                                            <input type="number" name="monthlyBill" value={formData.monthlyBill} onChange={handleInputChange}
+                                                className="input-modern"
+                                                style={{fontSize:'28px', fontWeight:700, padding:'12px 16px', background:'#fff'}}
+                                                placeholder="250" step="1" min="50" />
+                                            <span style={{fontSize:'14px', color:'#86868b'}}>/mo</span>
+                                        </div>
+                                        <p style={{fontSize:'12px', color:'#86868b', marginTop:'8px'}}>Check your latest bill, or your best estimate</p>
+                                    </div>
+
+                                    {/* Cost per kWh — collapsed */}
+                                    <details style={{marginBottom:'24px'}}>
+                                        <summary style={{fontSize:'13px', color:'#86868b', cursor:'pointer'}}>I know my cost per kWh</summary>
+                                        <div style={{marginTop:'8px', display:'flex', alignItems:'center', gap:'8px'}}>
+                                            <span style={{fontSize:'14px', color:'#86868b'}}>$</span>
+                                            <input type="number" name="costPerKwh" value={formData.costPerKwh} onChange={handleInputChange}
+                                                className="input-modern" placeholder="0.13" step="0.01" style={{maxWidth:'120px'}} />
+                                            <span style={{fontSize:'12px', color:'#86868b'}}>per kWh</span>
+                                        </div>
+                                    </details>
+
+                                    <button type="submit" className="btn-primary" style={{width:'100%', fontSize:'17px', padding:'16px'}}>
+                                        Show Me What I'm Overpaying
+                                    </button>
+
+                                    <p style={{textAlign:'center', fontSize:'12px', color:'#c7c7cc', marginTop:'12px'}}>
+                                        Your info stays private. No spam, no sales calls.
+                                    </p>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= SAVINGS RESULT COMPONENT =============
+        function SavingsResult({ navigate, publicData, setPublicData }) {
+            const a = publicData.analysis;
+            const firstName = publicData.formData?.firstName || 'there';
+
+            if (!a) { navigate('/upload'); return null; }
+
+            // Use REAL backend data
+            const currentBill = a.current_monthly_bill || parseFloat(publicData.formData?.monthlyBill) || 0;
+            const solarPayment = Math.round(a.monthly_payment || 0);
+            const currentAnnual = a.current_annual_spend || Math.round(currentBill * 12);
+            const systemKw = a.system_size_kw || 0;
+            const panels = a.panel_count || 0;
+            const offsetPct = a.offset_percentage || 0;
+            const annualSavings = Math.round(a.annual_savings || 0);
+            const twentyYearSavings = Math.round(annualSavings * 20);
+            const twentyYearCost = Math.round(currentAnnual * 20);
+
+            // For display: if savings negative, show the payment comparison instead
+            const isSaving = annualSavings > 0;
+            const monthlyDiff = Math.abs(Math.round(currentBill - solarPayment));
+
+            return (
+                <div style={{paddingTop:'56px', minHeight:'100vh', background:'#fafafa'}}>
+                    <div className="section" style={{paddingTop:'48px', paddingBottom:'48px'}}>
+                        <div style={{maxWidth:'520px', margin:'0 auto'}}>
+                            {/* Header */}
+                            <div style={{textAlign:'center', marginBottom:'36px'}}>
+                                <p className="label" style={{color:'#FF9F0A', marginBottom:'12px'}}>Your bill analysis</p>
+                                <h1 className="headline-lg" style={{color:'#1d1d1f'}}>{firstName}, here's what we found.</h1>
+                                <p style={{fontSize:'15px', color:'#86868b', marginTop:'8px'}}>Based on your actual bill and local rates.</p>
+                            </div>
+
+                            {/* Current Spend */}
+                            <div className="card" style={{padding:'28px', textAlign:'center', marginBottom:'16px'}}>
+                                <p style={{fontSize:'13px', color:'#86868b', fontWeight:500}}>You're currently spending</p>
+                                <div style={{fontSize:'44px', fontWeight:700, color:'#FF453A', letterSpacing:'-0.03em', marginTop:'4px'}}>${currentAnnual.toLocaleString()}<span style={{fontSize:'20px', color:'#86868b'}}>/yr</span></div>
+                                <p style={{fontSize:'13px', color:'#86868b', marginTop:'4px'}}>on electricity — and that rate goes up every year</p>
+                                <div className="divider" style={{margin:'16px 0'}}></div>
+                                <p style={{fontSize:'12px', color:'#86868b'}}>At current rates, that's <strong style={{color:'#FF453A'}}>${twentyYearCost.toLocaleString()}</strong> over the next 20 years</p>
+                            </div>
+
+                            {/* The Comparison */}
+                            <div className="card" style={{overflow:'hidden', marginBottom:'16px'}}>
+                                <div style={{display:'grid', gridTemplateColumns:'1fr 1fr'}}>
+                                    <div style={{padding:'24px', textAlign:'center', borderRight:'1px solid rgba(0,0,0,0.04)'}}>
+                                        <p style={{fontSize:'12px', color:'#86868b', fontWeight:600, letterSpacing:'0.03em', textTransform:'uppercase'}}>Now</p>
+                                        <div style={{fontSize:'32px', fontWeight:700, color:'#FF453A', letterSpacing:'-0.03em', marginTop:'8px'}}>${Math.round(currentBill)}</div>
+                                        <p style={{fontSize:'12px', color:'#86868b', marginTop:'2px'}}>/mo · goes up</p>
+                                    </div>
+                                    <div style={{padding:'24px', textAlign:'center'}}>
+                                        <p style={{fontSize:'12px', color:'#86868b', fontWeight:600, letterSpacing:'0.03em', textTransform:'uppercase'}}>With switch</p>
+                                        <div style={{fontSize:'32px', fontWeight:700, color:'#30D158', letterSpacing:'-0.03em', marginTop:'8px'}}>${solarPayment}</div>
+                                        <p style={{fontSize:'12px', color:'#86868b', marginTop:'2px'}}>/mo · locked in</p>
+                                    </div>
+                                </div>
+
+                                {isSaving ? (
+                                    <div style={{background:'#1d1d1f', padding:'24px', textAlign:'center'}}>
+                                        <p style={{fontSize:'13px', color:'#86868b'}}>That's <strong style={{color:'#f5f5f7'}}>${monthlyDiff}/month</strong> you keep</p>
+                                        <div style={{fontSize:'40px', fontWeight:700, color:'#30D158', letterSpacing:'-0.03em', marginTop:'4px'}}>${Math.abs(annualSavings).toLocaleString()}</div>
+                                        <p style={{fontSize:'13px', color:'#6e6e73', marginTop:'2px'}}>saved per year</p>
+                                    </div>
+                                ) : (
+                                    <div style={{background:'#1d1d1f', padding:'24px', textAlign:'center'}}>
+                                        <p style={{fontSize:'14px', color:'#86868b'}}>Similar payment — but <strong style={{color:'#f5f5f7'}}>locked in</strong></p>
+                                        <p style={{fontSize:'17px', fontWeight:600, color:'#f5f5f7', marginTop:'8px'}}>${solarPayment}/mo fixed vs ${Math.round(currentBill)}/mo rising</p>
+                                        <p style={{fontSize:'13px', color:'#6e6e73', marginTop:'8px'}}>Every rate increase is money you never get back</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* 20-Year Impact */}
+                            {isSaving && (
+                                <div className="card" style={{padding:'24px', textAlign:'center', marginBottom:'16px', background:'#f0fdf4'}}>
+                                    <p style={{fontSize:'13px', color:'#86868b'}}>Over 20 years, switching now puts</p>
+                                    <div style={{fontSize:'36px', fontWeight:700, color:'#30D158', letterSpacing:'-0.03em', marginTop:'4px'}}>${twentyYearSavings.toLocaleString()}</div>
+                                    <p style={{fontSize:'13px', color:'#86868b', marginTop:'4px'}}>back in your pocket</p>
+                                </div>
+                            )}
+
+                            {/* System Details */}
+                            <div style={{display:'grid', gridTemplateColumns:'repeat(3, 1fr)', gap:'12px', marginBottom:'24px'}}>
+                                {[
+                                    { label: 'System', value: `${systemKw} kW` },
+                                    { label: 'Panels', value: panels },
+                                    { label: 'Coverage', value: `${Math.round(offsetPct)}%` },
+                                ].map((d, i) => (
+                                    <div key={i} className="card" style={{padding:'16px', textAlign:'center'}}>
+                                        <p style={{fontSize:'11px', color:'#86868b', fontWeight:600, letterSpacing:'0.04em', textTransform:'uppercase'}}>{d.label}</p>
+                                        <p style={{fontSize:'20px', fontWeight:700, color:'#1d1d1f', marginTop:'4px'}}>{d.value}</p>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <p style={{textAlign:'center', fontSize:'12px', color:'#c7c7cc', marginBottom:'32px'}}>Based on your actual bill + local utility data.</p>
+
+                            {/* Urgency */}
+                            <div style={{background:'rgba(255,159,10,0.06)', borderRadius:'16px', padding:'16px 20px', textAlign:'center', marginBottom:'24px'}}>
+                                <p style={{fontSize:'14px', color:'#1d1d1f'}}><strong>Every month you wait</strong> = another ${Math.round(currentBill)} to the utility at a rate you can't control.</p>
+                            </div>
+
+                            {/* What Happens Next */}
+                            <div className="card" style={{padding:'24px', marginBottom:'24px'}}>
+                                <h3 style={{fontSize:'17px', fontWeight:600, color:'#1d1d1f', marginBottom:'16px'}}>Want to see if these numbers hold up?</h3>
+                                <div style={{display:'flex', flexDirection:'column', gap:'12px'}}>
+                                    {[
+                                        'A local energy consultant comes to your home — free',
+                                        'They check your roof, confirm the design, verify the savings',
+                                        'You get a final proposal with exact numbers — then you decide',
+                                    ].map((step, i) => (
+                                        <div key={i} style={{display:'flex', gap:'12px', alignItems:'flex-start'}}>
+                                            <span style={{fontSize:'13px', fontWeight:700, color:'#FF9F0A', minWidth:'20px'}}>{i+1}.</span>
+                                            <span style={{fontSize:'14px', color:'#86868b', lineHeight:1.4}}>{step}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                                <p style={{fontSize:'12px', color:'#c7c7cc', marginTop:'16px'}}>No obligation. If the numbers don't work, you walk away with free info about your bill.</p>
+                            </div>
+
+                            {/* CTA */}
+                            <button onClick={() => navigate('/book')} className="btn-primary" style={{width:'100%', padding:'16px', fontSize:'17px'}}>
+                                Schedule My Free Home Visit
+                            </button>
+
+                            <div style={{display:'flex', justifyContent:'center', gap:'20px', marginTop:'12px'}}>
+                                {['No obligation', 'No pressure', 'Just data'].map((t,i) => (
+                                    <span key={i} style={{fontSize:'12px', color:'#c7c7cc'}}>{t}</span>
+                                ))}
+                            </div>
+
+                            <button onClick={() => navigate('/faq')} style={{width:'100%', textAlign:'center', color:'#86868b', fontSize:'14px', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', marginTop:'16px', padding:'8px'}}>
+                                Have questions? We answer them here
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= BOOKING COMPONENT =============
+        function BookingFlow({ navigate, publicData, setPublicData }) {
+            const [selectedDate, setSelectedDate] = useState(null);
+            const [selectedTime, setSelectedTime] = useState(null);
+            const [notes, setNotes] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [success, setSuccess] = useState(false);
+
+            if (!publicData.analysis?.lead_id) {
+                navigate('/upload');
+                return null;
+            }
+
+            const a = publicData.analysis || {};
+            const monthlySavings = a.monthly_payment ? (a.current_monthly_bill - a.monthly_payment) : 0;
+
+            // Generate next 14 days (Mon-Sat only)
+            const getAvailableDates = () => {
+                const dates = [];
+                const today = new Date();
+                for (let i = 1; i <= 21; i++) {
+                    const date = new Date(today);
+                    date.setDate(date.getDate() + i);
+                    if (date.getDay() !== 0) { // Skip Sundays
+                        dates.push(date);
+                    }
+                }
+                return dates.slice(0, 12);
+            };
+
+            // Time slots with 24hr values for backend, display labels for user
+            const timeSlots = [
+                { label: '9:00 AM', value: '09:00' },
+                { label: '10:00 AM', value: '10:00' },
+                { label: '11:00 AM', value: '11:00' },
+                { label: '12:00 PM', value: '12:00' },
+                { label: '1:00 PM', value: '13:00' },
+                { label: '2:00 PM', value: '14:00' },
+                { label: '3:00 PM', value: '15:00' },
+                { label: '4:00 PM', value: '16:00' },
+            ];
+            const availableDates = getAvailableDates();
+
+            const handleBook = async () => {
+                if (!selectedDate || !selectedTime) {
+                    setError('Please select a date and time');
+                    return;
+                }
+
+                setLoading(true);
+                setError('');
+                try {
+                    const response = await api.post('/api/solar/book-appointment', {
+                        lead_id: publicData.analysis.lead_id,
+                        preferred_date: selectedDate.toISOString().split('T')[0],
+                        preferred_time: selectedTime.value,
+                        notes: notes
+                    });
+
+                    if (response.appointment_id || response.success) {
+                        setSuccess(true);
+                        setPublicData(prev => ({
+                            ...prev,
+                            booking: response
+                        }));
+                    } else {
+                        setError(response.detail || 'Failed to book appointment');
+                    }
+                } catch (err) {
+                    setError('Connection error. Please try again.');
+                }
+                setLoading(false);
+            };
+
+            if (success) {
+                return (
+                    <div style={{paddingTop:'56px', minHeight:'100vh', background:'#fafafa', display:'flex', alignItems:'center', justifyContent:'center'}}>
+                        <div style={{maxWidth:'440px', width:'100%', padding:'24px'}}>
+                            <div className="card" style={{padding:'40px 32px', textAlign:'center'}}>
+                                <div style={{width:'56px', height:'56px', borderRadius:'50%', background:'#f0fdf4', display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 20px'}}>
+                                    <span style={{fontSize:'28px', color:'#30D158'}}>✓</span>
+                                </div>
+                                <h1 className="headline-md" style={{color:'#1d1d1f'}}>You're all set.</h1>
+                                <p style={{fontSize:'15px', color:'#86868b', marginTop:'8px'}}>Your free home visit is confirmed.</p>
+
+                                <div style={{background:'#fafafa', borderRadius:'12px', padding:'20px', margin:'24px 0', textAlign:'left'}}>
+                                    {[
+                                        { label: 'Date', value: selectedDate?.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) },
+                                        { label: 'Time', value: selectedTime?.label },
+                                        { label: 'Location', value: `${publicData.formData?.streetAddress}, ${publicData.formData?.city}` },
+                                    ].map((row, i) => (
+                                        <div key={i} style={{display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom: i < 2 ? '1px solid rgba(0,0,0,0.04)' : 'none'}}>
+                                            <span style={{fontSize:'13px', color:'#86868b'}}>{row.label}</span>
+                                            <span style={{fontSize:'13px', fontWeight:600, color:'#1d1d1f', textAlign:'right'}}>{row.value}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <div style={{background:'#fafafa', borderRadius:'12px', padding:'20px', textAlign:'left', marginBottom:'24px'}}>
+                                    <p style={{fontSize:'14px', fontWeight:600, color:'#1d1d1f', marginBottom:'12px'}}>What happens next</p>
+                                    {[
+                                        'Confirmation text and email within minutes',
+                                        'We call the day before to confirm',
+                                        'A local consultant visits your home (30 min)',
+                                        'You get exact numbers — then you decide',
+                                    ].map((step, i) => (
+                                        <div key={i} style={{display:'flex', gap:'10px', alignItems:'flex-start', marginBottom:'8px'}}>
+                                            <span style={{fontSize:'12px', fontWeight:700, color:'#FF9F0A', minWidth:'16px'}}>{i+1}</span>
+                                            <span style={{fontSize:'13px', color:'#86868b', lineHeight:1.4}}>{step}</span>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <p style={{fontSize:'12px', color:'#c7c7cc', marginBottom:'20px'}}>No obligation. No pressure. Just real numbers.</p>
+
+                                <button onClick={() => navigate('/')} className="btn-secondary" style={{width:'100%', padding:'12px'}}>
+                                    Back to Home
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                );
+            }
+
+            const isSelected = (date) => selectedDate?.toDateString() === date.toDateString();
+            const isTimeSelected = (slot) => selectedTime?.value === slot.value;
+
+            return (
+                <div style={{paddingTop:'56px', minHeight:'100vh', background:'#fafafa'}}>
+                    <div className="section" style={{paddingTop:'48px', paddingBottom:'48px'}}>
+                        <div style={{maxWidth:'480px', margin:'0 auto'}}>
+
+                            {/* Header */}
+                            <div style={{textAlign:'center', marginBottom:'32px'}}>
+                                <p className="label" style={{color:'#30D158', marginBottom:'12px'}}>Free · No obligation</p>
+                                <h1 className="headline-lg" style={{color:'#1d1d1f'}}>Verify your numbers.</h1>
+                                <p style={{fontSize:'15px', color:'#86868b', marginTop:'8px', maxWidth:'400px', marginLeft:'auto', marginRight:'auto'}}>A local consultant checks your roof, confirms the savings, and answers every question. 30 minutes. Free.</p>
+                            </div>
+
+                            {/* Savings Reminder */}
+                            {monthlySavings > 0 && (
+                                <div className="card" style={{padding:'16px 20px', display:'flex', alignItems:'center', gap:'16px', marginBottom:'20px'}}>
+                                    <span style={{fontSize:'24px'}}>☀</span>
+                                    <div>
+                                        <p style={{fontSize:'12px', color:'#86868b', fontWeight:500}}>Potential you're leaving on the table</p>
+                                        <p style={{fontSize:'20px', fontWeight:700, color:'#30D158'}}>${Math.round(monthlySavings)}/mo</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="card" style={{padding:'28px'}}>
+                                {error && (
+                                    <div style={{background:'#FFF2F2', color:'#FF453A', padding:'12px 16px', borderRadius:'12px', fontSize:'14px', marginBottom:'20px'}}>{error}</div>
+                                )}
+
+                                {/* Date Selection */}
+                                <div style={{marginBottom:'24px'}}>
+                                    <p style={{fontSize:'14px', fontWeight:600, color:'#1d1d1f', marginBottom:'12px'}}>Pick a day</p>
+                                    <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'8px'}}>
+                                        {availableDates.map((date, idx) => (
+                                            <button
+                                                key={idx}
+                                                onClick={() => setSelectedDate(date)}
+                                                style={{
+                                                    padding:'10px 4px', borderRadius:'12px', border: isSelected(date) ? '2px solid #FF9F0A' : '1.5px solid rgba(0,0,0,0.06)',
+                                                    background: isSelected(date) ? 'rgba(255,159,10,0.06)' : '#fafafa', cursor:'pointer', textAlign:'center', fontFamily:'inherit'
+                                                }}
+                                            >
+                                                <div style={{fontSize:'11px', color:'#86868b', fontWeight:500}}>{date.toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                                                <div style={{fontSize:'15px', fontWeight:600, color:'#1d1d1f', marginTop:'2px'}}>{date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Time Selection */}
+                                <div style={{marginBottom:'24px'}}>
+                                    <p style={{fontSize:'14px', fontWeight:600, color:'#1d1d1f', marginBottom:'12px'}}>Choose a time</p>
+                                    <div style={{display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:'8px'}}>
+                                        {timeSlots.map((slot) => (
+                                            <button
+                                                key={slot.value}
+                                                onClick={() => setSelectedTime(slot)}
+                                                style={{
+                                                    padding:'10px 8px', borderRadius:'12px', border: isTimeSelected(slot) ? '2px solid #FF9F0A' : '1.5px solid rgba(0,0,0,0.06)',
+                                                    background: isTimeSelected(slot) ? 'rgba(255,159,10,0.06)' : '#fafafa', cursor:'pointer', fontSize:'14px', fontWeight:500,
+                                                    color:'#1d1d1f', fontFamily:'inherit'
+                                                }}
+                                            >
+                                                {slot.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {/* Summary */}
+                                {selectedDate && selectedTime && (
+                                    <div style={{background:'rgba(255,159,10,0.04)', borderRadius:'12px', padding:'16px', marginBottom:'20px', border:'1px solid rgba(255,159,10,0.1)'}}>
+                                        <p style={{fontSize:'14px', fontWeight:600, color:'#1d1d1f'}}>{selectedDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })} at {selectedTime.label}</p>
+                                        <p style={{fontSize:'13px', color:'#86868b', marginTop:'4px'}}>{publicData.formData?.streetAddress}, {publicData.formData?.city}, {publicData.formData?.state}</p>
+                                    </div>
+                                )}
+
+                                {/* Notes */}
+                                <div style={{marginBottom:'24px'}}>
+                                    <label style={{display:'block', fontSize:'12px', fontWeight:600, color:'#86868b', marginBottom:'6px'}}>Anything we should know? <span style={{fontWeight:400, color:'#c7c7cc'}}>Optional</span></label>
+                                    <textarea
+                                        value={notes}
+                                        onChange={(e) => setNotes(e.target.value)}
+                                        className="input-modern"
+                                        placeholder="Gate code, trees on roof, HOA..."
+                                        rows="2"
+                                        style={{resize:'none'}}
+                                    />
+                                </div>
+
+                                {/* Book Button */}
+                                <button
+                                    onClick={handleBook}
+                                    disabled={loading || !selectedDate || !selectedTime}
+                                    className="btn-primary"
+                                    style={{width:'100%', padding:'16px', fontSize:'17px', opacity: (!selectedDate || !selectedTime) ? 0.4 : 1}}
+                                >
+                                    {loading ? 'Scheduling...' : 'Confirm My Free Home Visit'}
+                                </button>
+
+                                <div style={{display:'flex', justifyContent:'center', gap:'20px', marginTop:'12px'}}>
+                                    {['Free visit', 'No obligation', '30 minutes'].map((t,i) => (
+                                        <span key={i} style={{fontSize:'12px', color:'#c7c7cc'}}>{t}</span>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {/* What Happens */}
+                            <div className="card" style={{padding:'24px', marginTop:'16px'}}>
+                                <p style={{fontSize:'15px', fontWeight:600, color:'#1d1d1f', marginBottom:'16px', textAlign:'center'}}>Here's exactly what happens</p>
+                                {[
+                                    { title: 'We call you the day before', desc: 'To confirm. If something came up, we reschedule.' },
+                                    { title: 'A local consultant visits', desc: 'Not a salesperson — a trained energy consultant from your area.' },
+                                    { title: 'You get exact numbers', desc: 'What it costs, what you save. Then you decide on your own time.' },
+                                ].map((step, i) => (
+                                    <div key={i} style={{display:'flex', gap:'14px', alignItems:'flex-start', marginBottom:'14px'}}>
+                                        <span style={{fontSize:'13px', fontWeight:700, color:'#FF9F0A', minWidth:'20px', marginTop:'1px'}}>{i+1}</span>
+                                        <div>
+                                            <p style={{fontSize:'14px', fontWeight:600, color:'#1d1d1f'}}>{step.title}</p>
+                                            <p style={{fontSize:'13px', color:'#86868b', marginTop:'2px'}}>{step.desc}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+
+                            <button onClick={() => navigate('/faq')} style={{width:'100%', textAlign:'center', color:'#86868b', fontSize:'14px', background:'none', border:'none', cursor:'pointer', fontFamily:'inherit', marginTop:'16px', padding:'8px'}}>
+                                Still have questions? →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= FAQ COMPONENT =============
+        function FAQPage({ navigate }) {
+            const [openIdx, setOpenIdx] = useState(null);
+
+            const faqSections = [
+                {
+                    title: "How This Works",
+                    faqs: [
+                        {
+                            question: "What exactly does Sunbull do?",
+                            answer: "We analyze your electric bill and figure out whether you're overpaying. If you are — and most homeowners in the Valley are — we show you the numbers: what you pay now, what you could pay instead, and how much you'd save over time. Then you decide."
+                        },
+                        {
+                            question: "Is this really free? What's the catch?",
+                            answer: "The bill analysis and the home visit are both free. There's no catch. We earn money when a homeowner decides to switch — not from the analysis. If we can't save you money, we'll tell you. It happens, and that's fine."
+                        },
+                        {
+                            question: "Am I committing to anything by filling out the form?",
+                            answer: "No. Not when you enter your bill. Not during the home visit. Not until you've seen your final proposal with exact numbers and decided it makes sense for you. You can walk away at any point."
+                        },
+                        {
+                            question: "Who shows up at my house?",
+                            answer: "A local energy consultant — not a random door-to-door salesperson. They're trained to assess your roof, verify the numbers, and answer your questions. They're from your area and they work with homeowners like you every day."
+                        },
+                    ]
+                },
+                {
+                    title: "Money",
+                    faqs: [
+                        {
+                            question: "How much can I realistically save?",
+                            answer: "It depends on your bill, but most homeowners we work with reduce their electricity costs by 20-40%. Over 20 years, that's typically $15,000-$50,000+ that stays in your pocket instead of going to the utility company. The numbers on our site are based on your actual bill, not estimates."
+                        },
+                        {
+                            question: "Do I have to pay anything upfront?",
+                            answer: "Most homeowners pay $0 upfront. Financing options let you start with a payment that's typically lower than your current electric bill. That's the whole point — you pay less from day one."
+                        },
+                        {
+                            question: "What happens when the utility raises rates again?",
+                            answer: "That's exactly the problem we solve. LADWP and SCE raise rates every year — about 6% on average. Once you switch, your payment is locked in. Every time rates go up, the gap between what your neighbors pay and what you pay gets bigger."
+                        },
+                        {
+                            question: "What about tax credits?",
+                            answer: "The federal tax credit lets you deduct 30% of the system cost from your taxes. There are also state and local incentives depending on where you live. Your consultant will walk you through everything that applies to your situation."
+                        },
+                    ]
+                },
+                {
+                    title: "The Process",
+                    faqs: [
+                        {
+                            question: "How long does the whole thing take?",
+                            answer: "The analysis takes 2 minutes online. The home visit is about 30 minutes. If you decide to move forward, installation takes 1-3 days. The full process from signing to having a working system is usually 6-12 weeks — permits, inspections, utility approval. We handle all of it."
+                        },
+                        {
+                            question: "Will it damage my roof?",
+                            answer: "No. The mounting systems are engineered with waterproof seals. The panels actually protect the section of roof they cover, extending its life. If your roof needs work first, the consultant will tell you upfront — not after you've signed anything."
+                        },
+                        {
+                            question: "What about when it's cloudy or at night?",
+                            answer: "You stay connected to the grid. Sunny days produce more than you use — you bank the credits. At night or on cloudy days, you pull from those credits. You only pay the difference, which is almost always less than your old bill."
+                        },
+                    ]
+                },
+                {
+                    title: "Your Home",
+                    faqs: [
+                        {
+                            question: "What if I sell my house?",
+                            answer: "Homes with solar sell for 4-6% more and sell faster. It's one of the few home improvements that pays for itself and increases your resale value. Buyers like lower electric bills too."
+                        },
+                        {
+                            question: "My roof is older / has some shade. Is it worth it?",
+                            answer: "The consultant will check during the free visit. Some shade is fine — newer panels handle it well. If your roof needs replacing soon, they'll be upfront about it. We don't waste your time or ours on homes where the numbers don't work."
+                        },
+                        {
+                            question: "What about my HOA?",
+                            answer: "In California, HOAs can't block solar installations — it's the law. If there are design requirements, we'll handle the paperwork and approvals."
+                        },
+                    ]
+                },
+            ];
+
+            return (
+                <div style={{paddingTop:'56px', minHeight:'100vh', background:'#fff'}}>
+                    <div className="section">
+                        <div style={{maxWidth:'600px', margin:'0 auto'}}>
+                            <div style={{textAlign:'center', marginBottom:'48px'}}>
+                                <h1 className="headline-lg" style={{color:'#1d1d1f'}}>Your questions, answered.</h1>
+                                <p style={{fontSize:'15px', color:'#86868b', marginTop:'8px'}}>Straight talk. No jargon. No runaround.</p>
+                            </div>
+
+                            {faqSections.map((section, sIdx) => (
+                                <div key={sIdx} style={{marginBottom:'36px'}}>
+                                    <p className="label" style={{marginBottom:'12px', paddingLeft:'4px'}}>{section.title}</p>
+                                    <div style={{display:'flex', flexDirection:'column', gap:'1px', background:'rgba(0,0,0,0.04)', borderRadius:'16px', overflow:'hidden'}}>
+                                        {section.faqs.map((faq, fIdx) => {
+                                            const globalIdx = sIdx * 100 + fIdx;
+                                            return (
+                                                <div key={globalIdx} style={{background:'#fff'}}>
+                                                    <button
+                                                        onClick={() => setOpenIdx(openIdx === globalIdx ? null : globalIdx)}
+                                                        style={{
+                                                            width:'100%', textAlign:'left', padding:'16px 20px', display:'flex', alignItems:'center',
+                                                            justifyContent:'space-between', gap:'16px', cursor:'pointer', border:'none', background:'transparent', fontFamily:'inherit'
+                                                        }}
+                                                    >
+                                                        <span style={{fontSize:'15px', fontWeight:600, color:'#1d1d1f'}}>{faq.question}</span>
+                                                        <span style={{fontSize:'18px', color:'#c7c7cc', flexShrink:0, transform: openIdx === globalIdx ? 'rotate(45deg)' : 'none'}}>+</span>
+                                                    </button>
+                                                    {openIdx === globalIdx && (
+                                                        <div style={{padding:'0 20px 16px', fontSize:'14px', color:'#86868b', lineHeight:1.6}}>
+                                                            {faq.answer}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+
+                            {/* CTA */}
+                            <div style={{background:'#1d1d1f', borderRadius:'20px', padding:'40px 32px', textAlign:'center', marginTop:'48px'}}>
+                                <h2 className="headline-md" style={{color:'#f5f5f7'}}>Still wondering if you're overpaying?</h2>
+                                <p style={{fontSize:'15px', color:'#86868b', marginTop:'8px'}}>There's one way to find out.</p>
+                                <button onClick={() => navigate('/upload')} className="btn-accent" style={{marginTop:'24px'}}>
+                                    Analyze My Bill — It's Free
+                                </button>
+                                <p style={{fontSize:'12px', color:'#6e6e73', marginTop:'12px'}}>No obligation. No pressure. Just data.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= TOP BAR (INTERNAL OS) =============
+        function TopBar({ user, navigate, onLogout }) {
+            const [showUserMenu, setShowUserMenu] = useState(false);
+
+            return (
+                <div className="top-bar h-16 flex items-center justify-between px-4 sm:px-6">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 solar-primary rounded-full flex items-center justify-center text-white font-bold">☀</div>
+                        <h1 className="text-xl font-bold solar-dark-text hidden sm:block">Sunbull OS</h1>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="relative">
+                            <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 hover:bg-gray-100 px-3 py-2 rounded">
+                                <span className="text-sm font-medium text-gray-700">{user?.name || 'User'}</span>
+                                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-xs font-bold">
+                                    {user?.name?.charAt(0) || 'U'}
+                                </div>
+                            </button>
+                            {showUserMenu && (
+                                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                    <div className="p-4 border-b border-gray-200 text-sm">
+                                        <div className="font-semibold">{user?.name}</div>
+                                        <div className="text-gray-500 text-xs">{user?.role}</div>
+                                    </div>
+                                    <button onClick={onLogout} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50">
+                                        Logout
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= SIDEBAR (INTERNAL OS) =============
+        function Sidebar({ role, navigate, activeHash }) {
+            const adminLinks = [
+                { label: 'Dashboard', hash: '/admin/dashboard' },
+                { label: 'Leads', hash: '/admin/leads' },
+                { label: 'Appointments', hash: '/admin/appointments' },
+                { label: 'Pipeline', hash: '/admin/pipeline' },
+                { label: 'Reps', hash: '/admin/reps' },
+                { label: 'Rules', hash: '/admin/rules' }
+            ];
+
+            const repLinks = [
+                { label: 'Dashboard', hash: '/rep/dashboard' },
+                { label: 'My Leads', hash: '/rep/leads' },
+                { label: 'Schedule', hash: '/rep/schedule' }
+            ];
+
+            const confirmationLinks = [
+                { label: 'Call Queue', hash: '/confirmation/queue' },
+                { label: 'Stats', hash: '/confirmation/stats' }
+            ];
+
+            let links = [];
+            if (role === 'admin') links = adminLinks;
+            else if (role === 'rep') links = repLinks;
+            else if (role === 'confirmation') links = confirmationLinks;
+
+            return (
+                <div className="sidebar">
+                    <nav className="p-4 space-y-2">
+                        {links.map(link => (
+                            <button
+                                key={link.hash}
+                                onClick={() => navigate(link.hash)}
+                                className={`w-full text-left px-4 py-2 rounded text-sm font-medium transition ${
+                                    activeHash === link.hash
+                                        ? 'solar-primary text-white'
+                                        : 'text-gray-700 hover:bg-gray-100'
+                                }`}
+                            >
+                                {link.label}
+                            </button>
+                        ))}
+                    </nav>
+                </div>
+            );
+        }
+
+        // ============= BOTTOM NAV (INTERNAL OS MOBILE) =============
+        function BottomNav({ role, navigate, activeHash }) {
+            let links = [];
+            if (role === 'admin') {
+                links = [
+                    { label: '📊', hash: '/admin/dashboard' },
+                    { label: '👥', hash: '/admin/leads' },
+                    { label: '📅', hash: '/admin/appointments' },
+                    { label: '🔀', hash: '/admin/pipeline' },
+                    { label: '⚙️', hash: '/admin/rules' }
+                ];
+            } else if (role === 'rep') {
+                links = [
+                    { label: '📊', hash: '/rep/dashboard' },
+                    { label: '📋', hash: '/rep/leads' },
+                    { label: '📅', hash: '/rep/schedule' }
+                ];
+            } else if (role === 'confirmation') {
+                links = [
+                    { label: '📞', hash: '/confirmation/queue' },
+                    { label: '📊', hash: '/confirmation/stats' }
+                ];
+            }
+
+            return (
+                <div className="bottom-nav h-16 flex justify-around items-center">
+                    {links.map(link => (
+                        <button
+                            key={link.hash}
+                            onClick={() => navigate(link.hash)}
+                            className={`flex-1 flex justify-center items-center text-2xl ${
+                                activeHash === link.hash ? 'solar-primary-text' : 'text-gray-400'
+                            }`}
+                        >
+                            {link.label}
+                        </button>
+                    ))}
+                </div>
+            );
+        }
+
+        // ============= LOGIN PAGE =============
+        function LoginPage({ navigate, setUser }) {
+            const [email, setEmail] = useState('');
+            const [password, setPassword] = useState('');
+            const [loading, setLoading] = useState(false);
+            const [error, setError] = useState('');
+            const [toast, setToast] = useState(null);
+
+            const handleLogin = async (e) => {
+                e.preventDefault();
+                setLoading(true);
+                setError('');
+
+                try {
+                    const response = await api.post('/api/auth/login', { email, password });
+                    if (response.access_token) {
+                        window.authToken = response.access_token;
+                        const userData = { name: response.name, role: response.role, id: response.id };
+                        setUser(userData);
+
+                        if (response.role === 'admin') navigate('/admin/dashboard');
+                        else if (response.role === 'rep') navigate('/rep/dashboard');
+                        else if (response.role === 'confirmation') navigate('/confirmation/queue');
+                        else navigate('/');
+                    } else {
+                        setError(response.detail || 'Login failed');
+                        setToast({ type: 'error', message: 'Invalid credentials' });
+                    }
+                } catch (err) {
+                    setError('Connection error');
+                    setToast({ type: 'error', message: 'Failed to connect to server' });
+                }
+                setLoading(false);
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center px-4">
+                    <div className="w-full max-w-md bg-white rounded-lg shadow-xl p-8">
+                        <div className="text-center mb-8">
+                            <div className="w-16 h-16 solar-primary rounded-full flex items-center justify-center text-white text-3xl mx-auto mb-4">☀</div>
+                            <h1 className="text-3xl font-bold solar-dark-text">Sunbull OS</h1>
+                            <p className="text-gray-500 mt-2">Solar Sales Operations</p>
+                        </div>
+
+                        <form onSubmit={handleLogin} className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                                <input
+                                    type="email"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none"
+                                    placeholder="you@example.com"
+                                    required
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                                <input
+                                    type="password"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
+                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                            </div>
+                            {error && <div className="text-red-600 text-sm">{error}</div>}
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full solar-primary text-white py-2 rounded-lg font-semibold hover:bg-amber-600 transition disabled:opacity-50"
+                            >
+                                {loading ? 'Signing in...' : 'Sign In'}
+                            </button>
+                        </form>
+
+                        <p className="text-center text-gray-500 text-sm mt-4">
+                            Demo: admin@sunbull.com / password
+                        </p>
+                    </div>
+                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                </div>
+            );
+        }
+
+        // ============= ADMIN DASHBOARD =============
+        function AdminDashboard({ navigate }) {
+            const [metrics, setMetrics] = useState({
+                leadsToday: 24,
+                closeRate: 32.5,
+                revenueMonth: 185000,
+                avgRevenuePerLead: 5800,
+                heldRate: 8.2
+            });
+            const [reps, setReps] = useState([
+                { id: 1, name: 'John Smith', leadsAssigned: 45, closed: 14, closeRate: 31.1, revenue: 81200, avgResponseTime: '2.3h' },
+                { id: 2, name: 'Sarah Johnson', leadsAssigned: 38, closed: 13, closeRate: 34.2, revenue: 75400, avgResponseTime: '1.8h' },
+                { id: 3, name: 'Mike Chen', leadsAssigned: 52, closed: 15, closeRate: 28.8, revenue: 87000, avgResponseTime: '3.1h' }
+            ]);
+
+            return (
+                <div className="p-4 sm:p-6 space-y-6">
+                    <h1 className="text-3xl font-bold solar-dark-text">Command Center</h1>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                        <div className="metric-card positive">
+                            <div className="text-gray-600 text-sm font-medium">Leads Today</div>
+                            <div className="text-3xl font-bold solar-dark-text mt-2">{metrics.leadsToday}</div>
+                        </div>
+                        <div className="metric-card neutral">
+                            <div className="text-gray-600 text-sm font-medium">Close Rate</div>
+                            <div className="text-3xl font-bold solar-dark-text mt-2">{metrics.closeRate.toFixed(1)}%</div>
+                        </div>
+                        <div className="metric-card positive">
+                            <div className="text-gray-600 text-sm font-medium">Revenue This Month</div>
+                            <div className="text-3xl font-bold solar-dark-text mt-2">${(metrics.revenueMonth/1000).toFixed(0)}k</div>
+                        </div>
+                        <div className="metric-card positive">
+                            <div className="text-gray-600 text-sm font-medium">Avg Revenue/Lead</div>
+                            <div className="text-3xl font-bold solar-dark-text mt-2">${(metrics.avgRevenuePerLead/1000).toFixed(1)}k</div>
+                        </div>
+                        <div className="metric-card negative">
+                            <div className="text-gray-600 text-sm font-medium">Held Rate</div>
+                            <div className="text-3xl font-bold solar-dark-text mt-2">{metrics.heldRate.toFixed(1)}%</div>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h2 className="text-lg font-bold solar-dark-text mb-4">Pipeline Funnel</h2>
+                            <PipelineFunnelChart />
+                        </div>
+                        <div className="bg-white rounded-lg shadow p-6">
+                            <h2 className="text-lg font-bold solar-dark-text mb-4">Revenue by Rep</h2>
+                            <RevenueChart reps={reps} />
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow p-6">
+                        <h2 className="text-lg font-bold solar-dark-text mb-4">Rep Performance</h2>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="border-b border-gray-200">
+                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Leads</th>
+                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Closed</th>
+                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Rate</th>
+                                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Revenue</th>
+                                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Avg Response</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {reps.map(rep => (
+                                        <tr key={rep.id} className="border-b border-gray-100 hover:bg-gray-50">
+                                            <td className="py-3 px-4 font-medium">{rep.name}</td>
+                                            <td className="py-3 px-4 text-center">{rep.leadsAssigned}</td>
+                                            <td className="py-3 px-4 text-center text-green-600 font-semibold">{rep.closed}</td>
+                                            <td className="py-3 px-4 text-center">{rep.closeRate.toFixed(1)}%</td>
+                                            <td className="py-3 px-4 text-right font-semibold">${(rep.revenue/1000).toFixed(0)}k</td>
+                                            <td className="py-3 px-4 text-right text-gray-600">{rep.avgResponseTime}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        function PipelineFunnelChart() {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || !window.Chart) return;
+
+                if (chartRef.current) chartRef.current.destroy();
+
+                const ctx = canvasRef.current.getContext('2d');
+                chartRef.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Sold', 'Installed', 'Submitted', 'Funded', 'Paid'],
+                        datasets: [{
+                            label: 'Deals',
+                            data: [125, 98, 72, 54, 42],
+                            backgroundColor: ['#F59E0B', '#D97706', '#FBBF24', '#92400E', '#78350F'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: { legend: { display: false } },
+                        scales: { x: { beginAtZero: true } }
+                    }
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, []);
+
+            return <canvas ref={canvasRef} height={200}></canvas>;
+        }
+
+        function RevenueChart({ reps }) {
+            const canvasRef = useRef(null);
+            const chartRef = useRef(null);
+
+            useEffect(() => {
+                if (!canvasRef.current || !window.Chart) return;
+
+                if (chartRef.current) chartRef.current.destroy();
+
+                const ctx = canvasRef.current.getContext('2d');
+                chartRef.current = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: reps.map(r => r.name),
+                        datasets: [{
+                            label: 'Revenue',
+                            data: reps.map(r => r.revenue),
+                            backgroundColor: '#F59E0B',
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true } }
+                    }
+                });
+
+                return () => { if (chartRef.current) chartRef.current.destroy(); };
+            }, [reps]);
+
+            return <canvas ref={canvasRef} height={200}></canvas>;
+        }
+
+        // ============= ADMIN LEADS PAGE =============
+        function AdminLeads({ navigate }) {
+            const [leads, setLeads] = useState([
+                { id: 1, name: 'John Homeowner', phone: '555-0101', billAmount: 145, score: 92, status: 'hot', rep: 'John Smith', source: 'Facebook', created: '2026-03-25' },
+                { id: 2, name: 'Jane Doe', phone: '555-0102', billAmount: 210, score: 78, status: 'warm', rep: 'Sarah Johnson', source: 'Google', created: '2026-03-25' },
+                { id: 3, name: 'Bob Wilson', phone: '555-0103', billAmount: 185, score: 45, status: 'cool', rep: 'Mike Chen', source: 'Referral', created: '2026-03-24' },
+                { id: 4, name: 'Alice Brown', phone: '555-0104', billAmount: 220, score: 28, status: 'cold', rep: 'Unassigned', source: 'Website', created: '2026-03-24' }
+            ]);
+            const [statusFilter, setStatusFilter] = useState('all');
+            const [sourceFilter, setSourceFilter] = useState('all');
+            const [selectedLead, setSelectedLead] = useState(null);
+
+            const filteredLeads = leads.filter(l => {
+                if (statusFilter !== 'all' && l.status !== statusFilter) return false;
+                if (sourceFilter !== 'all' && l.source !== sourceFilter) return false;
+                return true;
+            });
+
+            const getScoreBadge = (score) => {
+                if (score >= 80) return <span className="lead-score-hot">HOT ({score})</span>;
+                if (score >= 60) return <span className="lead-score-warm">WARM ({score})</span>;
+                if (score >= 40) return <span className="lead-score-cool">COOL ({score})</span>;
+                return <span className="lead-score-cold">COLD ({score})</span>;
+            };
+
+            return (
+                <div className="p-4 sm:p-6 space-y-4">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                        <h1 className="text-3xl font-bold solar-dark-text">Leads</h1>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white rounded-lg shadow p-4">
+                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm">
+                            <option value="all">All Status</option>
+                            <option value="hot">Hot</option>
+                            <option value="warm">Warm</option>
+                            <option value="cool">Cool</option>
+                            <option value="cold">Cold</option>
+                        </select>
+                        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm">
+                            <option value="all">All Source</option>
+                            <option value="Facebook">Facebook</option>
+                            <option value="Google">Google</option>
+                            <option value="Referral">Referral</option>
+                            <option value="Website">Website</option>
+                        </select>
+                    </div>
+
+                    <div className="bg-white rounded-lg shadow overflow-hidden">
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead className="bg-gray-50 border-b border-gray-200">
+                                    <tr>
+                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
+                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Phone</th>
+                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Bill</th>
+                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Score</th>
+                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Rep</th>
+                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Source</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {filteredLeads.map(lead => (
+                                        <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer">
+                                            <td className="py-3 px-4 font-medium">{lead.name}</td>
+                                            <td className="py-3 px-4 text-blue-600">{lead.phone}</td>
+                                            <td className="py-3 px-4">${lead.billAmount}</td>
+                                            <td className="py-3 px-4 text-center">{getScoreBadge(lead.score)}</td>
+                                            <td className="py-3 px-4 text-sm text-gray-600">{lead.rep}</td>
+                                            <td className="py-3 px-4 text-xs">{lead.source}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    {selectedLead && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedLead(null)}>
+                            <div className="bg-white rounded-lg max-w-2xl w-full max-h-96 overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+                                <div className="flex justify-between items-start mb-4">
+                                    <h2 className="text-2xl font-bold solar-dark-text">{selectedLead.name}</h2>
+                                    <button onClick={() => setSelectedLead(null)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
+                                </div>
+                                <div className="space-y-4">
+                                    <div><strong>Phone:</strong> {selectedLead.phone}</div>
+                                    <div><strong>Monthly Bill:</strong> ${selectedLead.billAmount}</div>
+                                    <div><strong>Score:</strong> {getScoreBadge(selectedLead.score)}</div>
+                                    <div><strong>Status:</strong> {selectedLead.status}</div>
+                                    <div><strong>Assigned Rep:</strong> {selectedLead.rep}</div>
+                                    <div><strong>Source:</strong> {selectedLead.source}</div>
+                                    <div><strong>Created:</strong> {selectedLead.created}</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        }
+
+        // ============= ADMIN APPOINTMENTS (STUB) =============
+        function AdminAppointments() {
+            return (
+                <div className="p-6">
+                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Appointments</h1>
+                    <p className="text-gray-600">Appointment management</p>
+                </div>
+            );
+        }
+
+        // ============= ADMIN PIPELINE (STUB) =============
+        function AdminPipeline() {
+            return (
+                <div className="p-6">
+                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Pipeline</h1>
+                    <p className="text-gray-600">Sales pipeline view</p>
+                </div>
+            );
+        }
+
+        // ============= ADMIN RULES (STUB) =============
+        function AdminRules() {
+            return (
+                <div className="p-6">
+                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Rules</h1>
+                    <p className="text-gray-600">Automation rules</p>
+                </div>
+            );
+        }
+
+        // ============= REP DASHBOARD =============
+        function RepDashboard({ user }) {
+            const [appointments, setAppointments] = useState([
+                { id: 1, time: '09:00 AM', customer: 'John Homeowner', address: '123 Main St', score: 92 },
+                { id: 2, time: '11:00 AM', customer: 'Jane Doe', address: '456 Oak Ave', score: 78 },
+                { id: 3, time: '02:00 PM', customer: 'Bob Wilson', address: '789 Pine Rd', score: 45 }
+            ]);
+            const [expandedId, setExpandedId] = useState(null);
+
+            const getScoreColor = (score) => {
+                if (score >= 80) return 'bg-red-100 text-red-800';
+                if (score >= 60) return 'bg-orange-100 text-orange-800';
+                if (score >= 40) return 'bg-yellow-100 text-yellow-800';
+                return 'bg-blue-100 text-blue-800';
+            };
+
+            return (
+                <div className="p-4 space-y-4">
+                    <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-lg p-6">
+                        <div className="text-sm opacity-90">Welcome,</div>
+                        <div className="text-2xl font-bold">{user?.name || 'Rep'}</div>
+                        <div className="grid grid-cols-3 gap-2 mt-4 text-center text-sm">
+                            <div>
+                                <div className="text-2xl font-bold">{appointments.length}</div>
+                                <div className="opacity-90">Appointments</div>
+                            </div>
+                            <div>
+                                <div className="text-2xl font-bold">3</div>
+                                <div className="opacity-90">Closes</div>
+                            </div>
+                            <div>
+                                <div className="text-2xl font-bold">7</div>
+                                <div className="opacity-90">Pending</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="space-y-3">
+                        <h2 className="text-xl font-bold solar-dark-text">Today's Schedule</h2>
+                        {appointments.map(apt => (
+                            <div key={apt.id} className="bg-white rounded-lg shadow border-l-4 border-amber-400">
+                                <button
+                                    onClick={() => setExpandedId(expandedId === apt.id ? null : apt.id)}
+                                    className="w-full text-left p-4 hover:bg-gray-50"
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                            <div className="text-sm text-gray-500">{apt.time}</div>
+                                            <div className="font-semibold text-gray-900">{apt.customer}</div>
+                                            <div className="text-sm text-gray-600">{apt.address}</div>
+                                        </div>
+                                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getScoreColor(apt.score)}`}>
+                                            {apt.score}
+                                        </span>
+                                    </div>
+                                </button>
+
+                                {expandedId === apt.id && (
+                                    <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-3">
+                                        <button className="w-full bg-blue-500 text-white py-2 rounded font-medium text-sm">📍 Get Directions</button>
+                                        <button className="w-full bg-green-500 text-white py-2 rounded font-medium text-sm">✓ Mark Complete</button>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        }
+
+        // ============= CONFIRMATION QUEUE (STUB) =============
+        function ConfirmationQueue() {
+            return (
+                <div className="p-6">
+                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Confirmation Queue</h1>
+                    <p className="text-gray-600">Appointment confirmation system</p>
+                </div>
+            );
+        }
+
+        // ============= MAIN APP COMPONENT =============
+        function App() {
+            const [user, setUser] = useState(null);
+            const [toast, setToast] = useState(null);
+            const [publicData, setPublicData] = useState({
+                formData: null,
+                analysis: null,
+                booking: null
+            });
+
+            const handleLogout = () => {
+                window.authToken = null;
+                setUser(null);
+                window.location.hash = '/login';
+            };
+
+            return (
+                <HashRouter>
+                    {({ hash, navigate }) => {
+                        // Public routes - no authentication required
+                        const isPublicRoute = ['/', '/upload', '/savings', '/book', '/faq'].some(route => hash === route);
+
+                        // Internal routes - authentication required
+                        const isInternalRoute = hash.startsWith('/admin') || hash.startsWith('/rep') || hash.startsWith('/confirmation');
+
+                        // Check authentication for internal routes
+                        if (isInternalRoute && !user) {
+                            navigate('/login');
+                            return null;
+                        }
+
+                        // Public routes
+                        if (hash === '/') {
+                            return (
+                                <>
+                                    <PublicNav navigate={navigate} />
+                                    <Homepage navigate={navigate} />
+                                </>
+                            );
+                        }
+
+                        if (hash === '/upload') {
+                            return (
+                                <>
+                                    <PublicNav navigate={navigate} />
+                                    <BillUpload navigate={navigate} publicData={publicData} setPublicData={setPublicData} />
+                                </>
+                            );
+                        }
+
+                        if (hash === '/savings') {
+                            return (
+                                <>
+                                    <PublicNav navigate={navigate} />
+                                    <SavingsResult navigate={navigate} publicData={publicData} setPublicData={setPublicData} />
+                                </>
+                            );
+                        }
+
+                        if (hash === '/book') {
+                            return (
+                                <>
+                                    <PublicNav navigate={navigate} />
+                                    <BookingFlow navigate={navigate} publicData={publicData} setPublicData={setPublicData} />
+                                </>
+                            );
+                        }
+
+                        if (hash === '/faq') {
+                            return (
+                                <>
+                                    <PublicNav navigate={navigate} />
+                                    <FAQPage navigate={navigate} />
+                                </>
+                            );
+                        }
+
+                        // Login page
+                        if (hash === '/login') {
+                            return <LoginPage navigate={navigate} setUser={setUser} />;
+                        }
+
+                        // Internal OS routes
+                        if (user) {
+                            return (
+                                <div className="app-wrapper">
+                                    <TopBar user={user} navigate={navigate} onLogout={handleLogout} />
+                                    <Sidebar role={user.role} navigate={navigate} activeHash={hash} />
+                                    <BottomNav role={user.role} navigate={navigate} activeHash={hash} />
+                                    <main className="main-content">
+                                        {hash === '/admin/dashboard' && <AdminDashboard navigate={navigate} />}
+                                        {hash === '/admin/leads' && <AdminLeads navigate={navigate} />}
+                                        {hash === '/admin/appointments' && <AdminAppointments />}
+                                        {hash === '/admin/pipeline' && <AdminPipeline />}
+                                        {hash === '/admin/rules' && <AdminRules />}
+                                        {hash === '/rep/dashboard' && <RepDashboard user={user} navigate={navigate} />}
+                                        {hash === '/confirmation/queue' && <ConfirmationQueue />}
+                                        {!hash.match(/^\/admin|^\/rep|^\/confirmation/) && (
+                                            <div className="p-6 text-center">
+                                                <p className="text-gray-600">Page not found</p>
+                                                <button onClick={() => navigate(user.role === 'admin' ? '/admin/dashboard' : '/rep/dashboard')} className="solar-primary text-white px-4 py-2 rounded mt-4">
+                                                    Go Home
+                                                </button>
+                                            </div>
+                                        )}
+                                    </main>
+                                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+                                </div>
+                            );
+                        }
+
+                        // Default to login if hash doesn't match any route
+                        return <LoginPage navigate={navigate} setUser={setUser} />;
+                    }}
+                </HashRouter>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+</body>
+</html>
