@@ -498,6 +498,25 @@ class BillAnalysis(Base):
     lead = relationship("Lead")
 
 
+class Action(Base):
+    """Lead action timeline - tracks every operational step on a lead."""
+    __tablename__ = "actions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    rep_id = Column(Integer, ForeignKey("users.id"), index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id"), index=True)
+    action_type = Column(String(30), nullable=False, index=True)
+    # action_type values: assigned, en_route, arrived, completed,
+    #   closed, not_closed, rescheduled, no_show, status_change, created
+    note = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # Relationships
+    lead = relationship("Lead")
+    rep = relationship("User", foreign_keys=[rep_id])
+
+
 class WebsitePage(Base):
     """Website / acquisition funnel page content.
 

@@ -1368,6 +1368,135 @@
             );
         }
 
+        // ============= LEAD DETAIL MODAL WITH TIMELINE =============
+        function LeadDetailModal({ lead, onClose, getStatusBadge, getScoreBadge }) {
+            const [timeline, setTimeline] = useState([]);
+            const [loadingTimeline, setLoadingTimeline] = useState(true);
+
+            useEffect(() => {
+                if (lead && lead.id) {
+                    setLoadingTimeline(true);
+                    api.get(`/api/leads/${lead.id}/timeline`).then(data => {
+                        setTimeline(data.timeline || []);
+                        setLoadingTimeline(false);
+                    }).catch(() => setLoadingTimeline(false));
+                }
+            }, [lead]);
+
+            if (!lead) return null;
+
+            const actionIcon = (type) => {
+                const icons = {
+                    assigned: '\u2192', created: '\u2795', en_route: '\uD83D\uDE97',
+                    arrived: '\uD83D\uDCCD', closed: '\u2705', not_closed: '\u274C',
+                    reschedule: '\uD83D\uDD04', no_show: '\u26A0\uFE0F', status_change: '\uD83D\uDD04',
+                    checkin: '\uD83D\uDCCD', checkout: '\uD83D\uDEAA', result: '\uD83D\uDCCB',
+                };
+                return icons[type] || '\u2022';
+            };
+
+            const actionColor = (type) => {
+                const colors = {
+                    assigned: 'border-blue-400 bg-blue-50', created: 'border-green-400 bg-green-50',
+                    en_route: 'border-amber-400 bg-amber-50', arrived: 'border-purple-400 bg-purple-50',
+                    closed: 'border-emerald-400 bg-emerald-50', not_closed: 'border-red-400 bg-red-50',
+                    reschedule: 'border-orange-400 bg-orange-50', no_show: 'border-red-400 bg-red-50',
+                    status_change: 'border-gray-400 bg-gray-50',
+                };
+                return colors[type] || 'border-gray-300 bg-gray-50';
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center pt-8 sm:pt-16 px-4"
+                     onClick={onClose}>
+                    <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto"
+                         onClick={e => e.stopPropagation()}>
+                        {/* Header */}
+                        <div className="sticky top-0 bg-white border-b border-gray-100 px-5 py-4 flex items-center justify-between rounded-t-xl">
+                            <h2 className="text-lg font-bold solar-dark-text">Lead Details</h2>
+                            <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl font-bold">&times;</button>
+                        </div>
+
+                        {/* Lead Info */}
+                        <div className="px-5 py-4 space-y-3 border-b border-gray-100">
+                            <div className="flex items-center justify-between">
+                                <h3 className="text-xl font-bold text-gray-900">{lead.name}</h3>
+                                <div className="flex items-center gap-2">
+                                    {getScoreBadge(lead.quality_score)}
+                                    {getStatusBadge(lead.status)}
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-3 text-sm">
+                                <div>
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Phone</span>
+                                    <span className="text-blue-600 font-medium">{lead.phone || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Email</span>
+                                    <span className="text-gray-700">{lead.email || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Monthly Bill</span>
+                                    <span className="text-gray-900 font-semibold">${lead.monthly_bill ? lead.monthly_bill.toFixed(0) : '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Source</span>
+                                    <span className="text-gray-700">{lead.source || '-'}</span>
+                                </div>
+                                <div className="col-span-2">
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Address</span>
+                                    <span className="text-gray-700">{lead.address || '-'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Assigned Rep</span>
+                                    <span className="text-gray-700">{lead.assigned_rep || 'Unassigned'}</span>
+                                </div>
+                                <div>
+                                    <span className="text-gray-400 block text-xs uppercase font-semibold">Created</span>
+                                    <span className="text-gray-700">{lead.created_at ? new Date(lead.created_at).toLocaleDateString() : '-'}</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Timeline Section */}
+                        <div className="px-5 py-4">
+                            <h4 className="text-sm font-bold text-gray-600 uppercase tracking-wide mb-3">Action Timeline</h4>
+                            {loadingTimeline ? (
+                                <div className="text-center py-4 text-gray-400 text-sm">Loading timeline...</div>
+                            ) : timeline.length === 0 ? (
+                                <div className="text-center py-4 text-gray-400 text-sm">No actions recorded yet.</div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {timeline.map((action, i) => (
+                                        <div key={action.id || i} className={`border-l-4 rounded-r-lg px-3 py-2 ${actionColor(action.action_type)}`}>
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-base">{actionIcon(action.action_type)}</span>
+                                                    <span className="font-semibold text-sm text-gray-800">
+                                                        {(action.action_type || '').replace('_', ' ')}
+                                                    </span>
+                                                </div>
+                                                <span className="text-xs text-gray-400">
+                                                    {action.created_at ? new Date(action.created_at).toLocaleString() : ''}
+                                                </span>
+                                            </div>
+                                            {(action.rep_name || action.note) && (
+                                                <div className="mt-1 text-xs text-gray-600">
+                                                    {action.rep_name && <span className="font-medium">{action.rep_name}</span>}
+                                                    {action.rep_name && action.note && <span> — </span>}
+                                                    {action.note && <span>{action.note}</span>}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
         // ============= ADMIN LEADS PAGE (LIVE DATA) =============
         function AdminLeads({ navigate }) {
             const [leads, setLeads] = useState([]);
@@ -1472,48 +1601,10 @@
                         </div>
                     )}
 
-                    {/* Lead Detail Modal */}
+                    {/* Lead Detail Modal with Timeline */}
                     {selectedLead && (
-                        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50" onClick={() => setSelectedLead(null)}>
-                            <div className="bg-white rounded-xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
-                                <div className="p-6">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <div>
-                                            <h2 className="text-xl font-bold solar-dark-text">{selectedLead.name}</h2>
-                                            <p className="text-sm text-gray-500 mt-0.5">{selectedLead.address}, {selectedLead.city} {selectedLead.state} {selectedLead.zip}</p>
-                                        </div>
-                                        <button onClick={() => setSelectedLead(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1">x</button>
-                                    </div>
-
-                                    <div className="flex gap-2 mb-5">
-                                        {getStatusBadge(selectedLead.status)}
-                                        {getScoreBadge(selectedLead.quality_score)}
-                                    </div>
-
-                                    <div className="space-y-3 text-sm">
-                                        {[
-                                            ['Phone', selectedLead.phone],
-                                            ['Email', selectedLead.email || '-'],
-                                            ['Monthly Bill', selectedLead.monthly_bill ? '$' + selectedLead.monthly_bill.toFixed(2) : '-'],
-                                            ['Assigned Rep', selectedLead.assigned_rep || 'Unassigned'],
-                                            ['Source', selectedLead.source || '-'],
-                                            ['System Size', selectedLead.system_kw ? selectedLead.system_kw + ' kW' : '-'],
-                                            ['Panels', selectedLead.panels || '-'],
-                                            ['Monthly Payment', selectedLead.monthly_payment ? '$' + selectedLead.monthly_payment.toFixed(2) : '-'],
-                                            ['Annual Savings', selectedLead.annual_savings ? '$' + selectedLead.annual_savings.toFixed(2) : '-'],
-                                            ['Appt Date', selectedLead.appointment_date || 'None'],
-                                            ['Appt Status', selectedLead.appointment_status || '-'],
-                                            ['Created', selectedLead.created_at ? new Date(selectedLead.created_at).toLocaleDateString() : '-'],
-                                        ].map(([label, val], i) => (
-                                            <div key={i} className="flex justify-between py-1.5 border-b border-gray-50">
-                                                <span className="text-gray-500 font-medium">{label}</span>
-                                                <span className="text-gray-900 text-right">{val}</span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
+                        <LeadDetailModal lead={selectedLead} onClose={() => setSelectedLead(null)}
+                            getStatusBadge={getStatusBadge} getScoreBadge={getScoreBadge} />
                     )}
                 </div>
             );
@@ -1689,13 +1780,18 @@
             );
         }
 
-        // ============= REP DASHBOARD (LIVE DATA) =============
+        // ============= REP DASHBOARD WITH EXECUTION FLOW =============
         function RepDashboard({ user, navigate }) {
             const [leads, setLeads] = useState([]);
             const [appointments, setAppointments] = useState([]);
             const [loading, setLoading] = useState(true);
+            const [actionLoading, setActionLoading] = useState(null); // appt id being actioned
+            const [completeModal, setCompleteModal] = useState(null); // appt being completed
+            const [outcome, setOutcome] = useState('closed');
+            const [completeNotes, setCompleteNotes] = useState('');
+            const [actionError, setActionError] = useState(null);
 
-            useEffect(() => {
+            const loadData = () => {
                 Promise.all([
                     api.get('/api/leads'),
                     api.get('/api/appointments'),
@@ -1704,29 +1800,112 @@
                     setAppointments(Array.isArray(apptData) ? apptData : []);
                     setLoading(false);
                 }).catch(() => setLoading(false));
-            }, []);
+            };
 
-            const getScoreColor = (score) => {
-                if (score >= 80) return 'bg-red-100 text-red-800';
-                if (score >= 60) return 'bg-orange-100 text-orange-800';
-                if (score >= 40) return 'bg-yellow-100 text-yellow-800';
-                return 'bg-blue-100 text-blue-800';
+            useEffect(() => { loadData(); }, []);
+
+            // === EXECUTION FLOW ACTIONS ===
+            const doAction = async (apptId, action) => {
+                setActionLoading(apptId);
+                setActionError(null);
+                try {
+                    const token = window.authToken;
+                    const res = await fetch(`/api/appointments/${apptId}/${action}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token && { 'Authorization': `Bearer ${token}` })
+                        }
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        setActionError(data.detail || 'Action failed');
+                        setActionLoading(null);
+                        return;
+                    }
+                    // Refresh data after action
+                    loadData();
+                } catch (e) {
+                    setActionError('Network error');
+                }
+                setActionLoading(null);
+            };
+
+            const doComplete = async () => {
+                if (!completeModal) return;
+                if (!completeNotes.trim()) { setActionError('Notes are required'); return; }
+                setActionLoading(completeModal.id);
+                setActionError(null);
+                try {
+                    const token = window.authToken;
+                    const res = await fetch(`/api/appointments/${completeModal.id}/complete`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            ...(token && { 'Authorization': `Bearer ${token}` })
+                        },
+                        body: JSON.stringify({ outcome, notes: completeNotes })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) {
+                        setActionError(data.detail || 'Complete failed');
+                        setActionLoading(null);
+                        return;
+                    }
+                    setCompleteModal(null);
+                    setOutcome('closed');
+                    setCompleteNotes('');
+                    loadData();
+                } catch (e) {
+                    setActionError('Network error');
+                }
+                setActionLoading(null);
+            };
+
+            const statusConfig = {
+                scheduled:  { color: 'bg-blue-100 text-blue-700 border-blue-300', label: 'Scheduled', next: 'en-route', nextLabel: 'Start En Route' },
+                confirmed:  { color: 'bg-green-100 text-green-700 border-green-300', label: 'Confirmed', next: 'en-route', nextLabel: 'Start En Route' },
+                en_route:   { color: 'bg-amber-100 text-amber-700 border-amber-400', label: 'En Route', next: 'arrived', nextLabel: 'Mark Arrived' },
+                arrived:    { color: 'bg-purple-100 text-purple-700 border-purple-400', label: 'Arrived', next: 'complete', nextLabel: 'Complete' },
+                completed:  { color: 'bg-emerald-100 text-emerald-700 border-emerald-400', label: 'Completed', next: null, nextLabel: null },
+                no_show:    { color: 'bg-red-100 text-red-600 border-red-300', label: 'No Show', next: null, nextLabel: null },
+                rescheduled:{ color: 'bg-orange-100 text-orange-600 border-orange-300', label: 'Rescheduled', next: null, nextLabel: null },
+                cancelled:  { color: 'bg-gray-100 text-gray-500 border-gray-300', label: 'Cancelled', next: null, nextLabel: null },
+            };
+
+            const stepIndicator = (status) => {
+                const steps = ['scheduled', 'en_route', 'arrived', 'completed'];
+                const labels = ['Scheduled', 'En Route', 'Arrived', 'Complete'];
+                const current = steps.indexOf(status);
+                return (
+                    <div className="flex items-center gap-1 mt-2">
+                        {steps.map((s, i) => (
+                            <React.Fragment key={s}>
+                                <div className={`w-2 h-2 rounded-full ${i <= current ? 'bg-amber-400' : 'bg-gray-200'}`}></div>
+                                {i < steps.length - 1 && <div className={`flex-1 h-0.5 ${i < current ? 'bg-amber-400' : 'bg-gray-200'}`}></div>}
+                            </React.Fragment>
+                        ))}
+                    </div>
+                );
             };
 
             if (loading) return <Spinner />;
 
             const totalLeads = leads.length;
             const closedWon = leads.filter(l => l.deal_status === 'closed_won').length;
+            const activeAppts = appointments.filter(a => !['completed','no_show','cancelled','rescheduled'].includes(a.appointment_status));
+            const doneAppts = appointments.filter(a => ['completed','no_show','cancelled','rescheduled'].includes(a.appointment_status));
 
             return (
                 <div className="p-4 space-y-4">
+                    {/* Header stats */}
                     <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl p-6">
                         <div className="text-sm opacity-90">Welcome back,</div>
                         <div className="text-2xl font-bold">{user?.full_name || 'Rep'}</div>
                         <div className="grid grid-cols-3 gap-2 mt-4 text-center text-sm">
                             <div>
-                                <div className="text-2xl font-bold">{appointments.length}</div>
-                                <div className="opacity-90">Appointments</div>
+                                <div className="text-2xl font-bold">{activeAppts.length}</div>
+                                <div className="opacity-90">Active</div>
                             </div>
                             <div>
                                 <div className="text-2xl font-bold">{totalLeads}</div>
@@ -1739,37 +1918,103 @@
                         </div>
                     </div>
 
-                    <h2 className="text-lg font-bold solar-dark-text">My Appointments</h2>
-                    {appointments.length === 0 ? (
+                    {/* Error banner */}
+                    {actionError && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg text-sm flex items-center justify-between">
+                            <span>{actionError}</span>
+                            <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 font-bold">&times;</button>
+                        </div>
+                    )}
+
+                    {/* Active Appointments with Execution Flow */}
+                    <h2 className="text-lg font-bold solar-dark-text">Active Appointments</h2>
+                    {activeAppts.length === 0 ? (
                         <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
-                            No appointments assigned to you yet.
+                            No active appointments. New bookings will appear here.
                         </div>
                     ) : (
-                        <div className="space-y-2">
-                            {appointments.map(appt => {
+                        <div className="space-y-3">
+                            {activeAppts.map(appt => {
                                 const lead = leads.find(l => l.id === appt.lead_id);
+                                const cfg = statusConfig[appt.appointment_status] || statusConfig.scheduled;
+                                const isActioning = actionLoading === appt.id;
+
                                 return (
-                                    <div key={appt.id} className="bg-white rounded-lg shadow border-l-4 border-amber-400 p-4">
-                                        <div className="flex items-center justify-between">
-                                            <div>
-                                                <div className="text-xs text-gray-400">{appt.appointment_date} at {String(appt.appointment_time).slice(0,5)}</div>
-                                                <div className="font-semibold text-gray-900">{lead ? `${lead.first_name} ${lead.last_name}` : `Lead #${appt.lead_id}`}</div>
+                                    <div key={appt.id} className={`bg-white rounded-xl shadow border-l-4 ${cfg.color.split(' ')[2] || 'border-gray-300'} p-4`}>
+                                        <div className="flex items-start justify-between">
+                                            <div className="flex-1">
+                                                <div className="text-xs text-gray-400 font-medium">{appt.appointment_date} at {String(appt.appointment_time).slice(0,5)}</div>
+                                                <div className="font-bold text-gray-900 text-base mt-0.5">
+                                                    {lead ? `${lead.first_name} ${lead.last_name}` : `Lead #${appt.lead_id}`}
+                                                </div>
                                                 <div className="text-sm text-gray-500">{lead?.property_address || 'No address'}</div>
+                                                {lead?.phone && <div className="text-sm text-blue-600 mt-0.5">{lead.phone}</div>}
                                             </div>
-                                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                                appt.appointment_status === 'confirmed' ? 'bg-green-100 text-green-700' :
-                                                appt.appointment_status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
-                                                'bg-gray-100 text-gray-600'
-                                            }`}>
-                                                {appt.appointment_status}
+                                            <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${cfg.color}`}>
+                                                {cfg.label}
                                             </span>
                                         </div>
+
+                                        {/* Step progress indicator */}
+                                        {stepIndicator(appt.appointment_status)}
+
+                                        {/* Action button */}
+                                        {cfg.next && (
+                                            <div className="mt-3">
+                                                {cfg.next === 'complete' ? (
+                                                    <button
+                                                        onClick={() => { setCompleteModal(appt); setOutcome('closed'); setCompleteNotes(''); setActionError(null); }}
+                                                        disabled={isActioning}
+                                                        className="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 px-4 rounded-lg text-sm disabled:opacity-50"
+                                                    >
+                                                        {isActioning ? 'Processing...' : 'Complete Appointment'}
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => doAction(appt.id, cfg.next)}
+                                                        disabled={isActioning}
+                                                        className="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 px-4 rounded-lg text-sm disabled:opacity-50"
+                                                    >
+                                                        {isActioning ? 'Processing...' : cfg.nextLabel}
+                                                    </button>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
                         </div>
                     )}
 
+                    {/* Done Appointments */}
+                    {doneAppts.length > 0 && (
+                        <>
+                            <h2 className="text-lg font-bold solar-dark-text mt-2">Completed</h2>
+                            <div className="space-y-2">
+                                {doneAppts.map(appt => {
+                                    const lead = leads.find(l => l.id === appt.lead_id);
+                                    const cfg = statusConfig[appt.appointment_status] || statusConfig.completed;
+                                    return (
+                                        <div key={appt.id} className="bg-white rounded-lg shadow p-3 opacity-75">
+                                            <div className="flex items-center justify-between">
+                                                <div>
+                                                    <div className="text-xs text-gray-400">{appt.appointment_date}</div>
+                                                    <div className="font-medium text-gray-700 text-sm">
+                                                        {lead ? `${lead.first_name} ${lead.last_name}` : `Lead #${appt.lead_id}`}
+                                                    </div>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${cfg.color}`}>
+                                                    {cfg.label}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </>
+                    )}
+
+                    {/* My Leads Table */}
                     <h2 className="text-lg font-bold solar-dark-text mt-4">My Leads</h2>
                     {leads.length === 0 ? (
                         <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
@@ -1804,6 +2049,54 @@
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Complete Appointment Modal */}
+                    {completeModal && (
+                        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4"
+                             onClick={() => setCompleteModal(null)}>
+                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                                <h3 className="text-lg font-bold solar-dark-text mb-1">Complete Appointment</h3>
+                                <p className="text-sm text-gray-500 mb-4">
+                                    {(() => { const l = leads.find(x => x.id === completeModal.lead_id); return l ? `${l.first_name} ${l.last_name}` : `Lead #${completeModal.lead_id}`; })()}
+                                    {' — '}{completeModal.appointment_date}
+                                </p>
+
+                                {actionError && (
+                                    <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-sm mb-3">
+                                        {actionError}
+                                    </div>
+                                )}
+
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Outcome</label>
+                                <select value={outcome} onChange={e => setOutcome(e.target.value)}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm mb-3 bg-white">
+                                    <option value="closed">Closed (Won)</option>
+                                    <option value="not_closed">Not Closed (Lost)</option>
+                                    <option value="reschedule">Reschedule</option>
+                                    <option value="no_show">No Show</option>
+                                </select>
+
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">Notes (required)</label>
+                                <textarea value={completeNotes} onChange={e => setCompleteNotes(e.target.value)}
+                                    placeholder="Describe the outcome, next steps, or reason..."
+                                    rows={3}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm mb-4 resize-none"
+                                />
+
+                                <div className="flex gap-2">
+                                    <button onClick={() => { setCompleteModal(null); setActionError(null); }}
+                                        className="flex-1 border border-gray-200 text-gray-700 font-semibold py-2.5 rounded-lg text-sm hover:bg-gray-50">
+                                        Cancel
+                                    </button>
+                                    <button onClick={doComplete}
+                                        disabled={actionLoading === completeModal.id}
+                                        className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 rounded-lg text-sm disabled:opacity-50">
+                                        {actionLoading === completeModal.id ? 'Submitting...' : 'Submit'}
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

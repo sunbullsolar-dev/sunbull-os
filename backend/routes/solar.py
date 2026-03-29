@@ -577,6 +577,21 @@ def public_book_appointment(
         notes=data.notes,
     )
     db.add(appt)
+    db.flush()
+
+    # Log actions to timeline
+    from services.actions import log_action
+    log_action(
+        db=db, lead_id=lead.id, action_type="assigned",
+        rep_id=assigned_rep.id, appointment_id=appt.id,
+        note=f"Auto-assigned to {assigned_rep.full_name} via public booking",
+    )
+    log_action(
+        db=db, lead_id=lead.id, action_type="created",
+        rep_id=assigned_rep.id, appointment_id=appt.id,
+        note=f"Appointment booked for {appt_date} at {appt_time}",
+    )
+
     db.commit()
     db.refresh(appt)
 

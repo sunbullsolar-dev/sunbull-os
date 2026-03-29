@@ -394,12 +394,22 @@ def update_appointment_status(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db),
 ):
-    """Admin: update appointment status."""
+    """Admin: update appointment status. Logs action to timeline."""
     from app.models import Appointment as Appt
+    from services.actions import log_action
     appt = db.query(Appt).filter(Appt.id == appt_id).first()
     if not appt:
         raise HTTPException(status_code=404, detail="Appointment not found")
+    old_status = appt.appointment_status
     appt.appointment_status = new_status
+    db.flush()
+
+    log_action(
+        db=db, lead_id=appt.lead_id, action_type="status_change",
+        rep_id=appt.assigned_rep_id, appointment_id=appt.id,
+        note=f"Admin changed status: {old_status} → {new_status}",
+    )
+
     db.commit()
     return {"id": appt.id, "status": appt.appointment_status}
 

@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Lead, User
+from app.models import Lead, User, Action
 from app.auth import get_current_user, require_role
 from services.audit import create_audit_log
 from services.scoring import calculate_lead_score
+from services.actions import log_action
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
@@ -496,6 +497,15 @@ def assign_lead(
         details=f"Lead assigned from rep {old_rep_id} to rep {assignment.rep_id}",
     )
 
+    # Log action to timeline
+    log_action(
+        db=db,
+        lead_id=lead.id,
+        action_type="assigned",
+        rep_id=assignment.rep_id,
+        note=f"Assigned by {current_user.full_name}" + (f" (previously rep #{old_rep_id})" if old_rep_id else ""),
+    )
+
     db.commit()
     db.refresh(lead)
     return lead
@@ -540,3 +550,56 @@ def get_rehash_queue(
         )
 
     return result
+
+
+@router.get("/{lead_id}/timeline")
+def get_lead_timeline(
+    lead_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get full action timeline for a lead.
+
+    Returns all actions in chronological order with rep names.
+
+    Args:
+        lead_id: ID of the lead
+        current_user: Current authenticated user
+        db: Database session
+
+    Returns:
+        List of action entries with timestamps
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    # Check authorization - reps only see their own leads
+    if current_user.role == "rep" and lead.assigned_rep_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to view this lead's timeline",
+        )
+
+    actions = (
+        db.query(Action)
+        .filter(Action.lead_id == lead_id)
+        .order_by(Action.created_at.asc())
+        .all()
+    )
+
+    timeline = []
+    for action in actions:
+        rep = db.query(User).filter(User.id == action.rep_id).first() if action.rep_id else None
+        timeline.append({
+            "id": action.id,
+            "action_type": action.action_type,
+            "rep_id": action.rep_id,
+            "rep_name": rep.full_name if rep else None,
+            "appointment_id": action.appointment_id,
+            "note": action.note,
+            "created_at": action.created_at.isoformat() if action.created_at else None,
+        })
+
+    return {"lead_id": lead_id, "timeline": timeline}
