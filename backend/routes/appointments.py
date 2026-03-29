@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Appointment, Lead, User, FollowUp
+from app.models import Appointment, Lead, User, FollowUp, RehashEntry
 from app.auth import get_current_user
 from services.audit import create_audit_log
 from services.actions import log_action
@@ -20,10 +20,11 @@ VALID_APPOINTMENT_STATUSES = {
 
 VALID_LEAD_STATUSES = {
     "new", "confirmed", "dispatched", "on_the_way", "arrived",
-    "held", "closed", "not_closed", "no_show",
+    "held", "closed", "not_closed", "no_show", "declined",
     # Legacy statuses kept for existing data
     "qualifying", "confirming", "unconfirmed", "reschedule",
     "appointed", "closed_won", "closed_lost", "follow_up", "rehash",
+    "canceled", "proposal_sent", "follow_up_required",
 }
 
 # Strict rep flow: each step can only go forward
@@ -48,8 +49,11 @@ class AppointmentUpdate(BaseModel):
 
 
 class AppointmentResult(BaseModel):
-    outcome: str  # closed, not_closed, reschedule, no_show
+    outcome: str  # HELD: closed, proposal_presented, proposal_sent, follow_up_required, declined
+                  # NOT HELD: no_show, not_home, canceled, reschedule_requested
     notes: str
+    follow_up_date: Optional[str] = None  # YYYY-MM-DD, required for certain outcomes
+    follow_up_note: Optional[str] = None  # Required when follow_up_date is set
 
 
 class AppointmentResponse(BaseModel):
@@ -402,6 +406,15 @@ def mark_arrived(
     }
 
 
+# Outcome classification
+HELD_OUTCOMES = {"closed", "proposal_presented", "proposal_sent", "follow_up_required", "declined"}
+NOT_HELD_OUTCOMES = {"no_show", "not_home", "canceled", "reschedule_requested"}
+ALL_OUTCOMES = HELD_OUTCOMES | NOT_HELD_OUTCOMES
+
+# Outcomes that REQUIRE a follow-up date + note
+REQUIRES_FOLLOW_UP = {"proposal_presented", "proposal_sent", "follow_up_required", "not_home", "reschedule_requested"}
+
+
 @router.post("/{appointment_id}/complete")
 def complete_appointment(
     appointment_id: int,
@@ -410,11 +423,26 @@ def complete_appointment(
     db: Session = Depends(get_db),
 ):
     """
-    Step 3: Rep completes the appointment.
-    Only allowed from 'arrived' status.
-    outcome must be: closed, not_closed, reschedule, no_show
-    notes are REQUIRED.
-    Updates appointment + lead status. Logs action.
+    Step 3: Rep completes the appointment with held/not-held outcome.
+
+    HELD outcomes (rep met homeowner):
+      - closed → deal signed, lead done
+      - proposal_presented → presented in person, follow-up required
+      - proposal_sent → sent after visit, follow-up required
+      - follow_up_required → conversation happened, no proposal yet
+      - declined → homeowner declined, optional rehash
+
+    NOT HELD outcomes (appointment did not occur):
+      - no_show → homeowner not there, goes to rehash queue
+      - not_home → missing decision maker, reschedule required
+      - canceled → mark inactive or reassign
+      - reschedule_requested → homeowner asked to reschedule, must create new appointment
+
+    Guardrails:
+      - proposal_presented, proposal_sent, follow_up_required, not_home, reschedule_requested
+        REQUIRE follow_up_date and follow_up_note
+      - no_show and declined auto-create rehash entry
+      - notes always required
     """
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
     if not appointment:
@@ -429,79 +457,162 @@ def complete_appointment(
             detail=f"Cannot complete from '{appointment.appointment_status}'. Must be arrived.",
         )
 
-    valid_outcomes = ("closed", "not_closed", "reschedule", "no_show")
-    if result_data.outcome not in valid_outcomes:
+    outcome = result_data.outcome
+    if outcome not in ALL_OUTCOMES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid outcome '{result_data.outcome}'. Must be one of: {', '.join(valid_outcomes)}",
+            detail=f"Invalid outcome '{outcome}'. Must be one of: {', '.join(sorted(ALL_OUTCOMES))}",
         )
 
     if not result_data.notes or not result_data.notes.strip():
         raise HTTPException(status_code=400, detail="Notes are required")
 
-    # Update appointment
+    # Enforce follow-up date for outcomes that require it
+    if outcome in REQUIRES_FOLLOW_UP:
+        if not result_data.follow_up_date:
+            raise HTTPException(
+                status_code=400,
+                detail=f"follow_up_date is required for '{outcome}' outcome",
+            )
+        if not result_data.follow_up_note or not result_data.follow_up_note.strip():
+            raise HTTPException(
+                status_code=400,
+                detail=f"follow_up_note is required for '{outcome}' outcome",
+            )
+        # Validate date format
+        try:
+            fu_date = datetime.strptime(result_data.follow_up_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=400, detail="follow_up_date must be YYYY-MM-DD format")
+
+    # Determine held vs not held
+    is_held = outcome in HELD_OUTCOMES
+
+    # ── Update Appointment ────────────────────────────────────
     appointment.actual_end_time = datetime.utcnow()
     appointment.rep_checked_out_at = datetime.utcnow()
-    appointment.outcome = result_data.outcome
+    appointment.outcome = outcome
     appointment.notes = result_data.notes
 
-    # Map outcome to appointment status
-    if result_data.outcome == "reschedule":
+    if outcome == "canceled":
+        appointment.appointment_status = "cancelled"
+    elif outcome == "no_show":
+        appointment.appointment_status = "no_show"
+    elif outcome == "not_home":
+        appointment.appointment_status = "no_show"  # Not held
+        appointment.reschedule_count = (appointment.reschedule_count or 0) + 1
+    elif outcome == "reschedule_requested":
         appointment.appointment_status = "rescheduled"
         appointment.reschedule_count = (appointment.reschedule_count or 0) + 1
-    elif result_data.outcome == "no_show":
-        appointment.appointment_status = "no_show"
     else:
         appointment.appointment_status = "completed"
 
-    # Update lead status based on outcome
+    # ── Update Lead ───────────────────────────────────────────
     lead = db.query(Lead).filter(Lead.id == appointment.lead_id).first()
     if lead:
-        outcome_to_lead_status = {
-            "closed": "closed_won",
-            "not_closed": "closed_lost",
-            "reschedule": "reschedule",
-            "no_show": "no_show",
-        }
-        lead.deal_status = outcome_to_lead_status.get(result_data.outcome, lead.deal_status)
+        lead.is_held = is_held
+        lead.last_outcome = outcome
+
+        # HELD outcome → lead status mapping
+        if outcome == "closed":
+            lead.deal_status = "closed_won"
+            lead.follow_up_required = False
+        elif outcome in ("proposal_presented", "proposal_sent"):
+            lead.deal_status = "proposal_sent"
+            lead.follow_up_required = True
+            lead.next_follow_up_date = fu_date
+            lead.follow_up_note = result_data.follow_up_note
+        elif outcome == "follow_up_required":
+            lead.deal_status = "follow_up"
+            lead.follow_up_required = True
+            lead.next_follow_up_date = fu_date
+            lead.follow_up_note = result_data.follow_up_note
+
+        # HELD: declined → optional rehash
+        elif outcome == "declined":
+            lead.deal_status = "declined"
+            lead.follow_up_required = False
+
+        # NOT HELD outcome → lead status mapping
+        elif outcome == "no_show":
+            lead.deal_status = "no_show"
+            lead.follow_up_required = False
+        elif outcome == "not_home":
+            lead.deal_status = "reschedule"
+            lead.follow_up_required = True
+            lead.next_follow_up_date = fu_date
+            lead.follow_up_note = result_data.follow_up_note
+        elif outcome == "canceled":
+            lead.deal_status = "canceled"
+            lead.follow_up_required = False
+        elif outcome == "reschedule_requested":
+            lead.deal_status = "reschedule"
+            lead.follow_up_required = True
+            lead.next_follow_up_date = fu_date
+            lead.follow_up_note = result_data.follow_up_note
 
     db.flush()
 
-    # Map outcome to action_type
-    outcome_to_action = {
-        "closed": "closed",
-        "not_closed": "not_closed",
-        "reschedule": "rescheduled",
-        "no_show": "no_show",
-    }
-    action_type = outcome_to_action.get(result_data.outcome, "completed")
+    # ── Audit + Action Logging ────────────────────────────────
+    held_label = "HELD" if is_held else "NOT HELD"
 
     create_audit_log(
         db=db, user_id=current_user.id, action="complete",
         entity_type="appointment", entity_id=appointment.id,
-        new_value=result_data.outcome,
-        details=f"Completed with outcome: {result_data.outcome}",
+        new_value=outcome,
+        details=f"{held_label}: {outcome}",
     )
 
     log_action(
-        db=db, lead_id=appointment.lead_id, action_type=action_type,
+        db=db, lead_id=appointment.lead_id, action_type=outcome,
         rep_id=current_user.id, appointment_id=appointment.id,
-        note=result_data.notes,
+        note=f"[{held_label}] {result_data.notes}",
     )
 
-    # If reschedule, create follow-up
-    if result_data.outcome == "reschedule" and lead:
+    # ── Follow-Up Creation (for outcomes requiring follow-up) ────
+    if outcome in REQUIRES_FOLLOW_UP and lead:
+        reason_map = {
+            "proposal_presented": "Follow up on proposal presented in person",
+            "proposal_sent": "Follow up on proposal sent after visit",
+            "follow_up_required": "Follow up — conversation but no proposal yet",
+            "not_home": "Reschedule — decision maker not home",
+            "reschedule_requested": "Homeowner requested reschedule",
+        }
         follow_up = FollowUp(
             lead_id=lead.id,
             assigned_rep_id=appointment.assigned_rep_id,
-            reason=f"Rescheduled from appointment #{appointment.id}",
-            scheduled_date=datetime.utcnow() + timedelta(days=3),
+            reason=reason_map.get(outcome, f"Follow up from appointment #{appointment.id}"),
+            scheduled_date=fu_date,
             status="pending",
-            notes=result_data.notes,
+            notes=result_data.follow_up_note,
         )
         db.add(follow_up)
-        lead.follow_up_required = True
-        lead.next_follow_up_date = datetime.utcnow() + timedelta(days=3)
+
+        log_action(
+            db=db, lead_id=lead.id, action_type="follow_up_created",
+            rep_id=current_user.id, appointment_id=appointment.id,
+            note=f"Follow-up scheduled for {result_data.follow_up_date}: {result_data.follow_up_note}",
+        )
+
+    # ── Rehash Queue (for no_show + declined) ───────────────────
+    if outcome in ("no_show", "declined") and lead:
+        rehash_reason_map = {
+            "no_show": f"No-show on appointment #{appointment.id}",
+            "declined": f"Declined after held appointment #{appointment.id}",
+        }
+        rehash = RehashEntry(
+            lead_id=lead.id,
+            original_rep_id=appointment.assigned_rep_id,
+            reason=rehash_reason_map.get(outcome, f"Rehash from appointment #{appointment.id}"),
+            status="pending",
+        )
+        db.add(rehash)
+
+        log_action(
+            db=db, lead_id=lead.id, action_type="rehash_queued",
+            rep_id=current_user.id, appointment_id=appointment.id,
+            note=f"Added to rehash queue after {outcome}",
+        )
 
     db.commit()
     db.refresh(appointment)
@@ -509,8 +620,11 @@ def complete_appointment(
     return {
         "id": appointment.id,
         "appointment_status": appointment.appointment_status,
-        "outcome": appointment.outcome,
+        "outcome": outcome,
+        "is_held": is_held,
         "lead_status": lead.deal_status if lead else None,
+        "follow_up_date": result_data.follow_up_date,
+        "follow_up_note": result_data.follow_up_note,
     }
 
 

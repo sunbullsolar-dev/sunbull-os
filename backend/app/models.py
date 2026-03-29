@@ -137,9 +137,14 @@ class Lead(Base):
     lead_quality_score = Column(Integer, default=50)
     notes = Column(Text)
 
+    # Held / Not Held tracking
+    is_held = Column(Boolean, default=False)  # True if appointment was held (rep met homeowner)
+    last_outcome = Column(String(30))  # Last appointment outcome
+
     # Follow-up
     follow_up_required = Column(Boolean, default=False)
     next_follow_up_date = Column(DateTime)
+    follow_up_note = Column(Text)
 
     # Pipeline Reference
     project_stage = Column(String(30))
@@ -515,6 +520,81 @@ class Action(Base):
     # Relationships
     lead = relationship("Lead")
     rep = relationship("User", foreign_keys=[rep_id])
+
+
+class SolarEstimate(Base):
+    """Full solar analysis result — the output of the solar engine.
+
+    Stores the complete estimate with all inputs, outputs, and assumptions.
+    One lead can have multiple estimates (re-runs with different inputs).
+    """
+    __tablename__ = "solar_estimates"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+
+    # Location
+    latitude = Column(Float)
+    longitude = Column(Float)
+    utility_code = Column(String(20))
+    utility_name = Column(String(100))
+    solar_region = Column(String(30))
+
+    # Solar Resource
+    sun_hours_per_day = Column(Float)
+    production_factor = Column(Float)  # kWh per kW per year
+
+    # Usage
+    annual_kwh = Column(Float)
+    monthly_kwh = Column(Float)
+    monthly_bill = Column(Float)
+    rate_per_kwh = Column(Float)
+    usage_calculation_method = Column(String(50))
+
+    # Rate Structure
+    peak_rate = Column(Float)
+    off_peak_rate = Column(Float)
+    nem_policy = Column(String(20))
+    nem_export_rate = Column(Float)
+
+    # System
+    system_size_kw = Column(Float)
+    panel_count = Column(Integer)
+    annual_production_kwh = Column(Float)
+
+    # Consumption Model
+    self_consumption_pct = Column(Float)
+    self_consumed_kwh = Column(Float)
+    exported_kwh = Column(Float)
+
+    # Savings (base scenario)
+    monthly_bill_before = Column(Float)
+    monthly_bill_after = Column(Float)
+    monthly_savings = Column(Float)
+    annual_savings = Column(Float)
+    savings_percentage = Column(Float)
+
+    # Savings scenarios (stored as JSON)
+    scenarios_json = Column(Text)  # JSON string of all 3 scenarios
+
+    # Financials
+    system_cost_gross = Column(Float)
+    itc_credit = Column(Float)
+    net_system_cost = Column(Float)
+    monthly_payment = Column(Float)
+    cash_payback_years = Column(Float)
+
+    # Confidence
+    confidence_score = Column(String(10))  # HIGH / MED / LOW
+    assumptions_json = Column(Text)  # JSON array of assumption strings
+    missing_data_json = Column(Text)  # JSON array
+
+    # Meta
+    source = Column(String(20), default="engine")  # engine / manual / import
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # Relationships
+    lead = relationship("Lead")
 
 
 class WebsitePage(Base):

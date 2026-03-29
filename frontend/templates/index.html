@@ -1789,7 +1789,13 @@
             const [completeModal, setCompleteModal] = useState(null); // appt being completed
             const [outcome, setOutcome] = useState('closed');
             const [completeNotes, setCompleteNotes] = useState('');
+            const [followUpDate, setFollowUpDate] = useState('');
+            const [followUpNote, setFollowUpNote] = useState('');
             const [actionError, setActionError] = useState(null);
+
+            // Outcomes that require follow-up date
+            const REQUIRES_FOLLOW_UP = ['proposal_presented', 'proposal_sent', 'follow_up_required', 'not_home', 'reschedule_requested'];
+            const needsFollowUp = REQUIRES_FOLLOW_UP.includes(outcome);
 
             const loadData = () => {
                 Promise.all([
@@ -1834,17 +1840,27 @@
             const doComplete = async () => {
                 if (!completeModal) return;
                 if (!completeNotes.trim()) { setActionError('Notes are required'); return; }
+                // Enforce follow-up fields for outcomes that require them
+                if (REQUIRES_FOLLOW_UP.includes(outcome)) {
+                    if (!followUpDate) { setActionError('Follow-up date is required for this outcome'); return; }
+                    if (!followUpNote.trim()) { setActionError('Follow-up note is required for this outcome'); return; }
+                }
                 setActionLoading(completeModal.id);
                 setActionError(null);
                 try {
                     const token = window.authToken;
+                    const body = { outcome, notes: completeNotes };
+                    if (REQUIRES_FOLLOW_UP.includes(outcome)) {
+                        body.follow_up_date = followUpDate;
+                        body.follow_up_note = followUpNote;
+                    }
                     const res = await fetch(`/api/appointments/${completeModal.id}/complete`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             ...(token && { 'Authorization': `Bearer ${token}` })
                         },
-                        body: JSON.stringify({ outcome, notes: completeNotes })
+                        body: JSON.stringify(body)
                     });
                     const data = await res.json();
                     if (!res.ok) {
@@ -1855,6 +1871,8 @@
                     setCompleteModal(null);
                     setOutcome('closed');
                     setCompleteNotes('');
+                    setFollowUpDate('');
+                    setFollowUpNote('');
                     loadData();
                 } catch (e) {
                     setActionError('Network error');
@@ -2055,9 +2073,9 @@
 
                     {/* Complete Appointment Modal */}
                     {completeModal && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center px-4"
+                        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center pt-8 px-4 overflow-y-auto"
                              onClick={() => setCompleteModal(null)}>
-                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
+                            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6 mb-8" onClick={e => e.stopPropagation()}>
                                 <h3 className="text-lg font-bold solar-dark-text mb-1">Complete Appointment</h3>
                                 <p className="text-sm text-gray-500 mb-4">
                                     {(() => { const l = leads.find(x => x.id === completeModal.lead_id); return l ? `${l.first_name} ${l.last_name}` : `Lead #${completeModal.lead_id}`; })()}
@@ -2070,21 +2088,73 @@
                                     </div>
                                 )}
 
-                                <label className="block text-sm font-semibold text-gray-700 mb-1">Outcome</label>
-                                <select value={outcome} onChange={e => setOutcome(e.target.value)}
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm mb-3 bg-white">
-                                    <option value="closed">Closed (Won)</option>
-                                    <option value="not_closed">Not Closed (Lost)</option>
-                                    <option value="reschedule">Reschedule</option>
-                                    <option value="no_show">No Show</option>
-                                </select>
+                                {/* Outcome Selection — grouped by HELD / NOT HELD */}
+                                <label className="block text-sm font-semibold text-gray-700 mb-1">What happened?</label>
+
+                                <div className="mb-3 space-y-1">
+                                    <div className="text-xs font-bold text-green-700 uppercase tracking-wide px-1">Appointment Held</div>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {[
+                                            { val: 'closed', label: 'Closed (Signed)' },
+                                            { val: 'proposal_presented', label: 'Proposal Presented' },
+                                            { val: 'proposal_sent', label: 'Proposal Sent' },
+                                            { val: 'follow_up_required', label: 'Follow-Up Needed' },
+                                            { val: 'declined', label: 'Declined' },
+                                        ].map(opt => (
+                                            <button key={opt.val}
+                                                onClick={() => setOutcome(opt.val)}
+                                                className={`text-xs font-semibold py-2 px-2 rounded-lg border transition ${
+                                                    outcome === opt.val
+                                                        ? 'bg-green-50 border-green-400 text-green-800'
+                                                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                }`}>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+
+                                    <div className="text-xs font-bold text-red-600 uppercase tracking-wide px-1 mt-2">Not Held</div>
+                                    <div className="grid grid-cols-2 gap-1.5">
+                                        {[
+                                            { val: 'no_show', label: 'No Show' },
+                                            { val: 'not_home', label: 'Not Home' },
+                                            { val: 'canceled', label: 'Canceled' },
+                                            { val: 'reschedule_requested', label: 'Reschedule Requested' },
+                                        ].map(opt => (
+                                            <button key={opt.val}
+                                                onClick={() => setOutcome(opt.val)}
+                                                className={`text-xs font-semibold py-2 px-2 rounded-lg border transition ${
+                                                    outcome === opt.val
+                                                        ? 'bg-red-50 border-red-400 text-red-800'
+                                                        : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                                                }`}>
+                                                {opt.label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
 
                                 <label className="block text-sm font-semibold text-gray-700 mb-1">Notes (required)</label>
                                 <textarea value={completeNotes} onChange={e => setCompleteNotes(e.target.value)}
                                     placeholder="Describe the outcome, next steps, or reason..."
-                                    rows={3}
-                                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm mb-4 resize-none"
+                                    rows={2}
+                                    className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm mb-3 resize-none"
                                 />
+
+                                {/* Follow-up fields — shown only when required */}
+                                {needsFollowUp && (
+                                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3">
+                                        <div className="text-xs font-bold text-amber-700 uppercase tracking-wide mb-2">Follow-Up Required</div>
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">Follow-Up Date</label>
+                                        <input type="date" value={followUpDate} onChange={e => setFollowUpDate(e.target.value)}
+                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2 bg-white" />
+                                        <label className="block text-xs font-semibold text-gray-700 mb-1">Follow-Up Note</label>
+                                        <textarea value={followUpNote} onChange={e => setFollowUpNote(e.target.value)}
+                                            placeholder="What needs to happen on the follow-up?"
+                                            rows={2}
+                                            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" />
+                                    </div>
+                                )}
 
                                 <div className="flex gap-2">
                                     <button onClick={() => { setCompleteModal(null); setActionError(null); }}

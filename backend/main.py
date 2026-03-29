@@ -23,7 +23,7 @@ from app.models import (
     AccountabilityFlag, RehashEntry, BillAnalysis, WebsitePage,
     Action,
     UserRole, LeadStatus, LeadSource, AppointmentStatus,
-    DealStage, CommissionStatus,
+    DealStage, CommissionStatus, SolarEstimate,
 )
 
 # Import routers
@@ -36,6 +36,7 @@ from routes.admin import router as admin_router
 from routes.rules import router as rules_router
 from routes.dispatch import router as dispatch_router
 from routes.solar import router as solar_router
+from routes.solar_engine import router as solar_engine_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -63,6 +64,7 @@ app.include_router(admin_router)
 app.include_router(rules_router)
 app.include_router(dispatch_router)
 app.include_router(solar_router)
+app.include_router(solar_engine_router)
 
 
 @app.on_event("startup")

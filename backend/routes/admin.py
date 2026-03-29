@@ -491,3 +491,147 @@ def get_system_notifications(
         )
 
     return {"notifications": notifications}
+
+
+# ============================================================================
+# HELD / NOT HELD METRICS + PIPELINE VISIBILITY
+# ============================================================================
+
+@router.get("/metrics/held")
+def get_held_metrics(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin: Get held vs not-held appointment metrics and rep performance.
+
+    Returns:
+    - Overall held/not-held counts and rates
+    - Per-rep held rate and close rate (closed / held)
+    - Pipeline: proposal_sent leads, follow-ups due, rehash queue
+    """
+    from app.models import FollowUp, RehashEntry
+
+    # All completed/no_show appointments
+    completed_appts = (
+        db.query(Appointment)
+        .filter(Appointment.outcome.isnot(None))
+        .all()
+    )
+
+    held_outcomes = {"closed", "proposal_presented", "proposal_sent", "follow_up_required", "declined"}
+    not_held_outcomes = {"no_show", "not_home", "canceled", "reschedule_requested"}
+    # Also count legacy outcomes
+    legacy_held = {"not_closed"}  # Old "not_closed" was a held meeting
+
+    held_appts = [a for a in completed_appts if a.outcome in held_outcomes or a.outcome in legacy_held]
+    not_held_appts = [a for a in completed_appts if a.outcome in not_held_outcomes]
+
+    total_outcomes = len(held_appts) + len(not_held_appts)
+    held_rate = (len(held_appts) / total_outcomes * 100) if total_outcomes > 0 else 0
+
+    # Close rate = closed / held
+    closed_appts = [a for a in completed_appts if a.outcome == "closed"]
+    close_rate = (len(closed_appts) / len(held_appts) * 100) if held_appts else 0
+
+    # Outcome breakdown
+    outcome_counts = {}
+    for a in completed_appts:
+        outcome_counts[a.outcome] = outcome_counts.get(a.outcome, 0) + 1
+
+    # Per-rep metrics
+    reps = db.query(User).filter(User.role == "rep").all()
+    rep_metrics = []
+    for rep in reps:
+        rep_appts = [a for a in completed_appts if a.assigned_rep_id == rep.id]
+        rep_held = [a for a in rep_appts if a.outcome in held_outcomes or a.outcome in legacy_held]
+        rep_not_held = [a for a in rep_appts if a.outcome in not_held_outcomes]
+        rep_closed = [a for a in rep_appts if a.outcome == "closed"]
+        rep_total = len(rep_held) + len(rep_not_held)
+
+        rep_metrics.append({
+            "id": rep.id,
+            "name": rep.full_name,
+            "total_appointments": len(rep_appts),
+            "held_count": len(rep_held),
+            "not_held_count": len(rep_not_held),
+            "held_rate": round((len(rep_held) / rep_total * 100) if rep_total > 0 else 0, 1),
+            "closed_count": len(rep_closed),
+            "close_rate": round((len(rep_closed) / len(rep_held) * 100) if rep_held else 0, 1),
+        })
+
+    # Pipeline: proposal_sent leads
+    proposal_leads = (
+        db.query(Lead)
+        .filter(Lead.deal_status == "proposal_sent")
+        .all()
+    )
+
+    # Follow-ups due
+    follow_ups_due = (
+        db.query(FollowUp)
+        .filter(FollowUp.status == "pending")
+        .order_by(FollowUp.scheduled_date.asc())
+        .limit(50)
+        .all()
+    )
+
+    # Rehash queue
+    rehash_pending = (
+        db.query(RehashEntry)
+        .filter(RehashEntry.status == "pending")
+        .order_by(RehashEntry.created_at.desc())
+        .limit(50)
+        .all()
+    )
+
+    return {
+        "overall": {
+            "total_outcomes": total_outcomes,
+            "held_count": len(held_appts),
+            "not_held_count": len(not_held_appts),
+            "held_rate": round(held_rate, 1),
+            "closed_count": len(closed_appts),
+            "close_rate_from_held": round(close_rate, 1),
+            "outcome_breakdown": outcome_counts,
+        },
+        "rep_metrics": sorted(rep_metrics, key=lambda r: r["close_rate"], reverse=True),
+        "pipeline": {
+            "proposal_sent_count": len(proposal_leads),
+            "proposal_sent_leads": [
+                {
+                    "id": l.id,
+                    "name": f"{l.first_name} {l.last_name}",
+                    "phone": l.phone,
+                    "follow_up_date": str(l.next_follow_up_date) if l.next_follow_up_date else None,
+                    "follow_up_note": l.follow_up_note,
+                }
+                for l in proposal_leads
+            ],
+            "follow_ups_due_count": len(follow_ups_due),
+            "follow_ups_due": [
+                {
+                    "id": f.id,
+                    "lead_id": f.lead_id,
+                    "rep_id": f.assigned_rep_id,
+                    "reason": f.reason,
+                    "scheduled_date": str(f.scheduled_date) if f.scheduled_date else None,
+                    "notes": f.notes,
+                    "status": f.status,
+                }
+                for f in follow_ups_due
+            ],
+            "rehash_count": len(rehash_pending),
+            "rehash_queue": [
+                {
+                    "id": r.id,
+                    "lead_id": r.lead_id,
+                    "original_rep_id": r.original_rep_id,
+                    "reason": r.reason,
+                    "status": r.status,
+                    "created_at": str(r.created_at),
+                }
+                for r in rehash_pending
+            ],
+        },
+    }
