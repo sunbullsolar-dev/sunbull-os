@@ -73,6 +73,22 @@ def startup_event():
     Base.metadata.create_all(bind=engine)
     print("Database tables created.")
 
+    # Add new columns to existing tables (safe ALTER TABLE — ignores if already exists)
+    from sqlalchemy import text as _sql_text
+    with engine.connect() as conn:
+        alter_statements = [
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_held BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_outcome VARCHAR(30)",
+            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS follow_up_note TEXT",
+        ]
+        for stmt in alter_statements:
+            try:
+                conn.execute(_sql_text(stmt))
+            except Exception as e:
+                print(f"ALTER TABLE note (safe to ignore): {e}")
+        conn.commit()
+        print("Schema migration check complete.")
+
     db = SessionLocal()
     try:
         # Only seed if no admin exists
