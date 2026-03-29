@@ -325,6 +325,85 @@ def get_fraud_flags(
     }
 
 
+@router.put("/reps/{rep_id}")
+def update_rep(
+    rep_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+    close_rate: Optional[float] = Query(None),
+    is_active: Optional[bool] = Query(None),
+    territory: Optional[str] = Query(None),
+):
+    """Update rep close_rate, active status, or territory."""
+    rep = db.query(User).filter(User.id == rep_id, User.role == "rep").first()
+    if not rep:
+        raise HTTPException(status_code=404, detail="Rep not found")
+    if close_rate is not None:
+        rep.close_rate = close_rate
+    if is_active is not None:
+        rep.is_active = is_active
+    if territory is not None:
+        rep.territory = territory
+    db.commit()
+    db.refresh(rep)
+    return {"id": rep.id, "name": rep.full_name, "close_rate": rep.close_rate, "is_active": rep.is_active, "territory": rep.territory}
+
+
+@router.get("/appointments")
+def get_all_appointments(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get all appointments with lead and rep info for admin view."""
+    from app.models import Appointment as Appt
+    appointments = (
+        db.query(Appt)
+        .order_by(Appt.appointment_date.desc(), Appt.appointment_time.desc())
+        .offset(skip).limit(limit).all()
+    )
+    result = []
+    for appt in appointments:
+        lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
+        rep = db.query(User).filter(User.id == appt.assigned_rep_id).first()
+        result.append({
+            "id": appt.id,
+            "lead_id": appt.lead_id,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else "Unknown",
+            "lead_phone": lead.phone if lead else "",
+            "lead_address": lead.property_address if lead else "",
+            "rep_id": appt.assigned_rep_id,
+            "rep_name": rep.full_name if rep else "Unassigned",
+            "date": str(appt.appointment_date),
+            "time": str(appt.appointment_time),
+            "status": appt.appointment_status,
+            "confirmation_status": appt.confirmation_status,
+            "outcome": appt.outcome,
+            "notes": appt.notes,
+            "created_at": str(appt.created_at),
+        })
+    total = db.query(func.count(Appt.id)).scalar()
+    return {"total": total, "appointments": result}
+
+
+@router.put("/appointments/{appt_id}/status")
+def update_appointment_status(
+    appt_id: int,
+    new_status: str = Query(...),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin: update appointment status."""
+    from app.models import Appointment as Appt
+    appt = db.query(Appt).filter(Appt.id == appt_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    appt.appointment_status = new_status
+    db.commit()
+    return {"id": appt.id, "status": appt.appointment_status}
+
+
 @router.get("/notifications")
 def get_system_notifications(
     current_user: User = Depends(require_role("admin")),

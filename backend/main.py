@@ -75,6 +75,16 @@ def startup_event():
         # Only seed if no admin exists
         admin_user = db.query(User).filter(User.email == "sunbullsolar@gmail.com").first()
         if admin_user:
+            # Fix any reps with close_rate=0 (from earlier seed)
+            import random as _rand
+            zero_reps = db.query(User).filter(User.role == "rep", User.close_rate == 0.0).all()
+            if zero_reps:
+                for rep in zero_reps:
+                    rep.close_rate = round(_rand.uniform(0.18, 0.35), 2)
+                    if rep.total_deals == 0:
+                        rep.total_deals = _rand.randint(2, 15)
+                db.commit()
+                print(f"Fixed {len(zero_reps)} reps with close_rate=0.")
             print("Seed data already exists.")
             return
 
@@ -125,6 +135,13 @@ def startup_event():
             ("Sarah Jacob", "sarahhjacob003@gmail.com"),
         ]
 
+        # Placeholder close rates (spread across reps realistically)
+        placeholder_close_rates = [
+            0.32, 0.28, 0.25, 0.30, 0.22, 0.27, 0.35, 0.20, 0.24, 0.29,
+            0.26, 0.31, 0.23, 0.19, 0.33, 0.21, 0.28, 0.24, 0.30, 0.26,
+            0.22, 0.34, 0.27, 0.25, 0.29, 0.23,
+        ]
+
         all_reps = []
         for i, (name, email_addr) in enumerate(rep_data):
             rep = User(
@@ -132,8 +149,8 @@ def startup_event():
                 hashed_password=hash_password("sunbull2026"),
                 full_name=name,
                 role="rep",
-                close_rate=0.0,  # placeholder until real data loaded
-                total_deals=0,
+                close_rate=placeholder_close_rates[i],
+                total_deals=random.randint(2, 15),
                 territory=str(900 + i),
                 is_active=True,
             )

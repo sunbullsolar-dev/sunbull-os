@@ -1107,34 +1107,32 @@
 
         // ============= TOP BAR (INTERNAL OS) =============
         function TopBar({ user, navigate, onLogout }) {
-            const [showUserMenu, setShowUserMenu] = useState(false);
-
+            const [showMenu, setShowMenu] = useState(false);
             return (
                 <div className="top-bar h-16 flex items-center justify-between px-4 sm:px-6">
                     <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 solar-primary rounded-full flex items-center justify-center text-white font-bold">☀</div>
-                        <h1 className="text-xl font-bold solar-dark-text hidden sm:block">Sunbull OS</h1>
+                        <div className="w-8 h-8 solar-primary rounded-full flex items-center justify-center text-white font-bold text-sm">S</div>
+                        <h1 className="text-lg font-bold solar-dark-text hidden sm:block">Sunbull OS</h1>
                     </div>
-                    <div className="flex items-center gap-4">
-                        <div className="relative">
-                            <button onClick={() => setShowUserMenu(!showUserMenu)} className="flex items-center gap-2 hover:bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm font-medium text-gray-700">{user?.name || 'User'}</span>
-                                <div className="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-xs font-bold">
-                                    {user?.name?.charAt(0) || 'U'}
+                    <div className="relative">
+                        <button onClick={() => setShowMenu(!showMenu)} className="flex items-center gap-2 hover:bg-gray-100 px-3 py-2 rounded">
+                            <span className="text-sm font-medium text-gray-700">{user?.full_name || 'User'}</span>
+                            <div className="w-8 h-8 bg-amber-100 text-amber-700 rounded-full flex items-center justify-center text-xs font-bold">
+                                {(user?.full_name || 'U').charAt(0)}
+                            </div>
+                        </button>
+                        {showMenu && (
+                            <div className="absolute right-0 mt-2 w-52 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                                <div className="p-3 border-b border-gray-100 text-sm">
+                                    <div className="font-semibold text-gray-900">{user?.full_name}</div>
+                                    <div className="text-gray-500 text-xs mt-0.5">{user?.email}</div>
+                                    <div className="text-xs text-amber-600 font-medium mt-1 capitalize">{user?.role}</div>
                                 </div>
-                            </button>
-                            {showUserMenu && (
-                                <div className="absolute right-0 mt-2 w-48 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
-                                    <div className="p-4 border-b border-gray-200 text-sm">
-                                        <div className="font-semibold">{user?.name}</div>
-                                        <div className="text-gray-500 text-xs">{user?.role}</div>
-                                    </div>
-                                    <button onClick={onLogout} className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-50">
-                                        Logout
-                                    </button>
-                                </div>
-                            )}
-                        </div>
+                                <button onClick={() => { navigate('/'); onLogout(); }} className="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 rounded-b-lg">
+                                    Sign Out
+                                </button>
+                            </div>
+                        )}
                     </div>
                 </div>
             );
@@ -1143,41 +1141,27 @@
         // ============= SIDEBAR (INTERNAL OS) =============
         function Sidebar({ role, navigate, activeHash }) {
             const adminLinks = [
-                { label: 'Dashboard', hash: '/admin/dashboard' },
-                { label: 'Leads', hash: '/admin/leads' },
-                { label: 'Appointments', hash: '/admin/appointments' },
-                { label: 'Pipeline', hash: '/admin/pipeline' },
-                { label: 'Reps', hash: '/admin/reps' },
-                { label: 'Rules', hash: '/admin/rules' }
+                { label: 'Dashboard', hash: '/admin/dashboard', icon: 'D' },
+                { label: 'Leads', hash: '/admin/leads', icon: 'L' },
+                { label: 'Appointments', hash: '/admin/appointments', icon: 'A' },
+                { label: 'Reps', hash: '/admin/reps', icon: 'R' },
             ];
-
             const repLinks = [
-                { label: 'Dashboard', hash: '/rep/dashboard' },
-                { label: 'My Leads', hash: '/rep/leads' },
-                { label: 'Schedule', hash: '/rep/schedule' }
+                { label: 'Dashboard', hash: '/rep/dashboard', icon: 'D' },
             ];
-
-            const confirmationLinks = [
-                { label: 'Call Queue', hash: '/confirmation/queue' },
-                { label: 'Stats', hash: '/confirmation/stats' }
-            ];
-
-            let links = [];
-            if (role === 'admin') links = adminLinks;
-            else if (role === 'rep') links = repLinks;
-            else if (role === 'confirmation') links = confirmationLinks;
+            let links = role === 'admin' ? adminLinks : role === 'rep' ? repLinks : [];
 
             return (
                 <div className="sidebar">
-                    <nav className="p-4 space-y-2">
+                    <nav className="p-4 space-y-1 mt-2">
                         {links.map(link => (
                             <button
                                 key={link.hash}
                                 onClick={() => navigate(link.hash)}
-                                className={`w-full text-left px-4 py-2 rounded text-sm font-medium transition ${
+                                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-all ${
                                     activeHash === link.hash
-                                        ? 'solar-primary text-white'
-                                        : 'text-gray-700 hover:bg-gray-100'
+                                        ? 'solar-primary text-white shadow-sm'
+                                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
                                 }`}
                             >
                                 {link.label}
@@ -1190,39 +1174,29 @@
 
         // ============= BOTTOM NAV (INTERNAL OS MOBILE) =============
         function BottomNav({ role, navigate, activeHash }) {
-            let links = [];
-            if (role === 'admin') {
-                links = [
-                    { label: '📊', hash: '/admin/dashboard' },
-                    { label: '👥', hash: '/admin/leads' },
-                    { label: '📅', hash: '/admin/appointments' },
-                    { label: '🔀', hash: '/admin/pipeline' },
-                    { label: '⚙️', hash: '/admin/rules' }
-                ];
-            } else if (role === 'rep') {
-                links = [
-                    { label: '📊', hash: '/rep/dashboard' },
-                    { label: '📋', hash: '/rep/leads' },
-                    { label: '📅', hash: '/rep/schedule' }
-                ];
-            } else if (role === 'confirmation') {
-                links = [
-                    { label: '📞', hash: '/confirmation/queue' },
-                    { label: '📊', hash: '/confirmation/stats' }
-                ];
-            }
+            const adminLinks = [
+                { label: 'Home', hash: '/admin/dashboard', icon: 'H' },
+                { label: 'Leads', hash: '/admin/leads', icon: 'L' },
+                { label: 'Appts', hash: '/admin/appointments', icon: 'A' },
+                { label: 'Reps', hash: '/admin/reps', icon: 'R' },
+            ];
+            const repLinks = [
+                { label: 'Home', hash: '/rep/dashboard', icon: 'H' },
+            ];
+            let links = role === 'admin' ? adminLinks : role === 'rep' ? repLinks : [];
 
             return (
-                <div className="bottom-nav h-16 flex justify-around items-center">
+                <div className="bottom-nav h-14 flex justify-around items-center">
                     {links.map(link => (
                         <button
                             key={link.hash}
                             onClick={() => navigate(link.hash)}
-                            className={`flex-1 flex justify-center items-center text-2xl ${
+                            className={`flex-1 flex flex-col justify-center items-center text-xs font-medium py-1 ${
                                 activeHash === link.hash ? 'solar-primary-text' : 'text-gray-400'
                             }`}
                         >
-                            {link.label}
+                            <span className="text-lg font-bold">{link.icon}</span>
+                            <span>{link.label}</span>
                         </button>
                     ))}
                 </div>
@@ -1235,334 +1209,308 @@
             const [password, setPassword] = useState('');
             const [loading, setLoading] = useState(false);
             const [error, setError] = useState('');
-            const [toast, setToast] = useState(null);
 
             const handleLogin = async (e) => {
                 e.preventDefault();
                 setLoading(true);
                 setError('');
-
                 try {
-                    const response = await api.post('/api/auth/login', { email, password });
-                    if (response.access_token) {
-                        window.authToken = response.access_token;
-                        const userData = { name: response.name, role: response.role, id: response.id };
-                        setUser(userData);
-
-                        if (response.role === 'admin') navigate('/admin/dashboard');
-                        else if (response.role === 'rep') navigate('/rep/dashboard');
-                        else if (response.role === 'confirmation') navigate('/confirmation/queue');
+                    const res = await fetch('/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ email, password })
+                    });
+                    const data = await res.json();
+                    if (data.access_token) {
+                        window.authToken = data.access_token;
+                        const u = data.user;
+                        setUser({ id: u.id, email: u.email, full_name: u.full_name, role: u.role });
+                        if (u.role === 'admin') navigate('/admin/dashboard');
+                        else if (u.role === 'rep') navigate('/rep/dashboard');
                         else navigate('/');
                     } else {
-                        setError(response.detail || 'Login failed');
-                        setToast({ type: 'error', message: 'Invalid credentials' });
+                        setError(data.detail || 'Login failed');
                     }
                 } catch (err) {
-                    setError('Connection error');
-                    setToast({ type: 'error', message: 'Failed to connect to server' });
+                    setError('Connection error. Please try again.');
                 }
                 setLoading(false);
             };
 
             return (
-                <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 flex items-center justify-center px-4">
-                    <div className="w-full max-w-md bg-white rounded-lg shadow-xl p-8">
-                        <div className="text-center mb-8">
-                            <div className="w-16 h-16 solar-primary rounded-full flex items-center justify-center text-white text-3xl mx-auto mb-4">☀</div>
-                            <h1 className="text-3xl font-bold solar-dark-text">Sunbull OS</h1>
-                            <p className="text-gray-500 mt-2">Solar Sales Operations</p>
+                <div className="min-h-screen flex items-center justify-center px-4" style={{background:'linear-gradient(135deg,#fef3c7 0%,#fff7ed 50%,#fff 100%)'}}>
+                    <div className="w-full max-w-sm">
+                        <div className="bg-white rounded-2xl shadow-xl p-8" style={{border:'1px solid rgba(0,0,0,0.04)'}}>
+                            <div className="text-center mb-8">
+                                <div className="w-14 h-14 solar-primary rounded-full flex items-center justify-center text-white text-2xl mx-auto mb-3 font-bold">S</div>
+                                <h1 className="text-2xl font-bold solar-dark-text" style={{letterSpacing:'-0.02em'}}>Sunbull OS</h1>
+                                <p className="text-gray-400 text-sm mt-1">Solar Operations Command Center</p>
+                            </div>
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">Email</label>
+                                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                                        className="input-modern" placeholder="you@sunbull.com" required />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-semibold text-gray-500 mb-1.5 uppercase tracking-wider">Password</label>
+                                    <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+                                        className="input-modern" placeholder="Enter password" required />
+                                </div>
+                                {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+                                <button type="submit" disabled={loading}
+                                    className="w-full solar-primary text-white py-3 rounded-xl font-semibold text-sm hover:opacity-90 transition disabled:opacity-50" style={{marginTop:'8px'}}>
+                                    {loading ? 'Signing in...' : 'Sign In'}
+                                </button>
+                            </form>
+                            <div className="mt-6 text-center">
+                                <p className="text-xs text-gray-400">Admin: sunbullsolar@gmail.com / admin123</p>
+                                <p className="text-xs text-gray-400 mt-1">Reps: [email] / sunbull2026</p>
+                            </div>
                         </div>
-
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                                <input
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none"
-                                    placeholder="you@example.com"
-                                    required
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                                <input
-                                    type="password"
-                                    value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-amber-400 focus:border-transparent outline-none"
-                                    placeholder="••••••••"
-                                    required
-                                />
-                            </div>
-                            {error && <div className="text-red-600 text-sm">{error}</div>}
-                            <button
-                                type="submit"
-                                disabled={loading}
-                                className="w-full solar-primary text-white py-2 rounded-lg font-semibold hover:bg-amber-600 transition disabled:opacity-50"
-                            >
-                                {loading ? 'Signing in...' : 'Sign In'}
-                            </button>
-                        </form>
-
-                        <p className="text-center text-gray-500 text-sm mt-4">
-                            Demo: admin@sunbull.com / password
-                        </p>
                     </div>
-                    {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
                 </div>
             );
         }
 
-        // ============= ADMIN DASHBOARD =============
+        // ============= LOADING SPINNER =============
+        function Spinner() {
+            return <div className="flex justify-center py-12"><div className="spinner"></div></div>;
+        }
+
+        // ============= ADMIN DASHBOARD (LIVE DATA) =============
         function AdminDashboard({ navigate }) {
-            const [metrics, setMetrics] = useState({
-                leadsToday: 24,
-                closeRate: 32.5,
-                revenueMonth: 185000,
-                avgRevenuePerLead: 5800,
-                heldRate: 8.2
-            });
-            const [reps, setReps] = useState([
-                { id: 1, name: 'John Smith', leadsAssigned: 45, closed: 14, closeRate: 31.1, revenue: 81200, avgResponseTime: '2.3h' },
-                { id: 2, name: 'Sarah Johnson', leadsAssigned: 38, closed: 13, closeRate: 34.2, revenue: 75400, avgResponseTime: '1.8h' },
-                { id: 3, name: 'Mike Chen', leadsAssigned: 52, closed: 15, closeRate: 28.8, revenue: 87000, avgResponseTime: '3.1h' }
-            ]);
+            const [data, setData] = useState(null);
+            const [reps, setReps] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                Promise.all([
+                    api.get('/api/admin/dashboard'),
+                    api.get('/api/admin/reps'),
+                ]).then(([dash, repData]) => {
+                    setData(dash);
+                    setReps(repData.reps || []);
+                    setLoading(false);
+                }).catch(() => setLoading(false));
+            }, []);
+
+            if (loading) return <Spinner />;
+            if (!data) return <div className="p-6 text-gray-500">Failed to load dashboard.</div>;
+
+            const metrics = [
+                { label: 'Total Leads', value: data.total_leads || 0, color: 'positive' },
+                { label: 'Close Rate', value: (data.close_rate || 0).toFixed(1) + '%', color: 'neutral' },
+                { label: 'Total Revenue', value: '$' + ((data.total_revenue || 0) / 1000).toFixed(0) + 'k', color: 'positive' },
+                { label: 'Active Reps', value: data.total_reps || 0, color: 'positive' },
+                { label: 'Held Rate', value: (data.held_rate || 0).toFixed(1) + '%', color: data.held_rate > 10 ? 'negative' : 'neutral' },
+            ];
 
             return (
                 <div className="p-4 sm:p-6 space-y-6">
-                    <h1 className="text-3xl font-bold solar-dark-text">Command Center</h1>
+                    <h1 className="text-2xl font-bold solar-dark-text" style={{letterSpacing:'-0.02em'}}>Command Center</h1>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-                        <div className="metric-card positive">
-                            <div className="text-gray-600 text-sm font-medium">Leads Today</div>
-                            <div className="text-3xl font-bold solar-dark-text mt-2">{metrics.leadsToday}</div>
-                        </div>
-                        <div className="metric-card neutral">
-                            <div className="text-gray-600 text-sm font-medium">Close Rate</div>
-                            <div className="text-3xl font-bold solar-dark-text mt-2">{metrics.closeRate.toFixed(1)}%</div>
-                        </div>
-                        <div className="metric-card positive">
-                            <div className="text-gray-600 text-sm font-medium">Revenue This Month</div>
-                            <div className="text-3xl font-bold solar-dark-text mt-2">${(metrics.revenueMonth/1000).toFixed(0)}k</div>
-                        </div>
-                        <div className="metric-card positive">
-                            <div className="text-gray-600 text-sm font-medium">Avg Revenue/Lead</div>
-                            <div className="text-3xl font-bold solar-dark-text mt-2">${(metrics.avgRevenuePerLead/1000).toFixed(1)}k</div>
-                        </div>
-                        <div className="metric-card negative">
-                            <div className="text-gray-600 text-sm font-medium">Held Rate</div>
-                            <div className="text-3xl font-bold solar-dark-text mt-2">{metrics.heldRate.toFixed(1)}%</div>
-                        </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                        {metrics.map((m, i) => (
+                            <div key={i} className={`metric-card ${m.color}`}>
+                                <div className="text-gray-500 text-xs font-semibold uppercase tracking-wider">{m.label}</div>
+                                <div className="text-2xl font-bold solar-dark-text mt-1">{m.value}</div>
+                            </div>
+                        ))}
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-lg font-bold solar-dark-text mb-4">Pipeline Funnel</h2>
-                            <PipelineFunnelChart />
+                    <div className="bg-white rounded-lg shadow p-5">
+                        <div className="flex justify-between items-center mb-4">
+                            <h2 className="text-lg font-bold solar-dark-text">Rep Performance</h2>
+                            <button onClick={() => navigate('/admin/reps')} className="text-sm text-amber-600 font-medium hover:underline">View All</button>
                         </div>
-                        <div className="bg-white rounded-lg shadow p-6">
-                            <h2 className="text-lg font-bold solar-dark-text mb-4">Revenue by Rep</h2>
-                            <RevenueChart reps={reps} />
-                        </div>
-                    </div>
-
-                    <div className="bg-white rounded-lg shadow p-6">
-                        <h2 className="text-lg font-bold solar-dark-text mb-4">Rep Performance</h2>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead>
-                                    <tr className="border-b border-gray-200">
-                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Leads</th>
-                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Closed</th>
-                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Rate</th>
-                                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Revenue</th>
-                                        <th className="text-right py-3 px-4 font-semibold text-gray-700">Avg Response</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {reps.map(rep => (
-                                        <tr key={rep.id} className="border-b border-gray-100 hover:bg-gray-50">
-                                            <td className="py-3 px-4 font-medium">{rep.name}</td>
-                                            <td className="py-3 px-4 text-center">{rep.leadsAssigned}</td>
-                                            <td className="py-3 px-4 text-center text-green-600 font-semibold">{rep.closed}</td>
-                                            <td className="py-3 px-4 text-center">{rep.closeRate.toFixed(1)}%</td>
-                                            <td className="py-3 px-4 text-right font-semibold">${(rep.revenue/1000).toFixed(0)}k</td>
-                                            <td className="py-3 px-4 text-right text-gray-600">{rep.avgResponseTime}</td>
+                        {reps.length === 0 ? (
+                            <p className="text-gray-400 text-sm py-4 text-center">No rep data available yet.</p>
+                        ) : (
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead>
+                                        <tr className="border-b border-gray-200">
+                                            <th className="text-left py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Name</th>
+                                            <th className="text-center py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Leads</th>
+                                            <th className="text-center py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Won</th>
+                                            <th className="text-center py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Rate</th>
+                                            <th className="text-right py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Revenue</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                    </thead>
+                                    <tbody>
+                                        {reps.slice(0, 10).map(rep => (
+                                            <tr key={rep.id} className="border-b border-gray-50 hover:bg-amber-50">
+                                                <td className="py-2.5 px-3 font-medium text-gray-900">{rep.name}</td>
+                                                <td className="py-2.5 px-3 text-center text-gray-600">{rep.total_leads}</td>
+                                                <td className="py-2.5 px-3 text-center font-semibold text-green-600">{rep.closed_won}</td>
+                                                <td className="py-2.5 px-3 text-center">{rep.close_rate.toFixed(1)}%</td>
+                                                <td className="py-2.5 px-3 text-right font-semibold">${(rep.total_value / 1000).toFixed(0)}k</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <button onClick={() => navigate('/admin/leads')} className="bg-white rounded-lg shadow p-5 text-left hover:shadow-md transition">
+                            <h3 className="font-bold text-gray-900">Manage Leads</h3>
+                            <p className="text-sm text-gray-500 mt-1">Search, filter, and manage all leads in the system</p>
+                        </button>
+                        <button onClick={() => navigate('/admin/appointments')} className="bg-white rounded-lg shadow p-5 text-left hover:shadow-md transition">
+                            <h3 className="font-bold text-gray-900">Appointments</h3>
+                            <p className="text-sm text-gray-500 mt-1">View and manage all scheduled appointments</p>
+                        </button>
                     </div>
                 </div>
             );
         }
 
-        function PipelineFunnelChart() {
-            const canvasRef = useRef(null);
-            const chartRef = useRef(null);
-
-            useEffect(() => {
-                if (!canvasRef.current || !window.Chart) return;
-
-                if (chartRef.current) chartRef.current.destroy();
-
-                const ctx = canvasRef.current.getContext('2d');
-                chartRef.current = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Sold', 'Installed', 'Submitted', 'Funded', 'Paid'],
-                        datasets: [{
-                            label: 'Deals',
-                            data: [125, 98, 72, 54, 42],
-                            backgroundColor: ['#F59E0B', '#D97706', '#FBBF24', '#92400E', '#78350F'],
-                            borderRadius: 4
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y',
-                        responsive: true,
-                        maintainAspectRatio: true,
-                        plugins: { legend: { display: false } },
-                        scales: { x: { beginAtZero: true } }
-                    }
-                });
-
-                return () => { if (chartRef.current) chartRef.current.destroy(); };
-            }, []);
-
-            return <canvas ref={canvasRef} height={200}></canvas>;
-        }
-
-        function RevenueChart({ reps }) {
-            const canvasRef = useRef(null);
-            const chartRef = useRef(null);
-
-            useEffect(() => {
-                if (!canvasRef.current || !window.Chart) return;
-
-                if (chartRef.current) chartRef.current.destroy();
-
-                const ctx = canvasRef.current.getContext('2d');
-                chartRef.current = new Chart(ctx, {
-                    type: 'bar',
-                    data: {
-                        labels: reps.map(r => r.name),
-                        datasets: [{
-                            label: 'Revenue',
-                            data: reps.map(r => r.revenue),
-                            backgroundColor: '#F59E0B',
-                            borderRadius: 4
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        plugins: { legend: { display: false } },
-                        scales: { y: { beginAtZero: true } }
-                    }
-                });
-
-                return () => { if (chartRef.current) chartRef.current.destroy(); };
-            }, [reps]);
-
-            return <canvas ref={canvasRef} height={200}></canvas>;
-        }
-
-        // ============= ADMIN LEADS PAGE =============
+        // ============= ADMIN LEADS PAGE (LIVE DATA) =============
         function AdminLeads({ navigate }) {
-            const [leads, setLeads] = useState([
-                { id: 1, name: 'John Homeowner', phone: '555-0101', billAmount: 145, score: 92, status: 'hot', rep: 'John Smith', source: 'Facebook', created: '2026-03-25' },
-                { id: 2, name: 'Jane Doe', phone: '555-0102', billAmount: 210, score: 78, status: 'warm', rep: 'Sarah Johnson', source: 'Google', created: '2026-03-25' },
-                { id: 3, name: 'Bob Wilson', phone: '555-0103', billAmount: 185, score: 45, status: 'cool', rep: 'Mike Chen', source: 'Referral', created: '2026-03-24' },
-                { id: 4, name: 'Alice Brown', phone: '555-0104', billAmount: 220, score: 28, status: 'cold', rep: 'Unassigned', source: 'Website', created: '2026-03-24' }
-            ]);
+            const [leads, setLeads] = useState([]);
+            const [loading, setLoading] = useState(true);
+            const [search, setSearch] = useState('');
             const [statusFilter, setStatusFilter] = useState('all');
-            const [sourceFilter, setSourceFilter] = useState('all');
             const [selectedLead, setSelectedLead] = useState(null);
 
-            const filteredLeads = leads.filter(l => {
+            useEffect(() => {
+                api.get('/api/solar/crm/leads').then(data => {
+                    setLeads(data.leads || []);
+                    setLoading(false);
+                }).catch(() => setLoading(false));
+            }, []);
+
+            const getScoreBadge = (score) => {
+                if (!score) return <span className="text-gray-400 text-xs">-</span>;
+                if (score >= 80) return <span className="lead-score-hot">HOT {score}</span>;
+                if (score >= 60) return <span className="lead-score-warm">WARM {score}</span>;
+                if (score >= 40) return <span className="lead-score-cool">COOL {score}</span>;
+                return <span className="lead-score-cold">COLD {score}</span>;
+            };
+
+            const getStatusBadge = (status) => {
+                const colors = {
+                    new: 'bg-blue-100 text-blue-700',
+                    appointed: 'bg-amber-100 text-amber-700',
+                    confirmed: 'bg-green-100 text-green-700',
+                    confirming: 'bg-yellow-100 text-yellow-700',
+                    closed_won: 'bg-emerald-100 text-emerald-700',
+                    closed_lost: 'bg-red-100 text-red-700',
+                    follow_up: 'bg-purple-100 text-purple-700',
+                    unconfirmed: 'bg-gray-100 text-gray-600',
+                };
+                return <span className={`px-2 py-0.5 rounded text-xs font-semibold ${colors[status] || 'bg-gray-100 text-gray-600'}`}>{(status || '').replace('_', ' ')}</span>;
+            };
+
+            const filtered = leads.filter(l => {
                 if (statusFilter !== 'all' && l.status !== statusFilter) return false;
-                if (sourceFilter !== 'all' && l.source !== sourceFilter) return false;
+                if (search) {
+                    const s = search.toLowerCase();
+                    return (l.name || '').toLowerCase().includes(s) || (l.phone || '').includes(s) || (l.email || '').toLowerCase().includes(s);
+                }
                 return true;
             });
 
-            const getScoreBadge = (score) => {
-                if (score >= 80) return <span className="lead-score-hot">HOT ({score})</span>;
-                if (score >= 60) return <span className="lead-score-warm">WARM ({score})</span>;
-                if (score >= 40) return <span className="lead-score-cool">COOL ({score})</span>;
-                return <span className="lead-score-cold">COLD ({score})</span>;
-            };
+            const statuses = [...new Set(leads.map(l => l.status).filter(Boolean))];
+
+            if (loading) return <Spinner />;
 
             return (
                 <div className="p-4 sm:p-6 space-y-4">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <h1 className="text-3xl font-bold solar-dark-text">Leads</h1>
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                        <h1 className="text-2xl font-bold solar-dark-text">Leads <span className="text-gray-400 font-normal text-lg">({filtered.length})</span></h1>
                     </div>
 
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-white rounded-lg shadow p-4">
-                        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm">
-                            <option value="all">All Status</option>
-                            <option value="hot">Hot</option>
-                            <option value="warm">Warm</option>
-                            <option value="cool">Cool</option>
-                            <option value="cold">Cold</option>
-                        </select>
-                        <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value)} className="border border-gray-300 rounded px-2 py-1 text-sm">
-                            <option value="all">All Source</option>
-                            <option value="Facebook">Facebook</option>
-                            <option value="Google">Google</option>
-                            <option value="Referral">Referral</option>
-                            <option value="Website">Website</option>
+                    <div className="flex flex-col sm:flex-row gap-2">
+                        <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                            placeholder="Search by name, phone, or email..."
+                            className="input-modern flex-1" style={{maxWidth:'400px'}} />
+                        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+                            className="border border-gray-200 rounded-lg px-3 py-2 text-sm bg-white">
+                            <option value="all">All Statuses</option>
+                            {statuses.map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
                         </select>
                     </div>
 
-                    <div className="bg-white rounded-lg shadow overflow-hidden">
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm">
-                                <thead className="bg-gray-50 border-b border-gray-200">
-                                    <tr>
-                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Name</th>
-                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Phone</th>
-                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Bill</th>
-                                        <th className="text-center py-3 px-4 font-semibold text-gray-700">Score</th>
-                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Rep</th>
-                                        <th className="text-left py-3 px-4 font-semibold text-gray-700">Source</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredLeads.map(lead => (
-                                        <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="border-b border-gray-100 hover:bg-amber-50 cursor-pointer">
-                                            <td className="py-3 px-4 font-medium">{lead.name}</td>
-                                            <td className="py-3 px-4 text-blue-600">{lead.phone}</td>
-                                            <td className="py-3 px-4">${lead.billAmount}</td>
-                                            <td className="py-3 px-4 text-center">{getScoreBadge(lead.score)}</td>
-                                            <td className="py-3 px-4 text-sm text-gray-600">{lead.rep}</td>
-                                            <td className="py-3 px-4 text-xs">{lead.source}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                    {filtered.length === 0 ? (
+                        <div className="bg-white rounded-lg shadow p-8 text-center">
+                            <p className="text-gray-400">No leads found.</p>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Name</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden sm:table-cell">Phone</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Bill</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden md:table-cell">Score</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden lg:table-cell">Rep</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden lg:table-cell">Source</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {filtered.map(lead => (
+                                            <tr key={lead.id} onClick={() => setSelectedLead(lead)} className="border-b border-gray-50 hover:bg-amber-50 cursor-pointer">
+                                                <td className="py-3 px-3 font-medium text-gray-900">{lead.name}</td>
+                                                <td className="py-3 px-3 text-blue-600 hidden sm:table-cell">{lead.phone}</td>
+                                                <td className="py-3 px-3">${lead.monthly_bill ? lead.monthly_bill.toFixed(0) : '-'}</td>
+                                                <td className="py-3 px-3 text-center hidden md:table-cell">{getScoreBadge(lead.quality_score)}</td>
+                                                <td className="py-3 px-3 text-center">{getStatusBadge(lead.status)}</td>
+                                                <td className="py-3 px-3 text-gray-500 hidden lg:table-cell">{lead.assigned_rep || 'Unassigned'}</td>
+                                                <td className="py-3 px-3 text-gray-400 text-xs hidden lg:table-cell">{lead.source}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
 
+                    {/* Lead Detail Modal */}
                     {selectedLead && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50" onClick={() => setSelectedLead(null)}>
-                            <div className="bg-white rounded-lg max-w-2xl w-full max-h-96 overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
-                                <div className="flex justify-between items-start mb-4">
-                                    <h2 className="text-2xl font-bold solar-dark-text">{selectedLead.name}</h2>
-                                    <button onClick={() => setSelectedLead(null)} className="text-gray-500 hover:text-gray-700 text-2xl">×</button>
-                                </div>
-                                <div className="space-y-4">
-                                    <div><strong>Phone:</strong> {selectedLead.phone}</div>
-                                    <div><strong>Monthly Bill:</strong> ${selectedLead.billAmount}</div>
-                                    <div><strong>Score:</strong> {getScoreBadge(selectedLead.score)}</div>
-                                    <div><strong>Status:</strong> {selectedLead.status}</div>
-                                    <div><strong>Assigned Rep:</strong> {selectedLead.rep}</div>
-                                    <div><strong>Source:</strong> {selectedLead.source}</div>
-                                    <div><strong>Created:</strong> {selectedLead.created}</div>
+                        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center p-4 z-50" onClick={() => setSelectedLead(null)}>
+                            <div className="bg-white rounded-xl max-w-lg w-full max-h-[80vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+                                <div className="p-6">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div>
+                                            <h2 className="text-xl font-bold solar-dark-text">{selectedLead.name}</h2>
+                                            <p className="text-sm text-gray-500 mt-0.5">{selectedLead.address}, {selectedLead.city} {selectedLead.state} {selectedLead.zip}</p>
+                                        </div>
+                                        <button onClick={() => setSelectedLead(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none p-1">x</button>
+                                    </div>
+
+                                    <div className="flex gap-2 mb-5">
+                                        {getStatusBadge(selectedLead.status)}
+                                        {getScoreBadge(selectedLead.quality_score)}
+                                    </div>
+
+                                    <div className="space-y-3 text-sm">
+                                        {[
+                                            ['Phone', selectedLead.phone],
+                                            ['Email', selectedLead.email || '-'],
+                                            ['Monthly Bill', selectedLead.monthly_bill ? '$' + selectedLead.monthly_bill.toFixed(2) : '-'],
+                                            ['Assigned Rep', selectedLead.assigned_rep || 'Unassigned'],
+                                            ['Source', selectedLead.source || '-'],
+                                            ['System Size', selectedLead.system_kw ? selectedLead.system_kw + ' kW' : '-'],
+                                            ['Panels', selectedLead.panels || '-'],
+                                            ['Monthly Payment', selectedLead.monthly_payment ? '$' + selectedLead.monthly_payment.toFixed(2) : '-'],
+                                            ['Annual Savings', selectedLead.annual_savings ? '$' + selectedLead.annual_savings.toFixed(2) : '-'],
+                                            ['Appt Date', selectedLead.appointment_date || 'None'],
+                                            ['Appt Status', selectedLead.appointment_status || '-'],
+                                            ['Created', selectedLead.created_at ? new Date(selectedLead.created_at).toLocaleDateString() : '-'],
+                                        ].map(([label, val], i) => (
+                                            <div key={i} className="flex justify-between py-1.5 border-b border-gray-50">
+                                                <span className="text-gray-500 font-medium">{label}</span>
+                                                <span className="text-gray-900 text-right">{val}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -1571,44 +1519,192 @@
             );
         }
 
-        // ============= ADMIN APPOINTMENTS (STUB) =============
+        // ============= ADMIN APPOINTMENTS (LIVE DATA) =============
         function AdminAppointments() {
+            const [appointments, setAppointments] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                api.get('/api/admin/appointments').then(data => {
+                    setAppointments(data.appointments || []);
+                    setLoading(false);
+                }).catch(() => setLoading(false));
+            }, []);
+
+            const statusColors = {
+                scheduled: 'bg-blue-100 text-blue-700',
+                confirmed: 'bg-green-100 text-green-700',
+                completed: 'bg-emerald-100 text-emerald-700',
+                cancelled: 'bg-red-100 text-red-700',
+                no_show: 'bg-red-100 text-red-600',
+                en_route: 'bg-amber-100 text-amber-700',
+                rescheduled: 'bg-purple-100 text-purple-700',
+            };
+
+            const handleStatusChange = async (apptId, newStatus) => {
+                try {
+                    const token = window.authToken;
+                    await fetch(`/api/admin/appointments/${apptId}/status?new_status=${newStatus}`, {
+                        method: 'PUT',
+                        headers: { ...(token && { 'Authorization': `Bearer ${token}` }) }
+                    });
+                    setAppointments(prev => prev.map(a => a.id === apptId ? { ...a, status: newStatus } : a));
+                } catch(e) {}
+            };
+
+            if (loading) return <Spinner />;
+
             return (
-                <div className="p-6">
-                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Appointments</h1>
-                    <p className="text-gray-600">Appointment management</p>
+                <div className="p-4 sm:p-6 space-y-4">
+                    <h1 className="text-2xl font-bold solar-dark-text">Appointments <span className="text-gray-400 font-normal text-lg">({appointments.length})</span></h1>
+
+                    {appointments.length === 0 ? (
+                        <div className="bg-white rounded-lg shadow p-8 text-center">
+                            <p className="text-gray-400">No appointments yet. Bookings from the public funnel will appear here.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Lead</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden sm:table-cell">Address</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Date</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden md:table-cell">Time</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden lg:table-cell">Rep</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {appointments.map(appt => (
+                                            <tr key={appt.id} className="border-b border-gray-50 hover:bg-gray-50">
+                                                <td className="py-3 px-3">
+                                                    <div className="font-medium text-gray-900">{appt.lead_name}</div>
+                                                    <div className="text-xs text-gray-400 sm:hidden">{appt.lead_phone}</div>
+                                                </td>
+                                                <td className="py-3 px-3 text-gray-500 hidden sm:table-cell">{appt.lead_address}</td>
+                                                <td className="py-3 px-3 text-gray-700 font-medium">{appt.date}</td>
+                                                <td className="py-3 px-3 text-gray-600 hidden md:table-cell">{appt.time}</td>
+                                                <td className="py-3 px-3 text-gray-500 hidden lg:table-cell">{appt.rep_name}</td>
+                                                <td className="py-3 px-3 text-center">
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${statusColors[appt.status] || 'bg-gray-100 text-gray-600'}`}>
+                                                        {(appt.status || '').replace('_', ' ')}
+                                                    </span>
+                                                </td>
+                                                <td className="py-3 px-3 text-center">
+                                                    <select
+                                                        value={appt.status}
+                                                        onChange={e => handleStatusChange(appt.id, e.target.value)}
+                                                        className="text-xs border border-gray-200 rounded px-2 py-1 bg-white"
+                                                    >
+                                                        {['scheduled','confirmed','en_route','completed','no_show','cancelled','rescheduled'].map(s => (
+                                                            <option key={s} value={s}>{s.replace('_', ' ')}</option>
+                                                        ))}
+                                                    </select>
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
 
-        // ============= ADMIN PIPELINE (STUB) =============
-        function AdminPipeline() {
+        // ============= ADMIN REPS PAGE (LIVE DATA) =============
+        function AdminReps() {
+            const [reps, setReps] = useState([]);
+            const [loading, setLoading] = useState(true);
+
+            useEffect(() => {
+                api.get('/api/admin/reps').then(data => {
+                    setReps(data.reps || []);
+                    setLoading(false);
+                }).catch(() => setLoading(false));
+            }, []);
+
+            const toggleActive = async (repId, currentActive) => {
+                const newActive = currentActive === false ? true : false;
+                try {
+                    const token = window.authToken;
+                    await fetch(`/api/admin/reps/${repId}?is_active=${newActive}`, {
+                        method: 'PUT',
+                        headers: { ...(token && { 'Authorization': `Bearer ${token}` }) }
+                    });
+                    setReps(prev => prev.map(r => r.id === repId ? { ...r, is_active: newActive } : r));
+                } catch(e) {}
+            };
+
+            if (loading) return <Spinner />;
+
             return (
-                <div className="p-6">
-                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Pipeline</h1>
-                    <p className="text-gray-600">Sales pipeline view</p>
+                <div className="p-4 sm:p-6 space-y-4">
+                    <h1 className="text-2xl font-bold solar-dark-text">Sales Reps <span className="text-gray-400 font-normal text-lg">({reps.length})</span></h1>
+
+                    {reps.length === 0 ? (
+                        <div className="bg-white rounded-lg shadow p-8 text-center">
+                            <p className="text-gray-400">No reps found.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Name</th>
+                                            <th className="text-left py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden sm:table-cell">Email</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Leads</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Won</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Close Rate</th>
+                                            <th className="text-right py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden md:table-cell">Revenue</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase hidden md:table-cell">Appts</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Territory</th>
+                                            <th className="text-center py-3 px-3 font-semibold text-gray-600 text-xs uppercase">Stored Rate</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {reps.map(rep => (
+                                            <tr key={rep.id} className="border-b border-gray-50 hover:bg-gray-50">
+                                                <td className="py-3 px-3 font-medium text-gray-900">{rep.name}</td>
+                                                <td className="py-3 px-3 text-gray-500 text-xs hidden sm:table-cell">{rep.email}</td>
+                                                <td className="py-3 px-3 text-center text-gray-700">{rep.total_leads}</td>
+                                                <td className="py-3 px-3 text-center font-semibold text-green-600">{rep.closed_won}</td>
+                                                <td className="py-3 px-3 text-center">{rep.close_rate.toFixed(1)}%</td>
+                                                <td className="py-3 px-3 text-right font-semibold hidden md:table-cell">${(rep.total_value / 1000).toFixed(0)}k</td>
+                                                <td className="py-3 px-3 text-center text-gray-600 hidden md:table-cell">{rep.total_appointments}</td>
+                                                <td className="py-3 px-3 text-center text-gray-500">{rep.territory || '-'}</td>
+                                                <td className="py-3 px-3 text-center text-amber-600 font-semibold">{((rep.close_rate_stored || 0) * 100).toFixed(0)}%</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
                 </div>
             );
         }
 
-        // ============= ADMIN RULES (STUB) =============
-        function AdminRules() {
-            return (
-                <div className="p-6">
-                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Rules</h1>
-                    <p className="text-gray-600">Automation rules</p>
-                </div>
-            );
-        }
+        // ============= REP DASHBOARD (LIVE DATA) =============
+        function RepDashboard({ user, navigate }) {
+            const [leads, setLeads] = useState([]);
+            const [appointments, setAppointments] = useState([]);
+            const [loading, setLoading] = useState(true);
 
-        // ============= REP DASHBOARD =============
-        function RepDashboard({ user }) {
-            const [appointments, setAppointments] = useState([
-                { id: 1, time: '09:00 AM', customer: 'John Homeowner', address: '123 Main St', score: 92 },
-                { id: 2, time: '11:00 AM', customer: 'Jane Doe', address: '456 Oak Ave', score: 78 },
-                { id: 3, time: '02:00 PM', customer: 'Bob Wilson', address: '789 Pine Rd', score: 45 }
-            ]);
-            const [expandedId, setExpandedId] = useState(null);
+            useEffect(() => {
+                Promise.all([
+                    api.get('/api/leads'),
+                    api.get('/api/appointments'),
+                ]).then(([leadData, apptData]) => {
+                    setLeads(Array.isArray(leadData) ? leadData : []);
+                    setAppointments(Array.isArray(apptData) ? apptData : []);
+                    setLoading(false);
+                }).catch(() => setLoading(false));
+            }, []);
 
             const getScoreColor = (score) => {
                 if (score >= 80) return 'bg-red-100 text-red-800';
@@ -1617,66 +1713,100 @@
                 return 'bg-blue-100 text-blue-800';
             };
 
+            if (loading) return <Spinner />;
+
+            const totalLeads = leads.length;
+            const closedWon = leads.filter(l => l.deal_status === 'closed_won').length;
+
             return (
                 <div className="p-4 space-y-4">
-                    <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-lg p-6">
-                        <div className="text-sm opacity-90">Welcome,</div>
-                        <div className="text-2xl font-bold">{user?.name || 'Rep'}</div>
+                    <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl p-6">
+                        <div className="text-sm opacity-90">Welcome back,</div>
+                        <div className="text-2xl font-bold">{user?.full_name || 'Rep'}</div>
                         <div className="grid grid-cols-3 gap-2 mt-4 text-center text-sm">
                             <div>
                                 <div className="text-2xl font-bold">{appointments.length}</div>
                                 <div className="opacity-90">Appointments</div>
                             </div>
                             <div>
-                                <div className="text-2xl font-bold">3</div>
-                                <div className="opacity-90">Closes</div>
+                                <div className="text-2xl font-bold">{totalLeads}</div>
+                                <div className="opacity-90">My Leads</div>
                             </div>
                             <div>
-                                <div className="text-2xl font-bold">7</div>
-                                <div className="opacity-90">Pending</div>
+                                <div className="text-2xl font-bold">{closedWon}</div>
+                                <div className="opacity-90">Closed</div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="space-y-3">
-                        <h2 className="text-xl font-bold solar-dark-text">Today's Schedule</h2>
-                        {appointments.map(apt => (
-                            <div key={apt.id} className="bg-white rounded-lg shadow border-l-4 border-amber-400">
-                                <button
-                                    onClick={() => setExpandedId(expandedId === apt.id ? null : apt.id)}
-                                    className="w-full text-left p-4 hover:bg-gray-50"
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex-1">
-                                            <div className="text-sm text-gray-500">{apt.time}</div>
-                                            <div className="font-semibold text-gray-900">{apt.customer}</div>
-                                            <div className="text-sm text-gray-600">{apt.address}</div>
+                    <h2 className="text-lg font-bold solar-dark-text">My Appointments</h2>
+                    {appointments.length === 0 ? (
+                        <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
+                            No appointments assigned to you yet.
+                        </div>
+                    ) : (
+                        <div className="space-y-2">
+                            {appointments.map(appt => {
+                                const lead = leads.find(l => l.id === appt.lead_id);
+                                return (
+                                    <div key={appt.id} className="bg-white rounded-lg shadow border-l-4 border-amber-400 p-4">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <div className="text-xs text-gray-400">{appt.appointment_date} at {String(appt.appointment_time).slice(0,5)}</div>
+                                                <div className="font-semibold text-gray-900">{lead ? `${lead.first_name} ${lead.last_name}` : `Lead #${appt.lead_id}`}</div>
+                                                <div className="text-sm text-gray-500">{lead?.property_address || 'No address'}</div>
+                                            </div>
+                                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                                appt.appointment_status === 'confirmed' ? 'bg-green-100 text-green-700' :
+                                                appt.appointment_status === 'scheduled' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-gray-100 text-gray-600'
+                                            }`}>
+                                                {appt.appointment_status}
+                                            </span>
                                         </div>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getScoreColor(apt.score)}`}>
-                                            {apt.score}
-                                        </span>
                                     </div>
-                                </button>
+                                );
+                            })}
+                        </div>
+                    )}
 
-                                {expandedId === apt.id && (
-                                    <div className="border-t border-gray-200 p-4 bg-gray-50 space-y-3">
-                                        <button className="w-full bg-blue-500 text-white py-2 rounded font-medium text-sm">📍 Get Directions</button>
-                                        <button className="w-full bg-green-500 text-white py-2 rounded font-medium text-sm">✓ Mark Complete</button>
-                                    </div>
-                                )}
+                    <h2 className="text-lg font-bold solar-dark-text mt-4">My Leads</h2>
+                    {leads.length === 0 ? (
+                        <div className="bg-white rounded-lg shadow p-6 text-center text-gray-400">
+                            No leads assigned to you yet.
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-lg shadow overflow-hidden">
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 border-b border-gray-200">
+                                        <tr>
+                                            <th className="text-left py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Name</th>
+                                            <th className="text-left py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Phone</th>
+                                            <th className="text-center py-2 px-3 font-semibold text-gray-600 text-xs uppercase">Status</th>
+                                            <th className="text-left py-2 px-3 font-semibold text-gray-600 text-xs uppercase hidden sm:table-cell">Bill</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {leads.map(l => (
+                                            <tr key={l.id} className="border-b border-gray-50 hover:bg-amber-50">
+                                                <td className="py-2.5 px-3 font-medium text-gray-900">{l.first_name} {l.last_name}</td>
+                                                <td className="py-2.5 px-3 text-blue-600">{l.phone}</td>
+                                                <td className="py-2.5 px-3 text-center">
+                                                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                                        l.deal_status === 'closed_won' ? 'bg-green-100 text-green-700' :
+                                                        l.deal_status === 'appointed' ? 'bg-amber-100 text-amber-700' :
+                                                        'bg-gray-100 text-gray-600'
+                                                    }`}>{(l.deal_status || '').replace('_', ' ')}</span>
+                                                </td>
+                                                <td className="py-2.5 px-3 text-gray-500 hidden sm:table-cell">${l.average_monthly_bill ? l.average_monthly_bill.toFixed(0) : '-'}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
-
-        // ============= CONFIRMATION QUEUE (STUB) =============
-        function ConfirmationQueue() {
-            return (
-                <div className="p-6">
-                    <h1 className="text-3xl font-bold solar-dark-text mb-4">Confirmation Queue</h1>
-                    <p className="text-gray-600">Appointment confirmation system</p>
+                        </div>
+                    )}
                 </div>
             );
         }
@@ -1685,83 +1815,43 @@
         function App() {
             const [user, setUser] = useState(null);
             const [toast, setToast] = useState(null);
-            const [publicData, setPublicData] = useState({
-                formData: null,
-                analysis: null,
-                booking: null
-            });
+            const [publicData, setPublicData] = useState({ formData: null, analysis: null, booking: null });
+
+            // Try to restore session from token
+            useEffect(() => {
+                if (window.authToken && !user) {
+                    api.get('/api/auth/me').then(data => {
+                        if (data && data.id) {
+                            setUser({ id: data.id, email: data.email, full_name: data.full_name, role: data.role });
+                        }
+                    }).catch(() => {});
+                }
+            }, []);
 
             const handleLogout = () => {
                 window.authToken = null;
                 setUser(null);
-                window.location.hash = '/login';
+                window.location.hash = '/';
             };
 
             return (
                 <HashRouter>
                     {({ hash, navigate }) => {
-                        // Public routes - no authentication required
-                        const isPublicRoute = ['/', '/upload', '/savings', '/book', '/faq'].some(route => hash === route);
+                        const isInternalRoute = hash.startsWith('/admin') || hash.startsWith('/rep');
 
-                        // Internal routes - authentication required
-                        const isInternalRoute = hash.startsWith('/admin') || hash.startsWith('/rep') || hash.startsWith('/confirmation');
-
-                        // Check authentication for internal routes
                         if (isInternalRoute && !user) {
-                            navigate('/login');
-                            return null;
+                            // Redirect to login
+                            if (hash !== '/login') { window.location.hash = '/login'; }
+                            return <LoginPage navigate={navigate} setUser={setUser} />;
                         }
 
                         // Public routes
-                        if (hash === '/') {
-                            return (
-                                <>
-                                    <PublicNav navigate={navigate} />
-                                    <Homepage navigate={navigate} />
-                                </>
-                            );
-                        }
-
-                        if (hash === '/upload') {
-                            return (
-                                <>
-                                    <PublicNav navigate={navigate} />
-                                    <BillUpload navigate={navigate} publicData={publicData} setPublicData={setPublicData} />
-                                </>
-                            );
-                        }
-
-                        if (hash === '/savings') {
-                            return (
-                                <>
-                                    <PublicNav navigate={navigate} />
-                                    <SavingsResult navigate={navigate} publicData={publicData} setPublicData={setPublicData} />
-                                </>
-                            );
-                        }
-
-                        if (hash === '/book') {
-                            return (
-                                <>
-                                    <PublicNav navigate={navigate} />
-                                    <BookingFlow navigate={navigate} publicData={publicData} setPublicData={setPublicData} />
-                                </>
-                            );
-                        }
-
-                        if (hash === '/faq') {
-                            return (
-                                <>
-                                    <PublicNav navigate={navigate} />
-                                    <FAQPage navigate={navigate} />
-                                </>
-                            );
-                        }
-
-                        // Login page
-                        if (hash === '/login') {
-                            return <LoginPage navigate={navigate} setUser={setUser} />;
-                        }
+                        if (hash === '/') return <><PublicNav navigate={navigate} /><Homepage navigate={navigate} /></>;
+                        if (hash === '/upload') return <><PublicNav navigate={navigate} /><BillUpload navigate={navigate} publicData={publicData} setPublicData={setPublicData} /></>;
+                        if (hash === '/savings') return <><PublicNav navigate={navigate} /><SavingsResult navigate={navigate} publicData={publicData} setPublicData={setPublicData} /></>;
+                        if (hash === '/book') return <><PublicNav navigate={navigate} /><BookingFlow navigate={navigate} publicData={publicData} setPublicData={setPublicData} /></>;
+                        if (hash === '/faq') return <><PublicNav navigate={navigate} /><FAQPage navigate={navigate} /></>;
+                        if (hash === '/login') return <LoginPage navigate={navigate} setUser={setUser} />;
 
                         // Internal OS routes
                         if (user) {
@@ -1770,19 +1860,18 @@
                                     <TopBar user={user} navigate={navigate} onLogout={handleLogout} />
                                     <Sidebar role={user.role} navigate={navigate} activeHash={hash} />
                                     <BottomNav role={user.role} navigate={navigate} activeHash={hash} />
-                                    <main className="main-content">
+                                    <main className="main-content" style={{paddingTop:'16px'}}>
                                         {hash === '/admin/dashboard' && <AdminDashboard navigate={navigate} />}
                                         {hash === '/admin/leads' && <AdminLeads navigate={navigate} />}
                                         {hash === '/admin/appointments' && <AdminAppointments />}
-                                        {hash === '/admin/pipeline' && <AdminPipeline />}
-                                        {hash === '/admin/rules' && <AdminRules />}
+                                        {hash === '/admin/reps' && <AdminReps />}
                                         {hash === '/rep/dashboard' && <RepDashboard user={user} navigate={navigate} />}
-                                        {hash === '/confirmation/queue' && <ConfirmationQueue />}
-                                        {!hash.match(/^\/admin|^\/rep|^\/confirmation/) && (
+                                        {!hash.match(/^\/(admin|rep)\/(dashboard|leads|appointments|reps)$/) && (
                                             <div className="p-6 text-center">
-                                                <p className="text-gray-600">Page not found</p>
-                                                <button onClick={() => navigate(user.role === 'admin' ? '/admin/dashboard' : '/rep/dashboard')} className="solar-primary text-white px-4 py-2 rounded mt-4">
-                                                    Go Home
+                                                <p className="text-gray-500 mb-4">Page not found</p>
+                                                <button onClick={() => navigate(user.role === 'admin' ? '/admin/dashboard' : '/rep/dashboard')}
+                                                    className="solar-primary text-white px-5 py-2 rounded-lg font-medium text-sm">
+                                                    Go to Dashboard
                                                 </button>
                                             </div>
                                         )}
@@ -1792,7 +1881,6 @@
                             );
                         }
 
-                        // Default to login if hash doesn't match any route
                         return <LoginPage navigate={navigate} setUser={setUser} />;
                     }}
                 </HashRouter>

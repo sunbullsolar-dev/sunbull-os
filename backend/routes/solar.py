@@ -544,11 +544,23 @@ def public_book_appointment(
             assigned_rep = rep
             break
 
+    # Fallback: if all reps are booked at exact time, pick the rep with fewest
+    # appointments that day (booking should never fail for the customer)
     if not assigned_rep:
-        raise HTTPException(
-            status_code=409,
-            detail="All reps are booked at that time. Please choose a different time slot.",
-        )
+        import random as _rand
+        day_counts = []
+        for rep in reps:
+            count = db.query(Appointment).filter(
+                Appointment.assigned_rep_id == rep.id,
+                Appointment.appointment_date == appt_date,
+                Appointment.appointment_status.notin_(["cancelled", "rescheduled"]),
+            ).count()
+            day_counts.append((count, rep))
+        day_counts.sort(key=lambda x: x[0])
+        # Pick from the least-busy reps (tie-break randomly)
+        min_count = day_counts[0][0]
+        least_busy = [r for c, r in day_counts if c == min_count]
+        assigned_rep = _rand.choice(least_busy)
 
     lead.deal_status = "appointed"
     lead.assigned_rep_id = assigned_rep.id
