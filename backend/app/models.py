@@ -127,10 +127,12 @@ class Lead(Base):
     source_rep_id = Column(Integer, ForeignKey("users.id"))
     campaign = Column(String(100))
 
-    # Assignment
+    # Assignment & Ownership
     assigned_rep_id = Column(Integer, ForeignKey("users.id"), index=True)
     setter_id = Column(Integer, ForeignKey("users.id"))
-    closer_id = Column(Integer, ForeignKey("users.id"))
+    runner_id = Column(Integer, ForeignKey("users.id"))  # Rep who ran the appointment
+    closer_id = Column(Integer, ForeignKey("users.id"))  # Rep who closed the deal
+    rehash_rep_id = Column(Integer, ForeignKey("users.id"))  # Rep assigned for rehash
 
     # Lead Lifecycle
     deal_status = Column(String(30), nullable=False, default="new", index=True)
@@ -170,7 +172,9 @@ class Lead(Base):
     # Relationships
     assigned_rep = relationship("User", foreign_keys=[assigned_rep_id])
     setter = relationship("User", foreign_keys=[setter_id])
+    runner = relationship("User", foreign_keys=[runner_id])
     closer = relationship("User", foreign_keys=[closer_id])
+    rehash_rep = relationship("User", foreign_keys=[rehash_rep_id])
 
 
 class Appointment(Base):
@@ -595,6 +599,107 @@ class SolarEstimate(Base):
 
     # Relationships
     lead = relationship("Lead")
+
+
+class Task(Base):
+    """Auto-generated tasks tied to leads and appointments.
+
+    Tasks are the ENFORCEMENT layer. They are created automatically by
+    process_outcome() and cannot be ignored. Every outcome that requires
+    a next step generates a task.
+
+    Types: follow_up, rehash, reschedule, admin, install_coordination
+    """
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id"), index=True)
+    assigned_to = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    created_by = Column(Integer, ForeignKey("users.id"))
+
+    # Task classification
+    task_type = Column(String(30), nullable=False, index=True)
+    # follow_up | rehash | reschedule | admin | install_coordination
+    title = Column(String(255), nullable=False)
+    description = Column(Text)
+
+    # Scheduling
+    due_date = Column(DateTime, nullable=False, index=True)
+    completed_at = Column(DateTime)
+
+    # Status: pending → completed | overdue (set by system check)
+    status = Column(String(20), default="pending", nullable=False, index=True)
+
+    # Outcome linkage
+    source_outcome = Column(String(30))  # The outcome that triggered this task
+    notes = Column(Text)
+    completion_notes = Column(Text)
+
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    lead = relationship("Lead", foreign_keys=[lead_id])
+    appointment = relationship("Appointment", foreign_keys=[appointment_id])
+    assignee = relationship("User", foreign_keys=[assigned_to])
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class Project(Base):
+    """Post-sale project pipeline. Created ONLY when outcome = Closed (Signed).
+
+    Tracks the installation lifecycle from sale through funding and payment.
+    One lead → one project (at most).
+    """
+    __tablename__ = "projects"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), nullable=False, unique=True, index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id"))
+    closer_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # System details (populated from lead or manually)
+    system_size_kw = Column(Float)
+    panel_count = Column(Integer)
+    deal_value = Column(Float)
+
+    # Pipeline stages
+    install_status = Column(String(30), default="pending_survey")
+    # pending_survey → survey_scheduled → survey_complete →
+    # permits_submitted → permits_approved → install_scheduled →
+    # installed → inspection_passed → pto_received
+
+    funding_status = Column(String(30), default="pending")
+    # pending → submitted → approved → funded
+
+    payment_status = Column(String(30), default="pending")
+    # pending → invoiced → paid
+
+    # Key dates
+    sold_date = Column(DateTime, nullable=False)
+    survey_date = Column(DateTime)
+    permit_date = Column(DateTime)
+    install_date = Column(DateTime)
+    inspection_date = Column(DateTime)
+    pto_date = Column(DateTime)
+    funded_date = Column(DateTime)
+    paid_date = Column(DateTime)
+
+    # Assignment
+    installer_id = Column(Integer, ForeignKey("users.id"))
+    project_manager_id = Column(Integer, ForeignKey("users.id"))
+
+    notes = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    lead = relationship("Lead", foreign_keys=[lead_id])
+    closer = relationship("User", foreign_keys=[closer_id])
+    installer = relationship("User", foreign_keys=[installer_id])
+    project_manager = relationship("User", foreign_keys=[project_manager_id])
 
 
 class WebsitePage(Base):

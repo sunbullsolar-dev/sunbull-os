@@ -5,11 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Lead, User, Action
+from app.models import Lead, User, Action, Task, Appointment, Project
 from app.auth import get_current_user, require_role
 from services.audit import create_audit_log
 from services.scoring import calculate_lead_score
 from services.actions import log_action
+from services.outcome_engine import check_open_tasks
 
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
@@ -559,29 +560,21 @@ def get_lead_timeline(
     db: Session = Depends(get_db),
 ):
     """
-    Get full action timeline for a lead.
+    Get FULL timeline for a lead: actions + tasks + appointments + project.
 
-    Returns all actions in chronological order with rep names.
-
-    Args:
-        lead_id: ID of the lead
-        current_user: Current authenticated user
-        db: Database session
-
-    Returns:
-        List of action entries with timestamps
+    This is the single source of truth for what happened with a lead.
     """
     lead = db.query(Lead).filter(Lead.id == lead_id).first()
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
 
-    # Check authorization - reps only see their own leads
     if current_user.role == "rep" and lead.assigned_rep_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not authorized to view this lead's timeline",
         )
 
+    # Actions (main timeline)
     actions = (
         db.query(Action)
         .filter(Action.lead_id == lead_id)
@@ -594,6 +587,7 @@ def get_lead_timeline(
         rep = db.query(User).filter(User.id == action.rep_id).first() if action.rep_id else None
         timeline.append({
             "id": action.id,
+            "entry_type": "action",
             "action_type": action.action_type,
             "rep_id": action.rep_id,
             "rep_name": rep.full_name if rep else None,
@@ -602,4 +596,84 @@ def get_lead_timeline(
             "created_at": action.created_at.isoformat() if action.created_at else None,
         })
 
-    return {"lead_id": lead_id, "timeline": timeline}
+    # Tasks
+    tasks = db.query(Task).filter(Task.lead_id == lead_id).all()
+    task_list = []
+    for t in tasks:
+        assignee = db.query(User).filter(User.id == t.assigned_to).first()
+        task_list.append({
+            "id": t.id,
+            "task_type": t.task_type,
+            "title": t.title,
+            "status": t.status,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "assigned_to": t.assigned_to,
+            "assignee_name": assignee.full_name if assignee else None,
+            "source_outcome": t.source_outcome,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+        })
+
+    # Appointments
+    appointments = db.query(Appointment).filter(Appointment.lead_id == lead_id).all()
+    appt_list = []
+    for a in appointments:
+        rep = db.query(User).filter(User.id == a.assigned_rep_id).first()
+        appt_list.append({
+            "id": a.id,
+            "date": a.appointment_date.isoformat() if a.appointment_date else None,
+            "time": a.appointment_time.isoformat() if a.appointment_time else None,
+            "status": a.appointment_status,
+            "outcome": a.outcome,
+            "rep_name": rep.full_name if rep else None,
+        })
+
+    # Project (if exists)
+    project = db.query(Project).filter(Project.lead_id == lead_id).first()
+    project_data = None
+    if project:
+        project_data = {
+            "id": project.id,
+            "install_status": project.install_status,
+            "funding_status": project.funding_status,
+            "payment_status": project.payment_status,
+            "deal_value": project.deal_value,
+            "sold_date": project.sold_date.isoformat() if project.sold_date else None,
+        }
+
+    # Open tasks check
+    open_tasks = check_open_tasks(db, lead_id)
+
+    # Ownership
+    ownership = {
+        "setter": None,
+        "runner": None,
+        "closer": None,
+        "rehash_rep": None,
+    }
+    if lead.setter_id:
+        setter = db.query(User).filter(User.id == lead.setter_id).first()
+        ownership["setter"] = setter.full_name if setter else None
+    if lead.runner_id:
+        runner = db.query(User).filter(User.id == lead.runner_id).first()
+        ownership["runner"] = runner.full_name if runner else None
+    if lead.closer_id:
+        closer = db.query(User).filter(User.id == lead.closer_id).first()
+        ownership["closer"] = closer.full_name if closer else None
+    if lead.rehash_rep_id:
+        rehash = db.query(User).filter(User.id == lead.rehash_rep_id).first()
+        ownership["rehash_rep"] = rehash.full_name if rehash else None
+
+    return {
+        "lead_id": lead_id,
+        "lead_name": f"{lead.first_name} {lead.last_name}",
+        "deal_status": lead.deal_status,
+        "is_held": lead.is_held,
+        "last_outcome": lead.last_outcome,
+        "timeline": timeline,
+        "tasks": task_list,
+        "appointments": appt_list,
+        "project": project_data,
+        "open_tasks_count": len(open_tasks),
+        "has_open_tasks": len(open_tasks) > 0,
+        "ownership": ownership,
+    }

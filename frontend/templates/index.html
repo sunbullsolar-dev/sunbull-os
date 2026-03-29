@@ -1911,6 +1911,8 @@
         function RepDashboard({ user, navigate }) {
             const [leads, setLeads] = useState([]);
             const [appointments, setAppointments] = useState([]);
+            const [tasks, setTasks] = useState([]);
+            const [taskSummary, setTaskSummary] = useState({ pending: 0, overdue: 0, due_today: 0, total_open: 0 });
             const [loading, setLoading] = useState(true);
             const [actionLoading, setActionLoading] = useState(null); // appt id being actioned
             const [completeModal, setCompleteModal] = useState(null); // appt being completed
@@ -1919,6 +1921,9 @@
             const [followUpDate, setFollowUpDate] = useState('');
             const [followUpNote, setFollowUpNote] = useState('');
             const [actionError, setActionError] = useState(null);
+            const [taskCompleteId, setTaskCompleteId] = useState(null);
+            const [taskCompleteNotes, setTaskCompleteNotes] = useState('');
+            const [showTasks, setShowTasks] = useState(true);
 
             // Outcomes that require follow-up date
             const REQUIRES_FOLLOW_UP = ['proposal_presented', 'proposal_sent', 'follow_up_required', 'not_home', 'reschedule_requested'];
@@ -1928,14 +1933,37 @@
                 Promise.all([
                     api.get('/api/leads'),
                     api.get('/api/appointments'),
-                ]).then(([leadData, apptData]) => {
+                    api.get('/api/tasks'),
+                    api.get('/api/tasks/summary'),
+                ]).then(([leadData, apptData, taskData, summaryData]) => {
                     setLeads(Array.isArray(leadData) ? leadData : []);
                     setAppointments(Array.isArray(apptData) ? apptData : []);
+                    setTasks(Array.isArray(taskData) ? taskData : []);
+                    if (summaryData && typeof summaryData === 'object') setTaskSummary(summaryData);
                     setLoading(false);
                 }).catch(() => setLoading(false));
             };
 
             useEffect(() => { loadData(); }, []);
+
+            // === TASK COMPLETION ===
+            const doCompleteTask = async (taskId) => {
+                if (!taskCompleteNotes.trim()) { setActionError('Completion notes required'); return; }
+                setActionLoading('task-' + taskId);
+                try {
+                    const token = window.authToken;
+                    const res = await fetch(`/api/tasks/${taskId}/complete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(token && { 'Authorization': `Bearer ${token}` }) },
+                        body: JSON.stringify({ completion_notes: taskCompleteNotes })
+                    });
+                    if (!res.ok) { const d = await res.json(); setActionError(d.detail || 'Failed'); setActionLoading(null); return; }
+                    setTaskCompleteId(null);
+                    setTaskCompleteNotes('');
+                    loadData();
+                } catch(e) { setActionError('Network error'); }
+                setActionLoading(null);
+            };
 
             // === EXECUTION FLOW ACTIONS ===
             const doAction = async (apptId, action) => {
@@ -2041,27 +2069,73 @@
             const activeAppts = appointments.filter(a => !['completed','no_show','cancelled','rescheduled'].includes(a.appointment_status));
             const doneAppts = appointments.filter(a => ['completed','no_show','cancelled','rescheduled'].includes(a.appointment_status));
 
+            const openTasks = tasks.filter(t => t.status === 'pending' || t.status === 'overdue');
+            const overdueTasks = tasks.filter(t => t.status === 'overdue');
+            const dueTodayTasks = openTasks.filter(t => {
+                if (!t.due_date) return false;
+                const d = new Date(t.due_date);
+                const now = new Date();
+                return d.toDateString() === now.toDateString();
+            });
+
+            const taskTypeIcon = (type) => {
+                const icons = { follow_up: '\u{1F4DE}', rehash: '\u{1F504}', reschedule: '\u{1F4C5}', install_coordination: '\u{1F3D7}', admin: '\u{2699}' };
+                return icons[type] || '\u{1F4CB}';
+            };
+
+            const taskStatusColor = (s) => {
+                if (s === 'overdue') return 'bg-red-100 text-red-700 border-red-300';
+                if (s === 'completed') return 'bg-green-100 text-green-700 border-green-300';
+                return 'bg-amber-100 text-amber-700 border-amber-300';
+            };
+
             return (
                 <div className="p-4 space-y-4">
                     {/* Header stats */}
                     <div className="bg-gradient-to-r from-amber-400 to-orange-400 text-white rounded-xl p-6">
                         <div className="text-sm opacity-90">Welcome back,</div>
                         <div className="text-2xl font-bold">{user?.full_name || 'Rep'}</div>
-                        <div className="grid grid-cols-3 gap-2 mt-4 text-center text-sm">
+                        <div className="grid grid-cols-4 gap-2 mt-4 text-center text-sm">
                             <div>
                                 <div className="text-2xl font-bold">{activeAppts.length}</div>
                                 <div className="opacity-90">Active</div>
                             </div>
                             <div>
                                 <div className="text-2xl font-bold">{totalLeads}</div>
-                                <div className="opacity-90">My Leads</div>
+                                <div className="opacity-90">Leads</div>
                             </div>
                             <div>
                                 <div className="text-2xl font-bold">{closedWon}</div>
                                 <div className="opacity-90">Closed</div>
                             </div>
+                            <div>
+                                <div className={`text-2xl font-bold ${taskSummary.overdue > 0 ? 'text-red-200' : ''}`}>{taskSummary.total_open}</div>
+                                <div className="opacity-90">Tasks</div>
+                            </div>
                         </div>
                     </div>
+
+                    {/* OVERDUE ALERT — cannot be dismissed, must be addressed */}
+                    {overdueTasks.length > 0 && (
+                        <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 animate-pulse-slow">
+                            <div className="flex items-center gap-2 mb-2">
+                                <span className="text-red-600 font-bold text-sm">\u26A0\uFE0F {overdueTasks.length} OVERDUE TASK{overdueTasks.length > 1 ? 'S' : ''}</span>
+                            </div>
+                            {overdueTasks.map(t => (
+                                <div key={t.id} className="flex items-center justify-between text-sm py-1 border-t border-red-100">
+                                    <span className="text-red-700 font-medium">{taskTypeIcon(t.task_type)} {t.title}</span>
+                                    <span className="text-red-500 text-xs">Due: {t.due_date ? new Date(t.due_date).toLocaleDateString() : '—'}</span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* DUE TODAY ALERT */}
+                    {dueTodayTasks.length > 0 && overdueTasks.length === 0 && (
+                        <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
+                            <span className="text-amber-700 font-bold text-sm">\u{1F514} {dueTodayTasks.length} task{dueTodayTasks.length > 1 ? 's' : ''} due today</span>
+                        </div>
+                    )}
 
                     {/* Error banner */}
                     {actionError && (
@@ -2069,6 +2143,63 @@
                             <span>{actionError}</span>
                             <button onClick={() => setActionError(null)} className="text-red-400 hover:text-red-600 font-bold">&times;</button>
                         </div>
+                    )}
+
+                    {/* TASK PANEL */}
+                    {openTasks.length > 0 && (
+                        <>
+                            <div className="flex items-center justify-between">
+                                <h2 className="text-lg font-bold solar-dark-text">My Tasks</h2>
+                                <button onClick={() => setShowTasks(!showTasks)} className="text-xs text-gray-500 hover:text-gray-700">
+                                    {showTasks ? 'Hide' : 'Show'} ({openTasks.length})
+                                </button>
+                            </div>
+                            {showTasks && (
+                                <div className="space-y-2">
+                                    {openTasks.map(t => (
+                                        <div key={t.id} className={`bg-white rounded-xl shadow border-l-4 p-3 ${t.status === 'overdue' ? 'border-red-400' : 'border-amber-400'}`}>
+                                            <div className="flex items-start justify-between">
+                                                <div className="flex-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        <span>{taskTypeIcon(t.task_type)}</span>
+                                                        <span className="font-semibold text-sm text-gray-900">{t.title}</span>
+                                                    </div>
+                                                    {t.description && <div className="text-xs text-gray-500 mt-0.5">{t.description}</div>}
+                                                    <div className="flex items-center gap-2 mt-1">
+                                                        <span className="text-xs text-gray-400">Due: {t.due_date ? new Date(t.due_date).toLocaleDateString() : '—'}</span>
+                                                        {t.lead_name && <span className="text-xs text-blue-600">{t.lead_name}</span>}
+                                                    </div>
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${taskStatusColor(t.status)}`}>
+                                                    {t.status}
+                                                </span>
+                                            </div>
+                                            {taskCompleteId === t.id ? (
+                                                <div className="mt-2 space-y-2">
+                                                    <textarea value={taskCompleteNotes} onChange={e => setTaskCompleteNotes(e.target.value)}
+                                                        placeholder="What did you do? (required)"
+                                                        rows={2} className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm resize-none" />
+                                                    <div className="flex gap-2">
+                                                        <button onClick={() => { setTaskCompleteId(null); setTaskCompleteNotes(''); }}
+                                                            className="flex-1 border border-gray-200 text-gray-600 font-semibold py-1.5 rounded-lg text-xs hover:bg-gray-50">Cancel</button>
+                                                        <button onClick={() => doCompleteTask(t.id)}
+                                                            disabled={actionLoading === 'task-' + t.id}
+                                                            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-bold py-1.5 rounded-lg text-xs disabled:opacity-50">
+                                                            {actionLoading === 'task-' + t.id ? 'Saving...' : 'Mark Done'}
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <button onClick={() => { setTaskCompleteId(t.id); setTaskCompleteNotes(''); setActionError(null); }}
+                                                    className="mt-2 w-full bg-gray-50 hover:bg-gray-100 text-gray-700 font-semibold py-1.5 rounded-lg text-xs border border-gray-200">
+                                                    Complete Task
+                                                </button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {/* Active Appointments with Execution Flow */}
@@ -2267,6 +2398,20 @@
                                     rows={2}
                                     className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm mb-3 resize-none"
                                 />
+
+                                {/* OUTCOME ENFORCEMENT — show what happens next */}
+                                <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 mb-3 text-xs text-blue-800">
+                                    <span className="font-bold">Next action: </span>
+                                    {outcome === 'closed' && 'Project record will be created. Site survey task auto-assigned.'}
+                                    {outcome === 'proposal_presented' && 'Follow-up task auto-created (24h). You must follow up.'}
+                                    {outcome === 'proposal_sent' && 'Follow-up task auto-created (48h). You must follow up.'}
+                                    {outcome === 'follow_up_required' && 'Follow-up task will be created with your specified date.'}
+                                    {outcome === 'declined' && 'Lead moves to rehash queue. Rehash task auto-created (14 days).'}
+                                    {outcome === 'no_show' && 'Lead quality reduced. Rehash task auto-created (7 days).'}
+                                    {outcome === 'not_home' && 'Reschedule task auto-created. You must reschedule.'}
+                                    {outcome === 'reschedule_requested' && 'Reschedule task auto-created. You must reschedule.'}
+                                    {outcome === 'canceled' && 'Appointment marked cancelled. No follow-up task.'}
+                                </div>
 
                                 {/* Follow-up fields — shown only when required */}
                                 {needsFollowUp && (

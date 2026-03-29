@@ -8,9 +8,10 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models import (
     Lead, User, Appointment, Deal, Commission, AuditLog,
-    AccountabilityFlag, InstallerProfile,
+    AccountabilityFlag, InstallerProfile, Task, Project,
 )
 from app.auth import get_current_user, require_role, hash_password
+from services.outcome_engine import mark_overdue_tasks
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -678,3 +679,71 @@ def get_held_metrics(
             ],
         },
     }
+
+
+# ── Task Management (Admin View) ─────────────────────────────
+@router.get("/tasks")
+def admin_tasks(
+    status_filter: Optional[str] = Query(None),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin view of all tasks across all reps. Auto-marks overdue."""
+    mark_overdue_tasks(db)
+
+    query = db.query(Task)
+    if status_filter:
+        query = query.filter(Task.status == status_filter)
+
+    tasks = query.order_by(Task.due_date.asc()).all()
+
+    result = []
+    for t in tasks:
+        lead = db.query(Lead).filter(Lead.id == t.lead_id).first()
+        assignee = db.query(User).filter(User.id == t.assigned_to).first()
+        result.append({
+            "id": t.id,
+            "lead_id": t.lead_id,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else None,
+            "assigned_to": t.assigned_to,
+            "assignee_name": assignee.full_name if assignee else None,
+            "task_type": t.task_type,
+            "title": t.title,
+            "status": t.status,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+            "source_outcome": t.source_outcome,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            "created_at": t.created_at.isoformat() if t.created_at else None,
+        })
+
+    return result
+
+
+# ── Project Pipeline (Admin View) ────────────────────────────
+@router.get("/projects")
+def admin_projects(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin view of all post-sale projects. Shows install pipeline."""
+    projects = db.query(Project).order_by(Project.created_at.desc()).all()
+
+    result = []
+    for p in projects:
+        lead = db.query(Lead).filter(Lead.id == p.lead_id).first()
+        closer = db.query(User).filter(User.id == p.closer_id).first()
+        result.append({
+            "id": p.id,
+            "lead_id": p.lead_id,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else None,
+            "closer_name": closer.full_name if closer else None,
+            "system_size_kw": p.system_size_kw,
+            "deal_value": p.deal_value,
+            "install_status": p.install_status,
+            "funding_status": p.funding_status,
+            "payment_status": p.payment_status,
+            "sold_date": p.sold_date.isoformat() if p.sold_date else None,
+            "created_at": p.created_at.isoformat() if p.created_at else None,
+        })
+
+    return result
