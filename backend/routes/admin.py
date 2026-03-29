@@ -10,7 +10,7 @@ from app.models import (
     Lead, User, Appointment, Deal, Commission, AuditLog,
     AccountabilityFlag, InstallerProfile,
 )
-from app.auth import get_current_user, require_role
+from app.auth import get_current_user, require_role, hash_password
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -322,6 +322,49 @@ def get_fraud_flags(
         "skip": skip,
         "limit": limit,
         "flags": flag_data,
+    }
+
+
+class CreateRepRequest(BaseModel):
+    email: str
+    password: str
+    full_name: str
+    phone: Optional[str] = None
+    territory: Optional[str] = None
+
+
+@router.post("/reps")
+def create_rep(
+    rep_data: CreateRepRequest,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Create a new rep user. Admin only."""
+    existing = db.query(User).filter(User.email == rep_data.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Email already in use")
+
+    new_rep = User(
+        email=rep_data.email,
+        hashed_password=hash_password(rep_data.password),
+        full_name=rep_data.full_name,
+        role="rep",
+        phone=rep_data.phone,
+        territory=rep_data.territory,
+        is_active=True,
+    )
+    db.add(new_rep)
+    db.commit()
+    db.refresh(new_rep)
+
+    return {
+        "id": new_rep.id,
+        "email": new_rep.email,
+        "full_name": new_rep.full_name,
+        "role": new_rep.role,
+        "phone": new_rep.phone,
+        "territory": new_rep.territory,
+        "is_active": new_rep.is_active,
     }
 
 
