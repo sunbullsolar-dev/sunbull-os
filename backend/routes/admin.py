@@ -8,10 +8,11 @@ from sqlalchemy import func
 from app.database import get_db
 from app.models import (
     Lead, User, Appointment, Deal, Commission, AuditLog,
-    AccountabilityFlag, InstallerProfile, Task, Project,
+    AccountabilityFlag, InstallerProfile, Task, Project, Violation,
 )
 from app.auth import get_current_user, require_role, hash_password
 from services.outcome_engine import mark_overdue_tasks
+from services.enforcement_engine import get_enforcement_overview, run_enforcement_check
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -747,3 +748,73 @@ def admin_projects(
         })
 
     return result
+
+
+# ============================================================================
+# ENFORCEMENT OVERVIEW (ADMIN)
+# ============================================================================
+
+@router.get("/enforcement")
+def admin_enforcement_overview(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """
+    Admin enforcement dashboard.
+    Shows per-rep: overdue tasks, violations, held rate, close rate.
+    Global: total overdue, total violations, reps in red.
+    """
+    return get_enforcement_overview(db)
+
+
+@router.get("/violations")
+def admin_violations(
+    rep_id: Optional[int] = Query(None),
+    violation_type: Optional[str] = Query(None),
+    acknowledged: Optional[bool] = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin: list all violations with filters."""
+    run_enforcement_check(db)
+
+    query = db.query(Violation)
+    if rep_id:
+        query = query.filter(Violation.rep_id == rep_id)
+    if violation_type:
+        query = query.filter(Violation.violation_type == violation_type)
+    if acknowledged is not None:
+        query = query.filter(Violation.acknowledged == acknowledged)
+
+    total = query.count()
+    violations = (
+        query.order_by(Violation.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+
+    result = []
+    for v in violations:
+        rep = db.query(User).filter(User.id == v.rep_id).first()
+        lead = db.query(Lead).filter(Lead.id == v.lead_id).first() if v.lead_id else None
+        result.append({
+            "id": v.id,
+            "rep_id": v.rep_id,
+            "rep_name": rep.full_name if rep else None,
+            "violation_type": v.violation_type,
+            "severity": v.severity,
+            "description": v.description,
+            "lead_id": v.lead_id,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else None,
+            "task_id": v.task_id,
+            "appointment_id": v.appointment_id,
+            "acknowledged": v.acknowledged,
+            "acknowledged_by": v.acknowledged_by,
+            "admin_notes": v.admin_notes,
+            "created_at": v.created_at.isoformat() if v.created_at else None,
+        })
+
+    return {"total": total, "violations": result}

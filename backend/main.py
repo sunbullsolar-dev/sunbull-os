@@ -21,7 +21,7 @@ from app.models import (
     LeadOwnershipHistory, FollowUp, Deal, Commission,
     InstallerProfile, AutomationRule, Notification,
     AccountabilityFlag, RehashEntry, BillAnalysis, WebsitePage,
-    Action, Task, Project,
+    Action, Task, Project, Violation,
     UserRole, LeadStatus, LeadSource, AppointmentStatus,
     DealStage, CommissionStatus, SolarEstimate,
 )
