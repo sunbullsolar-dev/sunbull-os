@@ -75,6 +75,16 @@ def startup_event():
         # Only seed if no admin exists
         admin_user = db.query(User).filter(User.email == "sunbullsolar@gmail.com").first()
         if admin_user:
+            from app.auth import hash_password as _hp, verify_password as _vp
+
+            # Always re-hash admin password to guarantee login works
+            if not _vp("admin123", admin_user.hashed_password):
+                admin_user.hashed_password = _hp("admin123")
+                db.commit()
+                print("Fixed admin password hash.")
+            else:
+                print("Admin password hash OK.")
+
             # Fix any reps with close_rate=0 (from earlier seed)
             import random as _rand
             zero_reps = db.query(User).filter(User.role == "rep", User.close_rate == 0.0).all()
