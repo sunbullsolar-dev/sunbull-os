@@ -2079,8 +2079,8 @@
             });
 
             const taskTypeIcon = (type) => {
-                const icons = { follow_up: '\u{1F4DE}', rehash: '\u{1F504}', reschedule: '\u{1F4C5}', install_coordination: '\u{1F3D7}', admin: '\u{2699}' };
-                return icons[type] || '\u{1F4CB}';
+                const icons = { follow_up: '📞', rehash: '🔄', reschedule: '📅', install_coordination: '🏗', admin: '⚙' };
+                return icons[type] || '📋';
             };
 
             const taskStatusColor = (s) => {
@@ -2119,7 +2119,7 @@
                     {overdueTasks.length > 0 && (
                         <div className="bg-red-50 border-2 border-red-300 rounded-xl p-4 animate-pulse-slow">
                             <div className="flex items-center gap-2 mb-2">
-                                <span className="text-red-600 font-bold text-sm">\u26A0\uFE0F {overdueTasks.length} OVERDUE TASK{overdueTasks.length > 1 ? 'S' : ''}</span>
+                                <span className="text-red-600 font-bold text-sm">⚠️ {overdueTasks.length} OVERDUE TASK{overdueTasks.length > 1 ? 'S' : ''}</span>
                             </div>
                             {overdueTasks.map(t => (
                                 <div key={t.id} className="flex items-center justify-between text-sm py-1 border-t border-red-100">
@@ -2133,7 +2133,7 @@
                     {/* DUE TODAY ALERT */}
                     {dueTodayTasks.length > 0 && overdueTasks.length === 0 && (
                         <div className="bg-amber-50 border border-amber-300 rounded-xl p-3">
-                            <span className="text-amber-700 font-bold text-sm">\u{1F514} {dueTodayTasks.length} task{dueTodayTasks.length > 1 ? 's' : ''} due today</span>
+                            <span className="text-amber-700 font-bold text-sm">🔔 {dueTodayTasks.length} task{dueTodayTasks.length > 1 ? 's' : ''} due today</span>
                         </div>
                     )}
 
