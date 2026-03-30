@@ -379,26 +379,27 @@ function DashboardPage(){
                     {(()=>{
                         const now=new Date();
                         const nowMs=now.getTime();
-                        // Priority 1: Appointment within 60 min
-                        const soonAppt=todayAppts.filter(a=>!["completed","no_show","cancelled"].includes(a.appointment_status)).find(a=>{
+                        // Priority 1 (HIGHEST): Active live appointment — rep is en_route or arrived
+                        const liveAppt=todayAppts.find(a=>["en_route","arrived"].includes(a.appointment_status));
+                        // Priority 2: Appointment starting within 60 min
+                        const soonAppt=!liveAppt&&todayAppts.filter(a=>!["completed","no_show","cancelled","en_route","arrived"].includes(a.appointment_status)).find(a=>{
                             if(!a.appointment_time)return false;
                             const[hh,mm]=(a.appointment_time||"").split(":").map(Number);
                             const apptMs=new Date(now.getFullYear(),now.getMonth(),now.getDate(),hh||0,mm||0).getTime();
                             return apptMs-nowMs>0&&apptMs-nowMs<3600000;
                         });
-                        // Priority 2: Active live appt
-                        const liveAppt=todayAppts.find(a=>["en_route","arrived"].includes(a.appointment_status));
-                        // Priority 3: Overdue follow-up
+                        // Priority 3: Overdue task
+                        // Priority 4: Follow-up due
                         const overdueFU=fuTasks.length>0?fuTasks[0]:null;
-                        // Priority 4: High-value lead
+                        // Priority 5: High-value lead
                         const hvLead=repLeads.length>0?repLeads[0]:null;
 
                         let action=null;
                         if(liveAppt){
                             const isArr=liveAppt.appointment_status==="arrived";
-                            action={label:"LIVE APPOINTMENT",sub:`${liveAppt.lead_name||"Lead"} — ${isArr?"Complete Now":"Mark Arrived"}`,color:"#22c55e",icon:IC.zap,btn:isArr?"COMPLETE":"ARRIVED",act:()=>isArr?nav(`/dispatch?complete=${liveAppt.id}`):null};
+                            action={label:"LIVE APPOINTMENT",sub:`${liveAppt.lead_name||"Lead"} — ${isArr?"Submit Outcome Now":"Mark Arrived"}`,color:"#22c55e",icon:IC.zap,btn:isArr?"COMPLETE":"MARK ARRIVED",act:isArr?()=>nav(`/dispatch?complete=${liveAppt.id}`):()=>nav("/dispatch")};
                         }else if(soonAppt){
-                            const minsAway=Math.max(0,Math.round(((()=>{const[h,m]=(soonAppt.appointment_time||"").split(":").map(Number);return new Date(now.getFullYear(),now.getMonth(),now.getDate(),h||0,m||0).getTime()})()-nowMs)/60000));
+                            const minsAway=Math.max(1,Math.round(((()=>{const[h,m]=(soonAppt.appointment_time||"").split(":").map(Number);return new Date(now.getFullYear(),now.getMonth(),now.getDate(),h||0,m||0).getTime()})()-nowMs)/60000));
                             action={label:`APPOINTMENT IN ${minsAway} MIN`,sub:`${soonAppt.lead_name||"Lead"} — ${$.t12(soonAppt.appointment_time)}`,color:"#f59e0b",icon:IC.clock,btn:"GO TO DISPATCH",act:()=>nav("/dispatch")};
                         }else if(overdue.length>0){
                             action={label:"OVERDUE TASK",sub:overdue[0].title,color:"#ef4444",icon:IC.alert,btn:"FIX NOW",act:()=>nav("/tasks")};
@@ -417,22 +418,7 @@ function DashboardPage(){
                             </div>
                         );
                     })()}
-                    {/* ACTIVE APPOINTMENT BANNER */}
-                    {(() => {
-                        const activeAppt = todayAppts.find(a => ["en_route", "arrived"].includes(a.appointment_status));
-                        if (!activeAppt) return null;
-                        const isArrived = activeAppt.appointment_status === "arrived";
-                        const nextAction = isArrived ? "COMPLETE" : "MARK ARRIVED";
-                        return (
-                            <div style={{background: isArrived ? "#22c55e" : "#f59e0b", padding: "20px 24px", borderRadius: 12, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16}}>
-                                <div>
-                                    <div style={{fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: isArrived ? "#15803d" : "#78350f", marginBottom: 4}}>YOU ARE LIVE ON AN APPOINTMENT</div>
-                                    <div style={{fontSize: 16, fontWeight: 900, color: isArrived ? "#16a34a" : "#ca8a04"}}>{activeAppt.lead_name || `Lead #${activeAppt.lead_id}`}</div>
-                                </div>
-                                <button className="btn" style={{background: isArrived ? "#16a34a" : "#ca8a04", color: "#fff", fontWeight: 900, padding: "12px 20px", fontSize: 13}} onClick={() => nav(`/dispatch?complete=${activeAppt.id}`)}>{nextAction}</button>
-                            </div>
-                        );
-                    })()}
+                    {/* Active appointment indicator merged into Next Action Engine above */}
                     {/* SECTION 2: TODAY'S APPOINTMENTS — big action cards */}
                     {todayAppts.length>0&&(
                         <div style={{marginBottom:20}}>
@@ -721,6 +707,7 @@ function RepApptCard({a,onDone}){
                 <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:900,color:"#f59e0b"}}>{$.t12(a.appointment_time)}</div><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
             </div>
             <div style={{display:"flex",gap:6}}>
+                {(a.lead_phone||a.phone)&&<a href={`tel:${a.lead_phone||a.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"12px 14px",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:4}}><Ic d={IC.phone} s={13} c="#22c55e"/>CALL</button></a>}
                 {a.appointment_status==="scheduled"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"confirmed")}>CONFIRM</button>}
                 {a.appointment_status==="confirmed"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"en_route")}>START EN ROUTE</button>}
                 {a.appointment_status==="en_route"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"arrived")}>MARK ARRIVED</button>}
@@ -1086,8 +1073,8 @@ function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete,onAss
 
 // ===== COMPLETION MODAL (OUTCOME ENGINE UI) =====
 function CompleteModal({appt,lead,onClose,onDone}){
-    const{af}=useA();const toast=useT();
-    const[outcome,setOC]=useState("");const[notes,setN]=useState("");const[fuDate,setFD]=useState("");const[fuNote,setFN]=useState("");const[busy,setBsy]=useState(false);const[showPressure,setSP]=useState(false);
+    const{af,user}=useA();const toast=useT();
+    const[outcome,setOC]=useState("");const[notes,setN]=useState("");const[fuDate,setFD]=useState("");const[fuNote,setFN]=useState("");const[busy,setBsy]=useState(false);const[showPressure,setSP]=useState(false);const[rankInfo,setRankInfo]=useState(null);
 
     const HELD=["closed","proposal_presented","proposal_sent","follow_up_required","declined"];
     const NOT_HELD=["no_show","not_home","canceled","reschedule_requested"];
@@ -1101,17 +1088,18 @@ function CompleteModal({appt,lead,onClose,onDone}){
         setBsy(true);
         try{
             const r=await af(`/api/appointments/${appt.id}/complete`,{method:"POST",body:JSON.stringify({outcome,notes,follow_up_date:fuDate||null,follow_up_note:fuNote||null})});
-            if(r.ok){toast("ok","Outcome recorded!");setSP(true)}
+            if(r.ok){toast("ok","Outcome recorded!");try{const lr=await af("/api/admin/leaderboard");if(lr.ok){const ld=await lr.json();const me=ld.leaderboard?.find(x=>x.rep_id===user?.id);const above=me&&ld.leaderboard?.find(x=>x.rank===me.rank-1);setRankInfo({rank:me?.rank,total:ld.total_reps,above:above?.name,aboveScore:above?.daily_score,myScore:me?.daily_score})}}catch{}setSP(true)}
             else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}
         }catch{toast("err","Error")}
         setBsy(false);
     };
 
-    const requiredCount = (outcome ? 1 : 0) + (notes.trim() ? 1 : 0) + (NEEDS_FU.includes(outcome) && fuDate && fuNote.trim() ? 1 : 0);
-    const totalRequired = 3;
+    const needsFU=NEEDS_FU.includes(outcome);
+    const totalRequired = needsFU ? 3 : 2;
+    const requiredCount = (outcome ? 1 : 0) + (notes.trim() ? 1 : 0) + (needsFU ? (fuDate && fuNote.trim() ? 1 : 0) : 0);
 
     return(
-        <div className="modal-ov" onClick={e=>!showPressure&&e.stopPropagation()}><div className="modal" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:600,minHeight:'60vh'}}>
+        <div className="modal-ov" onClick={e=>e.preventDefault()} style={{cursor:"not-allowed"}}><div className="modal" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:600,minHeight:'60vh',cursor:"default"}}>
             {showPressure ? (
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
                     {outcome === "closed" && <div style={{fontSize:48,fontWeight:900,color:"#22c55e",marginBottom:16}}>DEAL CLOSED! 🔥</div>}
@@ -1119,15 +1107,20 @@ function CompleteModal({appt,lead,onClose,onDone}){
                     <div style={{fontSize:36,fontWeight:900,color:"#f59e0b",marginBottom:24}}>{$.money((lead?.average_monthly_bill||200)*12*20*0.6)}</div>
                     <div style={{fontSize:14,fontWeight:700,color:"#52525b",marginBottom:4}}>Estimated Commission</div>
                     <div style={{fontSize:28,fontWeight:900,color:"#22c55e",marginBottom:32}}>{$.money(((lead?.average_monthly_bill||200)*12*20*0.6)*0.08)}</div>
+                    {rankInfo&&rankInfo.rank&&<div style={{background:"#18181b",borderRadius:10,padding:16,marginBottom:20,width:"100%",maxWidth:320}}>
+                        <div style={{fontSize:24,fontWeight:900,color:rankInfo.rank<=3?"#f59e0b":"#a1a1aa",marginBottom:4}}>Rank #{rankInfo.rank} <span style={{fontSize:12,color:"#3f3f46"}}>of {rankInfo.total}</span></div>
+                        {rankInfo.above&&<div style={{fontSize:13,color:"#f59e0b",fontWeight:700}}>{rankInfo.rank>1?`${rankInfo.above} is #${rankInfo.rank-1} — keep closing to pass them!`:"You're #1!"}</div>}
+                    </div>}
                     <div style={{fontSize:15,fontWeight:700,color:"#71717a",marginBottom:24,fontStyle:"italic"}}>Keep pushing — every appointment counts!</div>
                     <button className="btn btn-p" style={{padding:"14px 28px",fontSize:14,fontWeight:800}} onClick={onDone}>Back to Dashboard</button>
                 </div>
             ) : (
                 <>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
                         <div><h3 style={{fontSize:16,fontWeight:800}}>Complete Appointment</h3>{lead&&<div style={{fontSize:12,color:"#52525b"}}>{lead.first_name} {lead.last_name}{lead.phone&&<> &middot; <a href={`tel:${lead.phone}`} style={{color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a></>}</div>}</div>
-                        <div style={{cursor:"pointer",opacity:(outcome&&notes.trim())?1:0.3}} onClick={()=>{if(outcome&&notes.trim()&&(!NEEDS_FU.includes(outcome)||(fuDate&&fuNote.trim())))onClose()}}><Ic d={IC.x}/></div>
+                        <div style={{cursor:requiredCount>=totalRequired?"pointer":"not-allowed",opacity:requiredCount>=totalRequired?1:0.2}} onClick={()=>{if(requiredCount>=totalRequired)onClose()}}><Ic d={IC.x}/></div>
                     </div>
+                    {requiredCount<totalRequired&&<div style={{fontSize:10,color:"#ef4444",fontWeight:700,marginBottom:12,textAlign:"right"}}>Complete all required fields to close</div>}
                     {/* PROGRESS INDICATOR */}
                     <div style={{marginBottom:16,padding:12,background:"#18181b",borderRadius:8}}>
                         <div style={{fontSize:10,fontWeight:700,color:"#52525b",marginBottom:6}}>Required Fields</div>
