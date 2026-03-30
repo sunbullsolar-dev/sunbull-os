@@ -171,7 +171,7 @@ def list_appointments(
 
     if current_user.role == "rep":
         query = query.filter(Appointment.assigned_rep_id == current_user.id)
-    elif assigned_rep_id:
+    elif current_user.role == "admin" and assigned_rep_id:
         query = query.filter(Appointment.assigned_rep_id == assigned_rep_id)
 
     if appointment_status:

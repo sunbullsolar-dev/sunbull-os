@@ -67,12 +67,19 @@ def process_outcome(
     if not appointment:
         raise OutcomeError("Appointment not found", 404)
 
-    if current_user.id != appointment.assigned_rep_id:
+    if current_user.role != "admin" and current_user.id != appointment.assigned_rep_id:
         raise OutcomeError("Not your appointment", 403)
 
-    if appointment.appointment_status != "arrived":
+    # Block double-complete — if outcome already set, reject
+    if appointment.outcome is not None:
         raise OutcomeError(
-            f"Cannot complete from '{appointment.appointment_status}'. Must be arrived.",
+            f"Appointment already completed with outcome '{appointment.outcome}'. Cannot complete again.",
+            400,
+        )
+
+    if appointment.appointment_status not in ("arrived", "en_route"):
+        raise OutcomeError(
+            f"Cannot complete from '{appointment.appointment_status}'. Must be arrived or en_route.",
             400,
         )
 
@@ -104,6 +111,8 @@ def process_outcome(
             fu_date = datetime.strptime(follow_up_date, "%Y-%m-%d")
         except ValueError:
             raise OutcomeError("follow_up_date must be YYYY-MM-DD format", 400)
+        if fu_date.date() < datetime.utcnow().date():
+            raise OutcomeError("follow_up_date must be today or in the future", 400)
 
     # ── 2. DETERMINE HELD/NOT-HELD ───────────────────────────────
     is_held = outcome in HELD_OUTCOMES
@@ -129,6 +138,8 @@ def process_outcome(
 
     # ── 4. UPDATE LEAD ───────────────────────────────────────────
     lead = db.query(Lead).filter(Lead.id == appointment.lead_id).first()
+    if not lead:
+        raise OutcomeError(f"Lead #{appointment.lead_id} not found for this appointment", 404)
     tasks_created = []
     project_created = None
 
@@ -186,38 +197,42 @@ def process_outcome(
 
         # === CLOSED (SIGNED) → Create PROJECT ===
         if outcome == "closed":
-            project = Project(
-                lead_id=lead.id,
-                appointment_id=appointment.id,
-                closer_id=current_user.id,
-                system_size_kw=lead.system_size_kw,
-                panel_count=lead.panel_count,
-                deal_value=lead.deal_value,
-                install_status="pending_survey",
-                funding_status="pending",
-                payment_status="pending",
-                sold_date=datetime.utcnow(),
-            )
-            db.add(project)
-            db.flush()
-            project_created = project.id
+            existing_project = db.query(Project).filter(Project.lead_id == lead.id).first()
+            if existing_project:
+                project_created = existing_project.id
+            else:
+                project = Project(
+                    lead_id=lead.id,
+                    appointment_id=appointment.id,
+                    closer_id=current_user.id,
+                    system_size_kw=lead.system_size_kw,
+                    panel_count=lead.panel_count,
+                    deal_value=lead.deal_value,
+                    install_status="pending_survey",
+                    funding_status="pending",
+                    payment_status="pending",
+                    sold_date=datetime.utcnow(),
+                )
+                db.add(project)
+                db.flush()
+                project_created = project.id
 
-            # Create admin task: schedule site survey
-            survey_task = Task(
-                lead_id=lead.id,
-                appointment_id=appointment.id,
-                assigned_to=current_user.id,  # Initially assigned to closer
-                created_by=current_user.id,
-                task_type="install_coordination",
-                title=f"Schedule site survey — {lead.first_name} {lead.last_name}",
-                description=f"Deal closed. Schedule site survey for {lead.property_address}.",
-                due_date=datetime.utcnow() + timedelta(days=3),
-                status="pending",
-                source_outcome="closed",
-                notes=notes,
-            )
-            db.add(survey_task)
-            tasks_created.append("install_coordination: Schedule site survey")
+                # Create admin task: schedule site survey
+                survey_task = Task(
+                    lead_id=lead.id,
+                    appointment_id=appointment.id,
+                    assigned_to=current_user.id,  # Initially assigned to closer
+                    created_by=current_user.id,
+                    task_type="install_coordination",
+                    title=f"Schedule site survey — {lead.first_name} {lead.last_name}",
+                    description=f"Deal closed. Schedule site survey for {lead.property_address}.",
+                    due_date=datetime.utcnow() + timedelta(days=3),
+                    status="pending",
+                    source_outcome="closed",
+                    notes=notes,
+                )
+                db.add(survey_task)
+                tasks_created.append("install_coordination: Schedule site survey")
 
         # === PROPOSAL PRESENTED → Follow-up in 24h ===
         elif outcome == "proposal_presented":

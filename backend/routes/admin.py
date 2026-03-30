@@ -946,16 +946,24 @@ def admin_force_outcome(
     appt.appointment_status = "completed"
     appt.notes = f"[ADMIN OVERRIDE] {data.notes}"
 
-    # Update lead
+    # Update lead — mirror outcome_engine logic
     lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
     if lead:
         held_outcomes = {"closed", "proposal_presented", "proposal_sent", "follow_up_required", "declined"}
         lead.is_held = data.outcome in held_outcomes
         lead.last_outcome = data.outcome
-        if data.outcome == "closed":
-            lead.deal_status = "closed_won"
-        elif data.outcome == "declined":
-            lead.deal_status = "closed_lost"
+        status_map = {
+            "closed": "closed_won", "proposal_presented": "proposal_sent",
+            "proposal_sent": "proposal_sent", "follow_up_required": "follow_up",
+            "declined": "closed_lost", "no_show": "no_show",
+            "not_home": "reschedule", "canceled": "canceled",
+            "reschedule_requested": "reschedule",
+        }
+        if data.outcome in status_map:
+            lead.deal_status = status_map[data.outcome]
+        # Handle follow-up flag
+        fu_outcomes = {"proposal_presented", "proposal_sent", "follow_up_required", "not_home", "reschedule_requested"}
+        lead.follow_up_required = data.outcome in fu_outcomes
 
     from services.audit import create_audit_log
     create_audit_log(
@@ -1080,7 +1088,11 @@ def admin_check_lead_lock(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Check if a lead is locked due to pending tasks."""
+    """Check if a lead is locked due to pending tasks. Reps can only check their assigned leads."""
+    if current_user.role == "rep":
+        lead = db.query(Lead).filter(Lead.id == lead_id).first()
+        if not lead or lead.assigned_rep_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Not your lead")
     from services.enforcement_engine import check_lead_locked
     return check_lead_locked(db, lead_id)
 
@@ -1117,7 +1129,9 @@ def admin_rep_priority_leads(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Get top priority leads for a specific rep."""
+    """Get top priority leads for a specific rep. Reps can only view their own."""
+    if current_user.role == "rep" and current_user.id != rep_id:
+        raise HTTPException(status_code=403, detail="Cannot view other reps' priority leads")
     from services.phase3_engines import get_rep_top_leads
     return {"leads": get_rep_top_leads(db, rep_id, limit)}
 

@@ -174,6 +174,23 @@ def complete_task(
     task.completed_at = datetime.utcnow()
     task.completion_notes = data.completion_notes
 
+    # Update lead lock status — check if lead has remaining open tasks
+    lead_unlocked = None
+    if task.lead_id:
+        remaining = (
+            db.query(Task)
+            .filter(
+                Task.lead_id == task.lead_id,
+                Task.id != task.id,
+                Task.status.in_(["pending", "overdue"]),
+            )
+            .count()
+        )
+        lead = db.query(Lead).filter(Lead.id == task.lead_id).first()
+        if lead:
+            lead.is_locked = remaining > 0
+            lead_unlocked = remaining == 0
+
     db.commit()
     db.refresh(task)
 
@@ -182,6 +199,7 @@ def complete_task(
         "status": task.status,
         "completed_at": task.completed_at.isoformat(),
         "completion_notes": task.completion_notes,
+        "lead_unlocked": lead_unlocked,
     }
 
 

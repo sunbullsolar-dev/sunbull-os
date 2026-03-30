@@ -60,6 +60,7 @@
             .modal{width:95%;max-height:90vh;overflow-y:auto}
             .tr{font-size:11px}
             .ph-title{font-size:16px}
+            .cd{overflow-x:auto}
         }
         @media(max-width:480px){
             .sb{width:0;display:none}.mc{margin-left:0}
@@ -143,8 +144,8 @@ function Login(){
     const{login}=useA();const[e,sE]=useState("");const[p,sP]=useState("");const[err,sErr]=useState("");const[busy,sB]=useState(false);
     const go=async ev=>{ev.preventDefault();sErr("");sB(true);try{await login(e,p);nav("/dashboard")}catch{sErr("Invalid credentials")}sB(false)};
     return(
-        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <div style={{width:360,background:"#111113",border:"1px solid #1e1e21",borderRadius:16,padding:"36px 28px"}}>
+        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
+            <div style={{width:"100%",maxWidth:360,background:"#111113",border:"1px solid #1e1e21",borderRadius:16,padding:"36px 28px"}}>
                 <div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:26,fontWeight:900}}><span style={{color:"#f59e0b"}}>Sunbull</span> OS</div><div style={{color:"#52525b",fontSize:12,marginTop:3}}>Command Center</div></div>
                 <form onSubmit={go}>
                     <div style={{marginBottom:14}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Email</label><input className="inp" type="email" value={e} onChange={x=>sE(x.target.value)} required/></div>
@@ -417,7 +418,7 @@ function DashboardPage(){
                     </div>
                 )}
                 {/* 3-Column Layout */}
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
                     {/* LEFT: Dispatch + Reassignment */}
                     <div>
                         <SH title="Dispatch Board" count={todayAppts.length}/>
@@ -790,7 +791,7 @@ function LeadsPage(){
             <div style={{padding:"14px 24px"}}>
                 <div style={{display:"flex",gap:8,marginBottom:12}}>
                     <div style={{position:"relative",flex:1,maxWidth:280}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search..." value={search} onChange={e=>sSrch(e.target.value)}/></div>
-                    <select className="inp" style={{width:150}} value={sf} onChange={e=>sSF(e.target.value)}><option value="">All</option>{statuses.map(s=><option key={s} value={s}>{sL(s)}</option>)}</select>
+                    <select className="inp" style={{maxWidth:150,minWidth:100}} value={sf} onChange={e=>sSF(e.target.value)}><option value="">All</option>{statuses.map(s=><option key={s} value={s}>{sL(s)}</option>)}</select>
                     <button className="btn" onClick={loadLeads}><Ic d={IC.refresh} s={12}/></button>
                 </div>
                 <div className="cd" style={{overflow:"hidden"}}>
