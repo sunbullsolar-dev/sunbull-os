@@ -116,6 +116,20 @@ def fix_geo_columns():
         results.append(f"Verified {len(verified)} leads with geo in DB")
         if verified:
             results.append(str(verified[:3]))
+    # Also check ORM vs raw SQL
+    db = SessionLocal()
+    try:
+        orm_lead = db.query(Lead).filter(Lead.city == "Phoenix").first()
+        if orm_lead:
+            results.append(f"ORM Lead {orm_lead.id}: city={orm_lead.city}, geo_lat={orm_lead.geo_lat}")
+            # Try raw SQL on same lead
+            from sqlalchemy import text as _t2
+            raw = db.execute(_t2(f"SELECT geo_lat, geo_lng FROM leads WHERE id = {orm_lead.id}")).first()
+            results.append(f"Raw SQL same lead: geo_lat={raw[0] if raw else 'N/A'}")
+    except Exception as e:
+        results.append(f"ORM check error: {e}")
+    finally:
+        db.close()
     return {"results": results}
 
 
