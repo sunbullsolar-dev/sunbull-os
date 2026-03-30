@@ -229,9 +229,16 @@ def get_rep_calendar(
         .all()
     )
 
+    # Batch load leads to avoid N+1
+    lead_ids = list({a.lead_id for a in appointments if a.lead_id})
+    leads_map = {}
+    if lead_ids:
+        leads_list = db.query(Lead).filter(Lead.id.in_(lead_ids)).all()
+        leads_map = {l.id: l for l in leads_list}
+
     calendar_data = []
     for appt in appointments:
-        lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
+        lead = leads_map.get(appt.lead_id)
         calendar_data.append({
             "id": appt.id,
             "lead_id": appt.lead_id,
@@ -340,6 +347,20 @@ def update_appointment_status(
         raise HTTPException(status_code=400, detail=f"Invalid status: {new_status}")
 
     old_status = appointment.appointment_status
+
+    # Prevent backward status transitions — only forward moves allowed
+    # Terminal states cannot be changed by reps
+    terminal = {"completed", "no_show", "cancelled", "rescheduled"}
+    if old_status in terminal and current_user.role != "admin":
+        raise HTTPException(status_code=400, detail=f"Cannot change status from '{old_status}' — appointment is finalized")
+
+    # Enforce forward-only flow for reps
+    if current_user.role == "rep" and old_status in REP_FLOW_ORDER and new_status in REP_FLOW_ORDER:
+        old_idx = REP_FLOW_ORDER.index(old_status)
+        new_idx = REP_FLOW_ORDER.index(new_status)
+        if new_idx < old_idx:
+            raise HTTPException(status_code=400, detail=f"Cannot move backward from '{old_status}' to '{new_status}'")
+
     appointment.appointment_status = new_status
 
     # Update lead status to mirror appointment status where appropriate

@@ -78,10 +78,22 @@ def list_tasks(
 
     tasks = query.order_by(Task.due_date.asc()).all()
 
+    # Batch load leads and assignees to avoid N+1
+    lead_ids = list({t.lead_id for t in tasks if t.lead_id})
+    assignee_ids = list({t.assigned_to for t in tasks if t.assigned_to})
+    leads_map = {}
+    assignees_map = {}
+    if lead_ids:
+        leads_list = db.query(Lead).filter(Lead.id.in_(lead_ids)).all()
+        leads_map = {l.id: l for l in leads_list}
+    if assignee_ids:
+        assignees_list = db.query(User).filter(User.id.in_(assignee_ids)).all()
+        assignees_map = {u.id: u for u in assignees_list}
+
     result = []
     for task in tasks:
-        lead = db.query(Lead).filter(Lead.id == task.lead_id).first()
-        assignee = db.query(User).filter(User.id == task.assigned_to).first()
+        lead = leads_map.get(task.lead_id)
+        assignee = assignees_map.get(task.assigned_to)
         result.append({
             "id": task.id,
             "lead_id": task.lead_id,
@@ -218,6 +230,8 @@ def reassign_task(
     rep = db.query(User).filter(User.id == rep_id).first()
     if not rep:
         raise HTTPException(status_code=404, detail="Rep not found")
+    if not rep.is_active:
+        raise HTTPException(status_code=400, detail="Cannot assign to inactive rep")
 
     old_assignee = task.assigned_to
     task.assigned_to = rep_id

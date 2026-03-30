@@ -384,7 +384,7 @@ function DashboardPage(){
                                             <div style={{width:22,height:22,borderRadius:"50%",background:r.rank===1?"#f59e0b28":r.rank<=3?"#22c55e18":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:r.rank===1?"#f59e0b":"#71717a"}}>{r.rank}</div>
                                             <span style={{fontSize:12,fontWeight:r.rep_id===user?.id?800:600}}>{r.name}{r.rep_id===user?.id?" (You)":""}</span>
                                         </div>
-                                        <div style={{display:"flex",gap:12,fontSize:11}}><span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span><span style={{fontWeight:800}}>{r.daily_score}</span></div>
+                                        <div style={{display:"flex",gap:12,fontSize:11}}><span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate!=null?r.close_rate:0}%</span><span style={{fontWeight:800}}>{r.daily_score!=null?r.daily_score:0}</span></div>
                                     </div>
                                 ))}
                             </div>
@@ -449,7 +449,7 @@ function DashboardPage(){
                 )}
                 {/* METRICS */}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
-                    <KPI l="Close Rate" v={`${d?.close_rate?.toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/><KPI l="Held Rate" v={`${d?.held_rate?.toFixed(1)}%`} t={d?.held_rate>50?"ok":"warn"}/><KPI l="Leads" v={d?.total_leads}/><KPI l="Won" v={d?.closed_won_leads} t="ok"/><KPI l="Overdue" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/><KPI l="Violations" v={d?.active_violations||0} t={(d?.active_violations||0)>0?"hot":null}/><KPI l="Appts Today" v={todayAppts.length} t="warn"/>
+                    <KPI l="Close Rate" v={`${(d?.close_rate||0).toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/><KPI l="Held Rate" v={`${(d?.held_rate||0).toFixed(1)}%`} t={d?.held_rate>50?"ok":"warn"}/><KPI l="Leads" v={d?.total_leads}/><KPI l="Won" v={d?.closed_won_leads} t="ok"/><KPI l="Overdue" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/><KPI l="Violations" v={d?.active_violations||0} t={(d?.active_violations||0)>0?"hot":null}/><KPI l="Appts Today" v={todayAppts.length} t="warn"/>
                 </div>
                 {/* TOP LEADS TO CLOSE */}
                 {topLeads.length>0&&(
@@ -556,8 +556,8 @@ function DashboardPage(){
                                                 <span style={{fontSize:12,fontWeight:700}}>{r.name}</span>
                                             </div>
                                             <div style={{display:"flex",gap:8,fontSize:10,alignItems:"center"}}>
-                                                <span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span>
-                                                <span style={{fontWeight:800}}>{r.daily_score}</span>
+                                                <span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate!=null?r.close_rate:0}%</span>
+                                                <span style={{fontWeight:800}}>{r.daily_score!=null?r.daily_score:0}</span>
                                                 {r.active_violations>0&&<span className="badge b-red" style={{fontSize:8}}>{r.active_violations}v</span>}
                                             </div>
                                         </div>
@@ -686,8 +686,8 @@ function DispatchPage(){
                                             <div><div style={{fontWeight:700,fontSize:13}}>{r.rep_name}</div><div style={{fontSize:10,color:"#52525b"}}>{r.email}</div></div>
                                         </div>
                                         <div style={{display:"flex",gap:10,textAlign:"center"}}>
-                                            <div><div style={{fontSize:12,fontWeight:800,color:"#22c55e"}}>{r.close_rate}%</div><div style={{fontSize:8,color:"#3f3f46"}}>CLOSE</div></div>
-                                            <div><div style={{fontSize:12,fontWeight:800,color:"#3b82f6"}}>{r.held_rate}%</div><div style={{fontSize:8,color:"#3f3f46"}}>HELD</div></div>
+                                            <div><div style={{fontSize:12,fontWeight:800,color:"#22c55e"}}>{r.close_rate!=null?r.close_rate:0}%</div><div style={{fontSize:8,color:"#3f3f46"}}>CLOSE</div></div>
+                                            <div><div style={{fontSize:12,fontWeight:800,color:"#3b82f6"}}>{r.held_rate!=null?r.held_rate:0}%</div><div style={{fontSize:8,color:"#3f3f46"}}>HELD</div></div>
                                             <div><div style={{fontSize:12,fontWeight:800}}>{r.active_leads}</div><div style={{fontSize:8,color:"#3f3f46"}}>LEADS</div></div>
                                             <div><div style={{fontSize:12,fontWeight:800,color:r.violations>0?"#ef4444":"inherit"}}>{r.violations}</div><div style={{fontSize:8,color:"#3f3f46"}}>VIOL</div></div>
                                             <div><div style={{fontSize:12,fontWeight:800}}>{r.score}</div><div style={{fontSize:8,color:"#3f3f46"}}>SCORE</div></div>
@@ -765,7 +765,7 @@ function CompleteModal({appt,lead,onClose,onDone}){
     return(
         <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                <div><h3 style={{fontSize:16,fontWeight:800}}>Complete Appointment</h3>{lead&&<div style={{fontSize:12,color:"#52525b"}}>{lead.first_name} {lead.last_name} &middot; {lead.phone}</div>}</div>
+                <div><h3 style={{fontSize:16,fontWeight:800}}>Complete Appointment</h3>{lead&&<div style={{fontSize:12,color:"#52525b"}}>{lead.first_name} {lead.last_name}{lead.phone&&<> &middot; <a href={`tel:${lead.phone}`} style={{color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a></>}</div>}</div>
                 <div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div>
             </div>
             {/* HELD Outcomes */}
@@ -792,7 +792,7 @@ function CompleteModal({appt,lead,onClose,onDone}){
                 <div style={{background:"#f59e0b08",border:"1px solid #f59e0b30",borderRadius:8,padding:12,marginBottom:14}}>
                     <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",marginBottom:8,textTransform:"uppercase"}}>Follow-up Required</div>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                        <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Date</label><input className="inp" type="date" value={fuDate} onChange={e=>setFD(e.target.value)}/></div>
+                        <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Date</label><input className="inp" type="date" min={new Date().toISOString().split("T")[0]} value={fuDate} onChange={e=>setFD(e.target.value)}/></div>
                         <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Note</label><input className="inp" value={fuNote} onChange={e=>setFN(e.target.value)} placeholder="Follow-up details"/></div>
                     </div>
                 </div>
@@ -819,7 +819,7 @@ function LeadsPage(){
     const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}};
 
     const filtered=useMemo(()=>leads.filter(l=>{
-        const ms=!search||`${l.first_name} ${l.last_name} ${l.city} ${l.phone} ${l.email||""}`.toLowerCase().includes(search.toLowerCase());
+        const ms=!search||`${l.first_name||""} ${l.last_name||""} ${l.city||""} ${l.phone||""} ${l.email||""}`.toLowerCase().includes(search.toLowerCase());
         const mf=!sf||l.deal_status===sf;return ms&&mf;
     }),[leads,search,sf]);
     const statuses=[...new Set(leads.map(l=>l.deal_status).filter(Boolean))].sort();
@@ -842,7 +842,7 @@ function LeadsPage(){
                     {filtered.length===0&&<div style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No leads</div>}
                     {filtered.map(l=>(
                         <div key={l.id} className="tr" style={{gridTemplateColumns:"2fr 1.2fr .8fr .7fr 1fr .5fr"}} onClick={()=>sSel(l)}>
-                            <div><div style={{fontWeight:700,fontSize:13}}>{l.first_name} {l.last_name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.phone}</div></div>
+                            <div><div style={{fontWeight:700,fontSize:13}}>{l.first_name} {l.last_name}</div>{l.phone&&<div style={{fontSize:10}}><a href={`tel:${l.phone}`} style={{color:"#52525b",textDecoration:"none"}} onClick={e=>e.stopPropagation()}>{l.phone}</a></div>}</div>
                             <div style={{fontSize:12,color:"#71717a"}}>{l.city}, {l.state}</div>
                             <div style={{fontWeight:700,color:"#f59e0b",fontSize:13}}>{$.money(l.average_monthly_bill)}</div>
                             <div>{l.lead_quality_score>0&&<span className="badge" style={{background:sC(l.lead_quality_score)+"18",color:sC(l.lead_quality_score)}}>{l.lead_quality_score}</span>}</div>
@@ -907,7 +907,7 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
                 {/* OVERVIEW */}
                 {tab==="overview"&&(
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                        <DF l="Phone" v={lead.phone}/><DF l="Email" v={lead.email}/>
+                        <div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Phone</div>{lead.phone?<a href={`tel:${lead.phone}`} style={{fontSize:12,fontWeight:600,color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a>:<div style={{fontSize:12,fontWeight:600,color:"#a1a1aa"}}>--</div>}</div><DF l="Email" v={lead.email}/>
                         <DF l="Address" v={lead.property_address}/><DF l="City/State" v={`${lead.city}, ${lead.state} ${lead.zip_code}`}/>
                         <DF l="Monthly Bill" v={$.money(lead.average_monthly_bill)} c="#f59e0b"/><DF l="Annual kWh" v={lead.estimated_annual_kwh}/>
                         <DF l="Source" v={sL(lead.source_type)}/><DF l="Property" v={sL(lead.property_type)}/>
@@ -974,9 +974,11 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
                 {/* OWNERSHIP */}
                 {tab==="ownership"&&(
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                        <DF l="Setter" v={lead.setter_id?`Rep #${lead.setter_id}`:"--"}/><DF l="Runner" v={lead.runner_id?`Rep #${lead.runner_id}`:"--"}/>
-                        <DF l="Closer" v={lead.closer_id?`Rep #${lead.closer_id}`:"--"}/><DF l="Assigned Rep" v={lead.assigned_rep_id?`Rep #${lead.assigned_rep_id}`:"Unassigned"}/>
-                        <DF l="Rehash Rep" v={lead.rehash_rep_id?`Rep #${lead.rehash_rep_id}`:"--"}/>
+                        {(()=>{const rn=id=>{if(!id)return"--";const r=reps.find(x=>x.id===id);return r?r.full_name:`Rep #${id}`};return<>
+                        <DF l="Setter" v={rn(lead.setter_id)}/><DF l="Runner" v={rn(lead.runner_id)}/>
+                        <DF l="Closer" v={rn(lead.closer_id)}/><DF l="Assigned Rep" v={lead.assigned_rep_id?rn(lead.assigned_rep_id):"Unassigned"}/>
+                        <DF l="Rehash Rep" v={rn(lead.rehash_rep_id)}/>
+                        </>})()}
                         {user?.role==="admin"&&reps.length>0&&(
                             <div style={{gridColumn:"span 2",marginTop:8}}>
                                 <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Reassign</div>
