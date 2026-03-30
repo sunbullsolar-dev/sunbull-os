@@ -36,6 +36,7 @@ class ConfirmationQueueResponse(BaseModel):
     first_name: str
     last_name: str
     phone: str
+    email: Optional[str] = None
     property_address: str
     city: str
     state: str
@@ -43,6 +44,17 @@ class ConfirmationQueueResponse(BaseModel):
     lead_quality_score: int
     confirmation_attempts_count: int
     last_confirmation_attempt_at: Optional[datetime]
+    appointment_date: Optional[date] = None
+    appointment_time: Optional[time] = None
+    appointment_type: Optional[str] = None
+    zoom_email: Optional[str] = None
+    recording_url: Optional[str] = None
+    telemarketing_summary: Optional[str] = None
+    submitted_by_name: Optional[str] = None
+    submission_source: Optional[str] = None
+    confirmation_status: Optional[str] = None
+    notes: Optional[str] = None
+    deal_status: Optional[str] = None
 
 
 class LeadCreateForConfirmation(BaseModel):
@@ -150,11 +162,11 @@ def get_confirmation_queue(
             detail="Only confirmation and admin users can access this resource",
         )
 
-    # Get appointments in confirming status
+    # Get appointments needing confirmation (pending or confirming)
     appointments = (
         db.query(Appointment)
-        .filter(Appointment.confirmation_status == "confirming")
-        .order_by(Appointment.created_at.asc())
+        .filter(Appointment.confirmation_status.in_(["pending", "confirming"]))
+        .order_by(Appointment.appointment_date.asc(), Appointment.appointment_time.asc())
         .all()
     )
 
@@ -162,6 +174,16 @@ def get_confirmation_queue(
     for appt in appointments:
         lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
         if lead:
+            # Get latest confirmation attempts for notes
+            latest_attempts = (
+                db.query(ConfirmationAttempt)
+                .filter(ConfirmationAttempt.appointment_id == appt.id)
+                .order_by(ConfirmationAttempt.created_at.desc())
+                .limit(5)
+                .all()
+            )
+            latest_notes = "; ".join([a.notes for a in latest_attempts if a.notes]) if latest_attempts else None
+
             queue.append(
                 {
                     "appointment_id": appt.id,
@@ -169,13 +191,25 @@ def get_confirmation_queue(
                     "first_name": lead.first_name,
                     "last_name": lead.last_name,
                     "phone": lead.phone,
+                    "email": lead.email,
                     "property_address": lead.property_address,
                     "city": lead.city,
                     "state": lead.state,
                     "average_monthly_bill": lead.average_monthly_bill,
-                    "lead_quality_score": lead.lead_quality_score,
+                    "lead_quality_score": lead.lead_quality_score or 0,
                     "confirmation_attempts_count": appt.confirmation_attempts_count or 0,
                     "last_confirmation_attempt_at": appt.last_confirmation_attempt_at,
+                    "appointment_date": appt.appointment_date,
+                    "appointment_time": appt.appointment_time,
+                    "appointment_type": getattr(appt, "appointment_type", "in_person"),
+                    "zoom_email": getattr(appt, "zoom_email", None),
+                    "recording_url": getattr(appt, "recording_url", None),
+                    "telemarketing_summary": getattr(appt, "telemarketing_summary", None),
+                    "submitted_by_name": getattr(appt, "submitted_by_name", None),
+                    "submission_source": getattr(appt, "submission_source", None),
+                    "confirmation_status": appt.confirmation_status,
+                    "notes": latest_notes or appt.notes,
+                    "deal_status": lead.deal_status,
                 }
             )
 
@@ -605,26 +639,47 @@ def log_confirmation_attempt_enhanced(
     appointment.confirmation_attempts_count = (appointment.confirmation_attempts_count or 0) + 1
     appointment.last_confirmation_attempt_at = datetime.utcnow()
 
-    # Handle outcome
-    if attempt_data.outcome == "confirmed":
+    # Handle outcome - real operational flow
+    outcome = attempt_data.outcome
+    if outcome == "confirmed":
         appointment.confirmation_status = "confirmed"
         appointment.confirmed_by_user_id = current_user.id
+        appointment.dispatch_status = "pending"
         if lead:
-            lead.deal_status = "confirmed"
-    elif attempt_data.outcome == "no_answer":
+            lead.deal_status = "dispatch_ready"
+    elif outcome == "no_answer":
         appointment.confirmation_status = "confirming"
-        # Auto-schedule reschedule request if too many attempts
         if appointment.confirmation_attempts_count >= 3:
             appointment.confirmation_status = "reschedule_requested"
-    elif attempt_data.outcome == "reschedule_requested":
-        appointment.confirmation_status = "reschedule_requested"
-        # Store reschedule date in appointment_date if provided
+    elif outcome in ("rescheduled", "reschedule_requested"):
+        appointment.confirmation_status = "rescheduled"
+        appointment.appointment_status = "rescheduled"
         if attempt_data.next_callback_date:
             appointment.appointment_date = attempt_data.next_callback_date
-    elif attempt_data.outcome == "not_interested":
+        if lead:
+            lead.deal_status = "reschedule"
+    elif outcome == "not_interested":
         appointment.confirmation_status = "unconfirmed"
         if lead:
-            lead.deal_status = "closed_lost"
+            lead.deal_status = "rehash"
+    elif outcome == "needs_time":
+        appointment.confirmation_status = "confirming"
+        if lead:
+            lead.deal_status = "rehash"
+    elif outcome == "dnc":
+        appointment.confirmation_status = "unconfirmed"
+        appointment.appointment_status = "cancelled"
+        if lead:
+            lead.deal_status = "dead"
+    elif outcome == "follow_up_later":
+        appointment.confirmation_status = "confirming"
+        if lead:
+            lead.deal_status = "follow_up"
+            if attempt_data.next_callback_date:
+                lead.next_follow_up_date = datetime.combine(attempt_data.next_callback_date, datetime.min.time())
+                lead.follow_up_required = True
+    elif outcome == "voicemail":
+        appointment.confirmation_status = "confirming"
 
     db.add(appointment)
     if lead:

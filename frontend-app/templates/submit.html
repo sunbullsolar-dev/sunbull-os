@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunbull Solar — Submit Appointment</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{background:#09090b;color:#e4e4e7;font-family:'Inter',sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+        .container{width:100%;max-width:560px}
+        .logo{text-align:center;margin-bottom:24px}
+        .logo h1{font-size:22px;font-weight:900;color:#f59e0b}
+        .logo p{font-size:12px;color:#52525b;margin-top:4px}
+        .card{background:#18181b;border:1px solid #27272a;border-radius:12px;padding:24px;margin-bottom:16px}
+        .card h2{font-size:15px;font-weight:800;margin-bottom:16px;color:#e4e4e7}
+        .row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+        .full{grid-column:span 2}
+        label{display:block;font-size:10px;font-weight:800;color:#52525b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px}
+        input,select,textarea{width:100%;background:#09090b;border:1px solid #27272a;border-radius:6px;color:#e4e4e7;font-size:13px;padding:10px 12px;font-family:'Inter',sans-serif;outline:none;transition:border .2s}
+        input:focus,select:focus,textarea:focus{border-color:#f59e0b}
+        input::placeholder,textarea::placeholder{color:#3f3f46}
+        select{cursor:pointer}
+        textarea{resize:vertical;min-height:80px}
+        .required::after{content:" *";color:#ef4444}
+        .btn{display:block;width:100%;background:#f59e0b;color:#09090b;border:none;border-radius:8px;padding:14px;font-size:15px;font-weight:800;cursor:pointer;font-family:'Inter',sans-serif;transition:background .2s}
+        .btn:hover{background:#d97706}
+        .btn:disabled{background:#52525b;color:#71717a;cursor:not-allowed}
+        .success{background:#052e16;border:1px solid #166534;border-radius:12px;padding:24px;text-align:center}
+        .success h2{color:#22c55e;font-size:18px;font-weight:800;margin-bottom:8px}
+        .success p{color:#4ade80;font-size:13px}
+        .error{background:#450a0a;border:1px solid #7f1d1d;border-radius:8px;padding:10px 14px;font-size:12px;color:#ef4444;margin-bottom:12px}
+        .zoom-fields{display:none}
+        .zoom-fields.show{display:block}
+        .source-bar{display:flex;gap:6px;margin-bottom:16px}
+        .source-btn{flex:1;padding:10px;background:#09090b;border:1px solid #27272a;border-radius:6px;color:#71717a;font-size:11px;font-weight:700;cursor:pointer;text-align:center;transition:all .2s}
+        .source-btn.active{border-color:#f59e0b;color:#f59e0b;background:#1c1917}
+        .ts{text-align:center;font-size:10px;color:#3f3f46;margin-top:12px}
+    </style>
+</head>
+<body>
+<div class="container" id="app">
+    <div class="logo">
+        <h1>☀ SUNBULL SOLAR</h1>
+        <p>Appointment Submission Form</p>
+    </div>
+
+    <div id="form-view">
+        <!-- Source Selection -->
+        <div class="card">
+            <h2>I am a...</h2>
+            <div class="source-bar">
+                <div class="source-btn active" data-source="telemarketing" onclick="setSource(this)">Telemarketer</div>
+                <div class="source-btn" data-source="canvasser" onclick="setSource(this)">Canvasser</div>
+                <div class="source-btn" data-source="admin" onclick="setSource(this)">Admin</div>
+            </div>
+            <div>
+                <label>Your Name</label>
+                <input type="text" id="submitted_by_name" placeholder="Your full name">
+            </div>
+        </div>
+
+        <!-- Homeowner Info -->
+        <div class="card">
+            <h2>Homeowner Information</h2>
+            <div class="row">
+                <div><label class="required">First Name</label><input type="text" id="first_name" placeholder="First name"></div>
+                <div><label class="required">Last Name</label><input type="text" id="last_name" placeholder="Last name"></div>
+            </div>
+            <div class="row">
+                <div class="full"><label class="required">Home Address</label><input type="text" id="property_address" placeholder="123 Main St"></div>
+            </div>
+            <div class="row">
+                <div><label>City</label><input type="text" id="city" placeholder="City"></div>
+                <div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                        <div><label>State</label><select id="state"><option>CA</option><option>TX</option><option>AZ</option><option>FL</option><option>NV</option><option>CO</option><option>NM</option><option>UT</option></select></div>
+                        <div><label>ZIP</label><input type="text" id="zip_code" placeholder="ZIP"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="row">
+                <div><label class="required">Phone Number</label><input type="tel" id="phone" placeholder="(555) 123-4567"></div>
+                <div><label>Email</label><input type="email" id="email" placeholder="email@example.com"></div>
+            </div>
+            <div>
+                <label>Monthly Electric Bill</label>
+                <input type="number" id="average_monthly_bill" placeholder="$250">
+            </div>
+        </div>
+
+        <!-- Appointment Details -->
+        <div class="card">
+            <h2>Appointment Details</h2>
+            <div class="row">
+                <div><label class="required">Date</label><input type="date" id="appointment_date"></div>
+                <div><label class="required">Time</label><input type="time" id="appointment_time"></div>
+            </div>
+            <div>
+                <label>Appointment Type</label>
+                <select id="appointment_type" onchange="toggleZoom()">
+                    <option value="in_person">In Person</option>
+                    <option value="zoom">Zoom</option>
+                    <option value="phone">Phone Call</option>
+                </select>
+            </div>
+            <div class="zoom-fields" id="zoom-fields" style="margin-top:10px">
+                <label>Zoom Email (for meeting link)</label>
+                <input type="email" id="zoom_email" placeholder="Their email for Zoom invite">
+            </div>
+        </div>
+
+        <!-- Recording & Notes -->
+        <div class="card">
+            <h2>Recording & Notes</h2>
+            <div style="margin-bottom:10px">
+                <label>Call Recording URL</label>
+                <input type="url" id="recording_url" placeholder="Paste recording link (optional)">
+            </div>
+            <div>
+                <label>Summary / Comments</label>
+                <textarea id="summary" placeholder="What was discussed? Homeowner's concerns, motivation, objections..."></textarea>
+            </div>
+        </div>
+
+        <div id="error-msg" class="error" style="display:none"></div>
+        <button class="btn" id="submit-btn" onclick="submitForm()">SUBMIT APPOINTMENT</button>
+        <div class="ts">Auto-timestamped on submission</div>
+    </div>
+
+    <div id="success-view" style="display:none">
+        <div class="success">
+            <h2>✓ APPOINTMENT SUBMITTED</h2>
+            <p id="success-msg">Lead and appointment created successfully.</p>
+            <p style="margin-top:12px;font-size:11px;color:#52525b">The confirmation team will take it from here.</p>
+        </div>
+        <button class="btn" style="margin-top:16px" onclick="resetForm()">SUBMIT ANOTHER</button>
+    </div>
+</div>
+
+<script>
+let currentSource = "telemarketing";
+
+function setSource(el) {
+    document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
+    el.classList.add('active');
+    currentSource = el.dataset.source;
+}
+
+function toggleZoom() {
+    const type = document.getElementById('appointment_type').value;
+    const zf = document.getElementById('zoom-fields');
+    zf.style.display = type === 'zoom' ? 'block' : 'none';
+}
+
+function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.style.display = 'block';
+    setTimeout(() => { el.style.display = 'none'; }, 5000);
+}
+
+async function submitForm() {
+    const btn = document.getElementById('submit-btn');
+    const get = id => document.getElementById(id).value.trim();
+
+    // Validate required fields
+    if (!get('first_name')) { showError('First name is required'); return; }
+    if (!get('last_name')) { showError('Last name is required'); return; }
+    if (!get('phone')) { showError('Phone number is required'); return; }
+    if (!get('property_address')) { showError('Home address is required'); return; }
+    if (!get('appointment_date')) { showError('Appointment date is required'); return; }
+    if (!get('appointment_time')) { showError('Appointment time is required'); return; }
+
+    btn.disabled = true;
+    btn.textContent = 'SUBMITTING...';
+
+    const payload = {
+        first_name: get('first_name'),
+        last_name: get('last_name'),
+        phone: get('phone'),
+        property_address: get('property_address'),
+        city: get('city'),
+        state: get('state'),
+        zip_code: get('zip_code'),
+        email: get('email') || null,
+        average_monthly_bill: parseFloat(get('average_monthly_bill')) || null,
+        appointment_date: get('appointment_date'),
+        appointment_time: get('appointment_time'),
+        appointment_type: get('appointment_type'),
+        zoom_email: get('zoom_email') || null,
+        recording_url: get('recording_url') || null,
+        summary: get('summary') || null,
+        submitted_by_name: get('submitted_by_name') || null,
+        source: currentSource,
+    };
+
+    try {
+        const res = await fetch('/api/leads/submit-appointment', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            document.getElementById('success-msg').textContent =
+                `Lead #${data.lead_id} created. Appointment #${data.appointment_id} scheduled for ${get('appointment_date')} at ${get('appointment_time')}.`;
+            document.getElementById('form-view').style.display = 'none';
+            document.getElementById('success-view').style.display = 'block';
+        } else {
+            const err = await res.json().catch(() => ({}));
+            showError(err.detail || 'Submission failed. Please try again.');
+        }
+    } catch (e) {
+        showError('Network error. Please check your connection.');
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'SUBMIT APPOINTMENT';
+}
+
+function resetForm() {
+    document.getElementById('form-view').style.display = 'block';
+    document.getElementById('success-view').style.display = 'none';
+    // Clear all inputs
+    document.querySelectorAll('input, textarea').forEach(el => {
+        if (el.type !== 'submit') el.value = '';
+    });
+    document.getElementById('state').value = 'CA';
+    document.getElementById('appointment_type').value = 'in_person';
+    toggleZoom();
+}
+
+// Set default date to tomorrow
+const tomorrow = new Date();
+tomorrow.setDate(tomorrow.getDate() + 1);
+document.getElementById('appointment_date').value = tomorrow.toISOString().split('T')[0];
+</script>
+</body>
+</html>

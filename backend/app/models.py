@@ -27,17 +27,26 @@ class UserRole(str, enum.Enum):
 
 
 class LeadStatus(str, enum.Enum):
-    NEW = "new"
+    # Real operational flow
+    SUBMITTED = "submitted"           # Appointment just submitted by TM/canvasser
+    NEW = "new"                       # Legacy / web leads without appointment
     QUALIFYING = "qualifying"
-    CONFIRMING = "confirming"
-    CONFIRMED = "confirmed"
+    CONFIRMING = "confirming"         # Confirmation team working it
+    CONFIRMED = "confirmed"           # Confirmed by homeowner
     UNCONFIRMED = "unconfirmed"
+    DISPATCH_READY = "dispatch_ready" # Ready for rep assignment + dispatch
+    ASSIGNED = "assigned"             # Rep assigned, awaiting acknowledgment
+    APPOINTED = "appointed"           # Legacy compatibility
     RESCHEDULE = "reschedule"
-    APPOINTED = "appointed"
-    CLOSED_WON = "closed_won"
-    CLOSED_LOST = "closed_lost"
-    FOLLOW_UP = "follow_up"
-    REHASH = "rehash"
+    EN_ROUTE = "en_route"             # Rep traveling
+    ARRIVED = "arrived"               # Rep on site
+    COMPLETED = "completed"           # Appointment done, outcome pending
+    CLOSED_WON = "closed_won"         # Sold
+    CLOSED_LOST = "closed_lost"       # Not sold
+    FOLLOW_UP = "follow_up"           # Needs follow-up
+    REHASH = "rehash"                 # Second attempt queue
+    DEAD = "dead"                     # Dead / DNC
+    DISPATCHED = "dispatched"         # Legacy compatibility
 
 
 class LeadSource(str, enum.Enum):
@@ -223,6 +232,19 @@ class Appointment(Base):
     actual_end_time = Column(DateTime)
     rep_checked_in_at = Column(DateTime)
     rep_checked_out_at = Column(DateTime)
+
+    # Appointment Type & Intake
+    appointment_type = Column(String(20), default="in_person")  # in_person, zoom, phone
+    zoom_email = Column(String(255))
+    telemarketing_summary = Column(Text)
+    recording_url = Column(String(500))
+    submitted_by_name = Column(String(255))  # canvasser/telemarketer name
+    submission_source = Column(String(30))  # telemarketing, canvasser, web, admin
+
+    # Dispatch
+    dispatch_status = Column(String(20), default="pending")  # pending, assigned, acknowledged, dispatched
+    backup_rep_id = Column(Integer, ForeignKey("users.id"))
+    rep_acknowledged_at = Column(DateTime)
 
     # Outcome
     outcome = Column(String(30))

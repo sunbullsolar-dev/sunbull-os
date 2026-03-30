@@ -751,6 +751,15 @@ async def register_page():
     return {"message": "Registration page not found."}
 
 
+@app.get("/submit")
+async def submit_appointment_page():
+    """Serve the public appointment submission form for telemarketing/canvassers."""
+    submit_file = frontend_app_path / "submit.html"
+    if submit_file.exists():
+        return FileResponse(submit_file)
+    return {"message": "Submission form not found."}
+
+
 @app.get("/health")
 def health_check():
     return {"status": "healthy", "service": "Sunbull OS"}

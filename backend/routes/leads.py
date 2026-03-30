@@ -164,6 +164,132 @@ def create_lead_public(
     return lead
 
 
+class AppointmentSubmission(BaseModel):
+    """Public appointment submission from telemarketing/canvassers."""
+    first_name: str
+    last_name: str
+    phone: str
+    property_address: str
+    city: str = ""
+    state: str = "CA"
+    zip_code: str = ""
+    email: Optional[str] = None
+    average_monthly_bill: Optional[float] = None
+    appointment_date: str  # YYYY-MM-DD
+    appointment_time: str  # HH:MM
+    appointment_type: str = "in_person"  # in_person, zoom, phone
+    zoom_email: Optional[str] = None
+    recording_url: Optional[str] = None
+    summary: Optional[str] = None
+    submitted_by_name: Optional[str] = None
+    source: str = "telemarketing"  # telemarketing, canvasser, web, admin
+
+
+@router.post("/submit-appointment")
+def submit_appointment_public(
+    data: AppointmentSubmission,
+    db: Session = Depends(get_db),
+):
+    """
+    Public appointment submission endpoint for telemarketing and canvassers.
+    No authentication required. Creates lead + appointment in one call.
+    Sets deal_status = 'submitted' and confirmation_status = 'pending'.
+    """
+    from datetime import date as date_type, time as time_type
+
+    # Check if lead already exists by phone
+    existing_lead = db.query(Lead).filter(Lead.phone == data.phone).first()
+
+    if existing_lead:
+        lead = existing_lead
+        # Update address if provided
+        if data.property_address:
+            lead.property_address = data.property_address
+        if data.city:
+            lead.city = data.city
+        if data.state:
+            lead.state = data.state
+        if data.zip_code:
+            lead.zip_code = data.zip_code
+        if data.average_monthly_bill:
+            lead.average_monthly_bill = data.average_monthly_bill
+    else:
+        quality_score = calculate_lead_score(
+            average_monthly_bill=data.average_monthly_bill,
+            city=data.city,
+            state=data.state,
+            confirmation_strength=0,
+        )
+        lead = Lead(
+            first_name=data.first_name,
+            last_name=data.last_name,
+            phone=data.phone,
+            email=data.email,
+            property_address=data.property_address,
+            city=data.city,
+            state=data.state,
+            zip_code=data.zip_code,
+            average_monthly_bill=data.average_monthly_bill,
+            source_type=data.source,
+            deal_status="submitted",
+            lead_quality_score=quality_score,
+            homeowner_status="owner",
+            property_type="single_family",
+        )
+        db.add(lead)
+        db.flush()
+
+    # Update lead status to submitted
+    lead.deal_status = "submitted"
+
+    # Parse date/time
+    try:
+        parts = data.appointment_date.split("-")
+        appt_date = date_type(int(parts[0]), int(parts[1]), int(parts[2]))
+        tparts = data.appointment_time.split(":")
+        appt_time = time_type(int(tparts[0]), int(tparts[1]))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid date or time format")
+
+    # Create appointment
+    appointment = Appointment(
+        lead_id=lead.id,
+        assigned_rep_id=1,  # Placeholder, will be assigned during dispatch
+        appointment_date=appt_date,
+        appointment_time=appt_time,
+        appointment_status="scheduled",
+        confirmation_status="pending",
+        appointment_address=data.property_address,
+        appointment_type=data.appointment_type,
+        zoom_email=data.zoom_email,
+        recording_url=data.recording_url,
+        telemarketing_summary=data.summary,
+        submitted_by_name=data.submitted_by_name,
+        submission_source=data.source,
+        dispatch_status="pending",
+    )
+    db.add(appointment)
+
+    # Log action
+    log_action(
+        db=db,
+        lead_id=lead.id,
+        action_type="created",
+        note=f"Appointment submitted via {data.source}" + (f" by {data.submitted_by_name}" if data.submitted_by_name else ""),
+    )
+
+    db.commit()
+    db.refresh(lead)
+    db.refresh(appointment)
+
+    return {
+        "ok": True,
+        "lead_id": lead.id,
+        "appointment_id": appointment.id,
+        "message": "Appointment submitted successfully",
+    }
+
+
 @router.post("", response_model=LeadResponse)
 def create_lead(
     lead_data: LeadCreate,

@@ -80,6 +80,8 @@
             .sb-link{min-height:44px}
             .tab{min-height:44px;display:flex;align-items:center}
         }
+        .map-tip{background:#18181b!important;border:1px solid #27272a!important;color:#e4e4e7!important;font-family:'Inter',sans-serif!important;font-size:11px!important;padding:6px 10px!important;border-radius:6px!important;box-shadow:0 4px 12px rgba(0,0,0,.5)!important}
+        .map-tip .leaflet-tooltip-tip{display:none!important}
     </style>
 </head>
 <body>
@@ -203,7 +205,7 @@ function Sidebar(){
         {p:"/pipeline",i:IC.pipe,l:"Pipeline"},
         ...(isA?[{p:"/projects",i:IC.flag,l:"Projects"}]:[]),
         ...(isA?[{p:"/map",i:IC.map,l:"Map"}]:[]),
-        ...(isA||isConf?[{p:"/telemarketing",i:IC.phone,l:"Telemarketing"}]:[]),
+        ...(isA||isConf?[{p:"/telemarketing",i:IC.phone,l:"Confirmation"}]:[]),
     ];
     return(
         <div className="sb">
@@ -919,8 +921,10 @@ function AppointmentDrawer({appt,leads,reps,onClose,onRefresh}){
 function DispatchPage(){
     const{af,user}=useA();const toast=useT();
     const[appts,sA]=useState([]);const[leads,sL2]=useState({});const[reps,sR]=useState({});
+    const[dispatchQueue,setDQ]=useState([]);
     const[loading,sLd]=useState(true);const[selA,setSA]=useState(null);const[showComplete,setSC]=useState(null);
     const[assignAppt,sAssign]=useState(null);const[recReps,sRecReps]=useState([]);const[loadingRec,sLdRec]=useState(false);
+    const[tab,setTab]=useState("operations");
 
     useEffect(()=>{loadAll();const iv=setInterval(loadAll,30000);return()=>clearInterval(iv)},[]);
     const h=useH();
@@ -928,10 +932,13 @@ function DispatchPage(){
 
     const loadAll=async()=>{
         try{
-            const[ar,lr,rr]=await Promise.all([af("/api/appointments"),af("/api/leads?limit=300"),user?.role==="admin"?af("/api/admin/reps"):Promise.resolve(null)]);
-            if(ar.ok){const d=await ar.json();sA(Array.isArray(d)?d:[])}
-            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sL2(m)}
-            if(rr&&rr.ok){const d=await rr.json();const arr=Array.isArray(d)?d:(d.reps||d.items||[]);const m={};arr.forEach(r=>m[r.id]=r);sR(m)}
+            const calls=[af("/api/appointments"),af("/api/leads?limit=300")];
+            if(user?.role==="admin"){calls.push(af("/api/admin/reps"));calls.push(af("/api/dispatch/queue"))}
+            const results=await Promise.all(calls);
+            if(results[0].ok){const d=await results[0].json();sA(Array.isArray(d)?d:[])}
+            if(results[1].ok){const d=await results[1].json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sL2(m)}
+            if(results[2]&&results[2].ok){const d=await results[2].json();const arr=Array.isArray(d)?d:(d.reps||d.items||[]);const m={};arr.forEach(r=>m[r.id]=r);sR(m)}
+            if(results[3]&&results[3].ok){const d=await results[3].json();setDQ(Array.isArray(d)?d:[])}
         }catch(e){console.error(e)}sLd(false);
     };
 
@@ -939,12 +946,19 @@ function DispatchPage(){
         try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",`${sL(st)}`);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
     };
 
-    const openAssign=async(appt)=>{
-        sAssign(appt);sLdRec(true);sRecReps([]);
-        try{const r=await af(`/api/admin/smart-recommend/${appt.lead_id}`);if(r.ok){const d=await r.json();sRecReps(d.recommendations||[])}}catch{}sLdRec(false);
+    const dispatchAssign=async(apptId,repId)=>{
+        try{const r=await af("/api/dispatch/assign",{method:"POST",body:JSON.stringify({appointment_id:apptId,rep_id:repId})});
+        if(r.ok){toast("ok","Dispatched");sAssign(null);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
+    };
+
+    const openAssign=async(apptOrQ)=>{
+        const leadId=apptOrQ.lead_id;
+        sAssign(apptOrQ);sLdRec(true);sRecReps([]);
+        try{const r=await af(`/api/admin/smart-recommend/${leadId}`);if(r.ok){const d=await r.json();sRecReps(d.recommendations||[])}}catch{}sLdRec(false);
     };
     const doAssign=async(repId)=>{
-        try{const r=await af("/api/admin/reassign",{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:assignAppt.id,new_rep_id:repId})});if(r.ok){toast("ok","Assigned");sAssign(null);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
+        if(assignAppt.appointment_id){dispatchAssign(assignAppt.appointment_id,repId)}
+        else{try{const r=await af("/api/admin/reassign",{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:assignAppt.id,new_rep_id:repId})});if(r.ok){toast("ok","Assigned");sAssign(null);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}}
     };
 
     const today=new Date().toISOString().split("T")[0];
@@ -955,8 +969,8 @@ function DispatchPage(){
     const completed=todayA.filter(a=>a.appointment_status==="completed");
     const noShow=todayA.filter(a=>["no_show","cancelled"].includes(a.appointment_status));
     const upcoming=appts.filter(a=>a.appointment_date>today).sort((a,b)=>a.appointment_date.localeCompare(b.appointment_date));
-
     const totalRev=todayA.filter(a=>!["completed","cancelled","no_show"].includes(a.appointment_status)).reduce((s,a)=>{const l=leads[a.lead_id];return s+(l?.average_monthly_bill||200)*12*20*0.6},0);
+    const needsDispatch=dispatchQueue.filter(q=>!q.assigned_rep_name||q.dispatch_status==="pending");
 
     if(loading)return<Spin/>;
 
@@ -964,32 +978,80 @@ function DispatchPage(){
         <div>
             <div style={{padding:"14px 24px",background:"#0c0c0f",borderBottom:"1px solid #18181b",position:"sticky",top:0,zIndex:20}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                    <div><h1 style={{fontSize:18,fontWeight:900}}>Dispatch Center</h1><div style={{fontSize:10,color:"#3f3f46",marginTop:1}}>{today} &middot; Auto-refresh 30s</div></div>
+                    <div><h1 style={{fontSize:18,fontWeight:900}}>Dispatch Engine</h1><div style={{fontSize:10,color:"#3f3f46",marginTop:1}}>{today} &middot; Auto-refresh 30s</div></div>
                     <button className="btn" onClick={loadAll}><Ic d={IC.refresh} s={12}/></button>
                 </div>
-                <div style={{display:"flex",gap:6,overflowX:"auto"}}>
-                    <KPI l="Today" v={todayA.length}/><KPI l="Live" v={liveNow.length} t={liveNow.length>0?"ok":null}/><KPI l="Confirmed" v={confirmed.length} t="ok"/><KPI l="Unconfirmed" v={scheduled.length} t={scheduled.length>0?"warn":null}/><KPI l="Rev at Stake" v={$.money(totalRev)} t="warn"/>
+                <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:8}}>
+                    <KPI l="Today" v={todayA.length}/><KPI l="Live" v={liveNow.length} t={liveNow.length>0?"ok":null}/><KPI l="Need Dispatch" v={needsDispatch.length} t={needsDispatch.length>0?"hot":null}/><KPI l="Confirmed" v={confirmed.length} t="ok"/><KPI l="Rev at Stake" v={$.money(totalRev)} t="warn"/>
                 </div>
+                {user?.role==="admin"&&<div style={{display:"flex",gap:4}}>
+                    {[["operations","Operations"],["dispatch","Dispatch Queue"]].map(([k,l])=>(
+                        <div key={k} className={`tab ${tab===k?"on":""}`} style={{cursor:"pointer"}} onClick={()=>setTab(k)}>{l}{k==="dispatch"&&needsDispatch.length>0?` (${needsDispatch.length})`:""}</div>
+                    ))}
+                </div>}
             </div>
             <div style={{padding:"16px 24px"}}>
-                {liveNow.length>0&&<ASection title="Live Now" color="#22c55e" items={liveNow} leads={leads} reps={reps} cls="live" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
-                {scheduled.length>0&&<ASection title="Needs Confirmation" color="#f59e0b" items={scheduled} leads={leads} reps={reps} cls="wrn" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
-                {confirmed.length>0&&<ASection title="Ready to Dispatch" color="#3b82f6" items={confirmed} leads={leads} reps={reps} cls="next" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
-                {(completed.length>0||noShow.length>0)&&<ASection title="Results" color="#52525b" items={[...completed,...noShow]} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
-                {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
-                {todayA.length===0&&upcoming.length===0&&<div className="cd" style={{padding:48,textAlign:"center",color:"#3f3f46"}}>No appointments</div>}
+                {tab==="dispatch"&&user?.role==="admin"&&<div>
+                    {/* DISPATCH QUEUE - confirmed appointments needing rep assignment */}
+                    <SH title="Confirmed Appointments — Assign & Dispatch" count={dispatchQueue.length}/>
+                    {dispatchQueue.length===0?<div className="cd" style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No appointments waiting for dispatch</div>:
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {dispatchQueue.map(q=>{
+                            const hasConflict=q.conflicts&&q.conflicts.length>0;
+                            return(
+                            <div key={q.appointment_id} className="cd" style={{padding:14,borderLeft:!q.assigned_rep_name?"3px solid #ef4444":q.rep_acknowledged?"3px solid #22c55e":"3px solid #f59e0b"}}>
+                                <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1fr 1fr 1.5fr",gap:10,alignItems:"center"}}>
+                                    <div>
+                                        <div style={{fontWeight:700,fontSize:14}}>{q.lead_name}</div>
+                                        <div style={{fontSize:11,color:"#71717a"}}>{q.address}{q.city?`, ${q.city}`:""}</div>
+                                        {q.phone&&<a href={`tel:${q.phone}`} style={{fontSize:11,color:"#3b82f6",textDecoration:"none"}}>{q.phone}</a>}
+                                    </div>
+                                    <div>
+                                        <div style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{q.appointment_date}</div>
+                                        <div style={{fontSize:11,color:"#71717a"}}>{q.appointment_time||"TBD"}</div>
+                                        <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:3,background:q.appointment_type==="zoom"?"#1e1b4b":"#1c1917",color:q.appointment_type==="zoom"?"#a78bfa":"#a1a1aa"}}>{q.appointment_type==="in_person"?"IN PERSON":q.appointment_type?.toUpperCase()}</span>
+                                    </div>
+                                    <div>{q.monthly_bill&&<div style={{fontWeight:700,color:"#f59e0b"}}>{$.money(q.monthly_bill)}/mo</div>}</div>
+                                    <div>
+                                        {q.assigned_rep_name?<div>
+                                            <div style={{fontSize:12,fontWeight:600,color:"#e4e4e7"}}>{q.assigned_rep_name}</div>
+                                            <div style={{fontSize:10,color:q.rep_acknowledged?"#22c55e":"#f59e0b"}}>{q.rep_acknowledged?"✓ Acknowledged":"Awaiting ACK"}</div>
+                                        </div>:<div style={{fontSize:12,fontWeight:800,color:"#ef4444"}}>UNASSIGNED</div>}
+                                    </div>
+                                    <div style={{display:"flex",gap:4,justifyContent:"flex-end"}}>
+                                        <button className="btn btn-p" style={{padding:"8px 14px",fontSize:11,fontWeight:800}} onClick={()=>openAssign(q)}>
+                                            {q.assigned_rep_name?"REASSIGN":"ASSIGN REP"}
+                                        </button>
+                                    </div>
+                                </div>
+                                {hasConflict&&<div style={{marginTop:8,padding:"6px 10px",background:"#450a0a",border:"1px solid #7f1d1d",borderRadius:4,fontSize:10,color:"#fca5a5"}}>
+                                    ⚠ Timing conflict: {q.conflicts.map(c=>`${c.lead_name} at ${c.time}`).join(", ")}
+                                </div>}
+                                {q.telemarketing_summary&&<div style={{marginTop:6,fontSize:10,color:"#52525b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>TM: {q.telemarketing_summary}</div>}
+                            </div>
+                        )})}
+                    </div>}
+                </div>}
+                {tab==="operations"&&<div>
+                    {liveNow.length>0&&<ASection title="Live Now" color="#22c55e" items={liveNow} leads={leads} reps={reps} cls="live" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
+                    {scheduled.length>0&&<ASection title="Needs Confirmation" color="#f59e0b" items={scheduled} leads={leads} reps={reps} cls="wrn" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
+                    {confirmed.length>0&&<ASection title="Ready to Dispatch" color="#3b82f6" items={confirmed} leads={leads} reps={reps} cls="next" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
+                    {(completed.length>0||noShow.length>0)&&<ASection title="Results" color="#52525b" items={[...completed,...noShow]} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                    {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
+                    {todayA.length===0&&upcoming.length===0&&<div className="cd" style={{padding:48,textAlign:"center",color:"#3f3f46"}}>No appointments</div>}
+                </div>}
             </div>
             {selA&&<AppointmentDrawer appt={selA} leads={leads} reps={reps} onClose={()=>setSA(null)} onRefresh={loadAll}/>}
             {showComplete&&<CompleteModal appt={showComplete} lead={leads[showComplete.lead_id]} onClose={()=>{setSC(null);nav("/dispatch")}} onDone={()=>{setSC(null);nav("/dispatch");loadAll()}}/>}
             {assignAppt&&(
                 <div className="modal-ov" onClick={()=>sAssign(null)}><div className="modal" onClick={e=>e.stopPropagation()}>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
-                        <div><h3 style={{fontSize:16,fontWeight:800}}>Assign Rep</h3><div style={{fontSize:11,color:"#52525b"}}>{leads[assignAppt.lead_id]?`${leads[assignAppt.lead_id].first_name} ${leads[assignAppt.lead_id].last_name}`:`Appt #${assignAppt.id}`} - {$.date(assignAppt.appointment_date)}</div></div>
+                        <div><h3 style={{fontSize:16,fontWeight:800}}>Assign Rep</h3><div style={{fontSize:11,color:"#52525b"}}>{assignAppt.lead_name||leads[assignAppt.lead_id]?`${(leads[assignAppt.lead_id]||{}).first_name||""} ${(leads[assignAppt.lead_id]||{}).last_name||""}`:`Appt #${assignAppt.id||assignAppt.appointment_id}`} — {assignAppt.appointment_date}</div></div>
                         <div style={{cursor:"pointer"}} onClick={()=>sAssign(null)}><Ic d={IC.x}/></div>
                     </div>
                     {loadingRec?<Spin/>:(
                         <div>
-                            {recReps.length>0&&<div style={{fontSize:10,fontWeight:800,color:"#22c55e",textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>AI Recommended (by performance + workload)</div>}
+                            {recReps.length>0&&<div style={{fontSize:10,fontWeight:800,color:"#22c55e",textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>Recommended (performance + workload)</div>}
                             {recReps.map((r,i)=>(
                                 <div key={r.rep_id} className="cd" style={{padding:12,marginBottom:6,cursor:"pointer",border:i===0?"1px solid #22c55e40":"1px solid #1e1e21"}} onClick={()=>doAssign(r.rep_id)}>
                                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -1923,30 +1985,83 @@ function TasksPage(){
 // PIPELINE (LEAD STATUS KANBAN)
 // ========================================================================
 function PipelinePage(){
-    const{af}=useA();const[leads,setLeads]=useState([]);const[loading,sLd]=useState(true);
-    useEffect(()=>{load()},[]);const load=async()=>{sLd(true);try{const r=await af("/api/leads?limit=500");if(r.ok){const d=await r.json();setLeads(Array.isArray(d)?d:(d.items||[]))}}catch{}sLd(false)};
-    const stages=[{k:"new",l:"New",c:"#3b82f6"},{k:"confirmed",l:"Confirmed",c:"#22c55e"},{k:"appointed",l:"Appointed",c:"#f59e0b"},{k:"dispatched",l:"Dispatched",c:"#a855f7"},{k:"closed_won",l:"Won",c:"#22c55e"},{k:"closed_lost",l:"Lost",c:"#ef4444"}];
-    const grouped=useMemo(()=>{const g={};stages.forEach(s=>g[s.k]=[]);leads.forEach(l=>{const s=l.deal_status||"new";if(g[s])g[s].push(l);else if(g.new)g.new.push(l)});return g},[leads]);
+    const{af}=useA();const[leads,setLeads]=useState([]);const[appts,setAppts]=useState([]);const[loading,sLd]=useState(true);
+    useEffect(()=>{load()},[]);
+    const load=async()=>{sLd(true);try{
+        const[lr,ar]=await Promise.all([af("/api/leads?limit=500"),af("/api/appointments")]);
+        if(lr.ok){const d=await lr.json();setLeads(Array.isArray(d)?d:(d.items||[]))}
+        if(ar.ok){const d=await ar.json();setAppts(Array.isArray(d)?d:[])}
+    }catch{}sLd(false)};
+
+    // Real operational stages
+    const stages=[
+        {k:"submitted",l:"Submitted",c:"#71717a",desc:"TM/Canvasser submitted"},
+        {k:"confirming",l:"Confirmation",c:"#eab308",desc:"Being confirmed"},
+        {k:"confirmed",l:"Confirmed",c:"#22c55e",desc:"Homeowner confirmed"},
+        {k:"dispatch_ready",l:"Dispatch Ready",c:"#3b82f6",desc:"Needs rep assignment"},
+        {k:"assigned",l:"Assigned",c:"#a855f7",desc:"Rep assigned"},
+        {k:"en_route",l:"En Route",c:"#f59e0b",desc:"Rep traveling"},
+        {k:"arrived",l:"Arrived",c:"#f59e0b",desc:"Rep on site"},
+        {k:"completed",l:"Completed",c:"#52525b",desc:"Outcome pending"},
+        {k:"follow_up",l:"Follow Up",c:"#3b82f6",desc:"Needs follow-up"},
+        {k:"rehash",l:"Rehash",c:"#f59e0b",desc:"Second attempt"},
+        {k:"closed_won",l:"Sold",c:"#22c55e",desc:"Deal closed"},
+        {k:"dead",l:"Dead / DNC",c:"#ef4444",desc:"No longer viable"},
+    ];
+
+    // Map legacy statuses to real ones
+    const statusMap={"new":"submitted","appointed":"assigned","dispatched":"en_route","closed_lost":"dead"};
+
+    const grouped=useMemo(()=>{
+        const g={};stages.forEach(s=>g[s.k]=[]);
+        leads.forEach(l=>{
+            let s=l.deal_status||"submitted";
+            if(statusMap[s])s=statusMap[s];
+            if(g[s])g[s].push(l);else g["submitted"].push(l);
+        });
+        return g;
+    },[leads]);
+
+    // Counts for KPI
+    const total=leads.length;
+    const active=leads.filter(l=>!["closed_won","closed_lost","dead"].includes(l.deal_status)).length;
+    const won=leads.filter(l=>l.deal_status==="closed_won").length;
+    const totalRev=leads.filter(l=>l.deal_status==="closed_won").reduce((s,l)=>s+(l.deal_value||(l.average_monthly_bill||200)*12*20*0.6),0);
+
     if(loading)return<Spin/>;
     return(
         <div>
-            <PH title="Pipeline" sub="Deal flow"/>
+            <PH title="Operations Pipeline" sub="Real appointment flow — submitted → sold"/>
+            <div style={{padding:"12px 24px",display:"flex",gap:8,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
+                <KPI l="Total" v={total}/><KPI l="Active" v={active} t="warn"/><KPI l="Won" v={won} t="ok"/><KPI l="Revenue" v={$.money(totalRev)} t="ok"/>
+            </div>
             <div style={{padding:"14px 24px",overflowX:"auto"}}>
-                <div style={{display:"flex",gap:10,minWidth:stages.length*200}}>
-                    {stages.map(s=>(
-                        <div key={s.k} style={{flex:1,minWidth:180}}>
-                            <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:6,borderBottom:`2px solid ${s.c}30`}}><div style={{width:7,height:7,borderRadius:"50%",background:s.c}}/><span style={{fontSize:11,fontWeight:800,color:"#71717a"}}>{s.l}</span><span style={{fontSize:10,color:"#3f3f46",marginLeft:"auto"}}>{(grouped[s.k]||[]).length}</span></div>
-                            <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                                {(grouped[s.k]||[]).map(l=>(
-                                    <div key={l.id} className="cd" style={{padding:10,borderLeft:`3px solid ${s.c}`,cursor:"pointer"}} onClick={()=>nav(`/leads?id=${l.id}`)}>
-                                        <div style={{fontWeight:700,fontSize:11}}>{l.first_name} {l.last_name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.city}, {l.state}</div>
-                                        <div style={{fontSize:11,fontWeight:700,marginTop:4,color:s.c}}>{$.money(l.average_monthly_bill)}/mo</div>
+                <div style={{display:"flex",gap:8,minWidth:stages.length*160}}>
+                    {stages.map(s=>{
+                        const items=grouped[s.k]||[];
+                        return(
+                        <div key={s.k} style={{flex:1,minWidth:150}}>
+                            <div style={{marginBottom:8,paddingBottom:6,borderBottom:`2px solid ${s.c}30`}}>
+                                <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                    <div style={{width:7,height:7,borderRadius:"50%",background:s.c}}/>
+                                    <span style={{fontSize:10,fontWeight:800,color:s.c,textTransform:"uppercase",letterSpacing:".04em"}}>{s.l}</span>
+                                    <span style={{fontSize:10,color:"#3f3f46",marginLeft:"auto",fontWeight:700}}>{items.length}</span>
+                                </div>
+                                <div style={{fontSize:9,color:"#3f3f46",marginTop:2}}>{s.desc}</div>
+                            </div>
+                            <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:"60vh",overflowY:"auto"}}>
+                                {items.slice(0,20).map(l=>(
+                                    <div key={l.id} className="cd" style={{padding:8,borderLeft:`3px solid ${s.c}`,cursor:"pointer"}} onClick={()=>nav(`/leads?id=${l.id}`)}>
+                                        <div style={{fontWeight:700,fontSize:11}}>{l.first_name} {l.last_name}</div>
+                                        <div style={{fontSize:10,color:"#52525b"}}>{l.city||""}{l.state?`, ${l.state}`:""}</div>
+                                        {l.average_monthly_bill&&<div style={{fontSize:11,fontWeight:700,marginTop:3,color:"#f59e0b"}}>{$.money(l.average_monthly_bill)}/mo</div>}
                                     </div>
                                 ))}
-                                {(grouped[s.k]||[]).length===0&&<div style={{padding:16,textAlign:"center",color:"#27272a",fontSize:10,border:"1px dashed #1e1e21",borderRadius:6}}>Empty</div>}
+                                {items.length>20&&<div style={{fontSize:9,color:"#3f3f46",textAlign:"center",padding:4}}>+{items.length-20} more</div>}
+                                {items.length===0&&<div style={{padding:12,textAlign:"center",color:"#27272a",fontSize:9,border:"1px dashed #1e1e21",borderRadius:6}}>Empty</div>}
                             </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
             </div>
         </div>
@@ -2244,8 +2359,9 @@ function MapPage(){
     const{af,user}=useA();const toast=useT();
     const[appts,sAppts]=useState([]);const[leads,sLeads]=useState({});const[leadsArr,sLeadsArr]=useState([]);const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);
     const[mapMode,setMode]=useState("appointments");const[mapFilter,setFilter]=useState("all");const[selAppt,setSelAppt]=useState(null);const[selLead,setSelLead]=useState(null);
-    const[stats,setStats]=useState({total:0,withGeo:0,todayAppts:0});
-    const mapRef=useRef(null);const mapInstance=useRef(null);const refreshRef=useRef(null);
+    const[stats,setStats]=useState({total:0,withGeo:0,todayAppts:0,liveNow:0});
+    const[showRoute,setShowRoute]=useState(false);
+    const mapRef=useRef(null);const mapInstance=useRef(null);const refreshRef=useRef(null);const routeLineRef=useRef(null);
 
     useEffect(()=>{loadData();refreshRef.current=setInterval(()=>silentLoad(),30000);return()=>clearInterval(refreshRef.current)},[]);
     const silentLoad=async()=>{try{await loadData(false)}catch{}};
@@ -2254,12 +2370,12 @@ function MapPage(){
         try{
             const calls=[af("/api/appointments"),af("/api/leads?limit=500")];
             if(user?.role==="admin")calls.push(af("/api/admin/reps"));
-            const[ar,lr,rr]=await Promise.all(calls);
-            if(ar.ok){const d=await ar.json();sAppts(Array.isArray(d)?d:[])}
-            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sLeads(m);sLeadsArr(arr);
+            const results=await Promise.all(calls);
+            if(results[0].ok){const d=await results[0].json();sAppts(Array.isArray(d)?d:[])}
+            if(results[1].ok){const d=await results[1].json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sLeads(m);sLeadsArr(arr);
                 const withGeo=arr.filter(l=>l.geo_lat&&l.geo_lng).length;
                 setStats(s=>({...s,total:arr.length,withGeo}))}
-            if(rr&&rr.ok){const d=await rr.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
+            if(results[2]&&results[2].ok){const d=await results[2].json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
         }catch{}
         if(showSpin)sLd(false);
     };
@@ -2274,39 +2390,70 @@ function MapPage(){
 
     useEffect(()=>{
         if(!mapInstance.current)return;
-        mapInstance.current.eachLayer(l=>{if(l instanceof L.CircleMarker||l instanceof L.Marker)mapInstance.current.removeLayer(l)});
+        // Clear existing markers and route lines
+        mapInstance.current.eachLayer(l=>{if(l instanceof L.CircleMarker||l instanceof L.Marker||l instanceof L.Polyline)mapInstance.current.removeLayer(l)});
         const today=new Date().toISOString().split("T")[0];
 
+        // Operational status colors
+        const opColors={
+            submitted:"#71717a",confirming:"#eab308",confirmed:"#22c55e",
+            dispatch_ready:"#3b82f6",assigned:"#a855f7",en_route:"#f59e0b",
+            arrived:"#f59e0b",completed:"#52525b",follow_up:"#3b82f6",
+            rehash:"#eab308",closed_won:"#22c55e",dead:"#ef4444",
+            new:"#3b82f6",closed_lost:"#ef4444",scheduled:"#eab308",
+            no_show:"#ef4444",cancelled:"#ef4444",dispatched:"#a855f7",appointed:"#f59e0b"
+        };
+
         if(mapMode==="appointments"){
-            // Show ALL appointments with leads that have geo, not just today
             const allWithGeo=appts.filter(a=>{const l=leads[a.lead_id];return l?.geo_lat&&l?.geo_lng&&(mapFilter==="all"||a.appointment_status===mapFilter)});
             const todayOnly=allWithGeo.filter(a=>a.appointment_date===today);
-            const show=todayOnly.length>0?todayOnly:allWithGeo.slice(0,50);
-            setStats(s=>({...s,todayAppts:todayOnly.length}));
+            const liveNow=todayOnly.filter(a=>["en_route","arrived"].includes(a.appointment_status));
+            const show=todayOnly.length>0?todayOnly:allWithGeo.slice(0,80);
+            setStats(s=>({...s,todayAppts:todayOnly.length,liveNow:liveNow.length}));
             const bounds=[];
-            show.forEach(a=>{
+            // Sort by time for route line
+            const sorted=[...show].sort((a,b)=>(a.appointment_time||"").localeCompare(b.appointment_time||""));
+            sorted.forEach((a,idx)=>{
                 const lead=leads[a.lead_id];
-                const colors={confirmed:"#22c55e",scheduled:"#eab308",en_route:"#3b82f6",arrived:"#f59e0b",no_show:"#ef4444",completed:"#52525b"};
-                const color=colors[a.appointment_status]||"#999";
+                const color=opColors[a.appointment_status]||"#999";
+                const isLive=["en_route","arrived"].includes(a.appointment_status);
                 const isToday=a.appointment_date===today;
-                const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{radius:isToday?12:7,fillColor:color,color:"#fff",weight:isToday?2.5:1.5,opacity:1,fillOpacity:isToday?0.95:0.6});
+                const radius=isLive?14:isToday?10:6;
+                const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{
+                    radius,fillColor:color,color:isLive?"#fff":"#27272a",
+                    weight:isLive?3:1.5,opacity:1,fillOpacity:isLive?1:isToday?0.9:0.5
+                });
+                // Tooltip with name + time
+                const name=`${lead.first_name} ${lead.last_name}`;
+                const time=a.appointment_time?a.appointment_time.slice(0,5):"TBD";
+                marker.bindTooltip(`<b>${name}</b><br>${sL(a.appointment_status)} · ${time}`,{className:"map-tip",direction:"top",offset:[0,-8]});
                 marker.on("click",()=>setSelAppt(a));
                 marker.addTo(mapInstance.current);
                 bounds.push([lead.geo_lat,lead.geo_lng]);
             });
+            // Draw route line for today's appointments
+            if(showRoute&&todayOnly.length>1){
+                const routeCoords=sorted.filter(a=>a.appointment_date===today).map(a=>{const l=leads[a.lead_id];return[l.geo_lat,l.geo_lng]});
+                if(routeCoords.length>1){
+                    L.polyline(routeCoords,{color:"#f59e0b",weight:2,opacity:0.5,dashArray:"8,8"}).addTo(mapInstance.current);
+                }
+            }
             if(bounds.length>1)mapInstance.current.fitBounds(bounds,{padding:[40,40]});
             else if(bounds.length===1)mapInstance.current.setView(bounds[0],12);
         } else {
-            const statusColors={new:"#3b82f6",confirmed:"#22c55e",appointed:"#f59e0b",dispatched:"#a855f7",closed_won:"#22c55e",closed_lost:"#ef4444",follow_up:"#eab308",no_show:"#ef4444",rehash:"#f59e0b"};
             let filteredLeads=leadsArr.filter(l=>l.geo_lat&&l.geo_lng&&(mapFilter==="all"||mapFilter==="high_value"||l.deal_status===mapFilter));
-            if(mapFilter==="high_value")filteredLeads=filteredLeads.filter(l=>(l.average_monthly_bill||0)>=250||l.deal_status==="follow_up"||l.deal_status==="appointed");
+            if(mapFilter==="high_value")filteredLeads=filteredLeads.filter(l=>(l.average_monthly_bill||0)>=250);
             const bounds=[];
             filteredLeads.forEach(l=>{
-                const color=statusColors[l.deal_status]||"#71717a";
+                const color=opColors[l.deal_status]||"#71717a";
                 const bill=l.average_monthly_bill||0;
                 const isHighVal=bill>=250;
-                const radius=isHighVal?14:bill>=150?10:7;
-                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{radius,fillColor:isHighVal?"#f59e0b":color,color:isHighVal?"#fbbf24":"#fff",weight:isHighVal?3:1.5,opacity:1,fillOpacity:isHighVal?0.95:0.85});
+                const radius=isHighVal?12:bill>=150?9:6;
+                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{
+                    radius,fillColor:color,color:isHighVal?"#fbbf24":"#27272a",
+                    weight:isHighVal?2.5:1,opacity:1,fillOpacity:isHighVal?0.95:0.8
+                });
+                marker.bindTooltip(`<b>${l.first_name} ${l.last_name}</b><br>${sL(l.deal_status)} · ${$.money(bill)}/mo`,{className:"map-tip",direction:"top",offset:[0,-8]});
                 marker.on("click",()=>setSelLead(l));
                 marker.addTo(mapInstance.current);
                 bounds.push([l.geo_lat,l.geo_lng]);
@@ -2314,38 +2461,44 @@ function MapPage(){
             if(bounds.length>1)mapInstance.current.fitBounds(bounds,{padding:[40,40]});
             else if(bounds.length===1)mapInstance.current.setView(bounds[0],12);
         }
-    },[appts,leads,leadsArr,mapFilter,mapMode]);
+    },[appts,leads,leadsArr,mapFilter,mapMode,showRoute]);
 
     if(loading)return<Spin/>;
     const apptStatuses=["all","scheduled","confirmed","en_route","arrived","completed"];
-    const leadStatuses=["all","high_value","new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up"];
+    const leadStatuses=["all","high_value","submitted","confirmed","dispatch_ready","assigned","follow_up","rehash","closed_won","dead"];
     const repsMap=reps.reduce((m,r)=>{m[r.id]=r;return m},{});
 
     return(
         <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
             <div style={{padding:"12px 24px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                <div><h1 style={{fontSize:18,fontWeight:900}}>Field Map</h1><div style={{fontSize:10,color:"#3f3f46"}}>{stats.withGeo} mapped &middot; {stats.todayAppts} appts today &middot; auto-refresh 30s</div></div>
+                <div><h1 style={{fontSize:18,fontWeight:900}}>Field Map</h1><div style={{fontSize:10,color:"#3f3f46"}}>{stats.withGeo} mapped · {stats.todayAppts} appts today · {stats.liveNow} live now · auto-refresh 30s</div></div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
                     <button className={`btn ${mapMode==="appointments"?"btn-p":""}`} onClick={()=>{setMode("appointments");setFilter("all")}}>Appointments</button>
-                    <button className={`btn ${mapMode==="leads"?"btn-p":""}`} onClick={()=>{setMode("leads");setFilter("all")}}>All Leads</button>
+                    <button className={`btn ${mapMode==="leads"?"btn-p":""}`} onClick={()=>{setMode("leads");setFilter("all")}}>Leads</button>
+                    {mapMode==="appointments"&&<button className={`btn ${showRoute?"btn-p":""}`} onClick={()=>setShowRoute(p=>!p)} style={{fontSize:10}}>Route</button>}
                     <button className="btn" onClick={()=>loadData(true)}><Ic d={IC.refresh} s={12}/></button>
                 </div>
             </div>
-            <div style={{padding:"8px 24px",display:"flex",gap:6,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
+            <div style={{padding:"8px 24px",display:"flex",gap:4,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
                 {(mapMode==="appointments"?apptStatuses:leadStatuses).map(s=><button key={s} className={`btn ${mapFilter===s?"btn-p":""}`} style={{fontSize:10,padding:"4px 10px"}} onClick={()=>setFilter(s)}>{sL(s)}</button>)}
             </div>
             <div style={{flex:1,position:"relative"}}>
                 <div ref={mapRef} style={{position:"absolute",inset:0,background:"#09090b"}}/>
+                {/* Legend */}
                 <div style={{position:"absolute",bottom:16,left:16,background:"#0c0c0fdd",border:"1px solid #27272a",borderRadius:8,padding:"8px 12px",zIndex:1000,fontSize:10}}>
                     {mapMode==="appointments"?
-                        [{c:"#eab308",l:"Scheduled"},{c:"#22c55e",l:"Confirmed"},{c:"#3b82f6",l:"En Route"},{c:"#f59e0b",l:"Arrived"},{c:"#52525b",l:"Completed"}].map(x=>
+                        [{c:"#eab308",l:"Scheduled"},{c:"#22c55e",l:"Confirmed"},{c:"#3b82f6",l:"Dispatch Ready"},{c:"#a855f7",l:"Assigned"},{c:"#f59e0b",l:"En Route / Arrived"},{c:"#52525b",l:"Completed"}].map(x=>
                             <div key={x.l} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}><div style={{width:8,height:8,borderRadius:"50%",background:x.c}}/><span style={{color:"#a1a1aa"}}>{x.l}</span></div>
                         ):
-                        [{c:"#3b82f6",l:"New"},{c:"#22c55e",l:"Confirmed/Won"},{c:"#f59e0b",l:"Appointed"},{c:"#a855f7",l:"Dispatched"},{c:"#ef4444",l:"Lost/No Show"}].map(x=>
+                        [{c:"#71717a",l:"Submitted"},{c:"#22c55e",l:"Confirmed/Won"},{c:"#3b82f6",l:"Dispatch Ready"},{c:"#a855f7",l:"Assigned"},{c:"#eab308",l:"Rehash"},{c:"#ef4444",l:"Dead"}].map(x=>
                             <div key={x.l} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}><div style={{width:8,height:8,borderRadius:"50%",background:x.c}}/><span style={{color:"#a1a1aa"}}>{x.l}</span></div>
                         )
                     }
                 </div>
+                {/* Next best stop indicator */}
+                {stats.liveNow>0&&<div style={{position:"absolute",top:16,right:16,background:"#052e16",border:"1px solid #166534",borderRadius:8,padding:"8px 12px",zIndex:1000,fontSize:11,color:"#22c55e",fontWeight:700}}>
+                    {stats.liveNow} rep{stats.liveNow!==1?"s":""} live in field
+                </div>}
             </div>
             {selAppt&&<MapPinDrawer appt={selAppt} lead={leads[selAppt.lead_id]} reps={reps} repsMap={repsMap} onClose={()=>setSelAppt(null)} onRefresh={()=>{setSelAppt(null);loadData(false)}} af={af} toast={toast} user={user}/>}
             {selLead&&<LeadDrawer lead={selLead} reps={reps} onClose={()=>setSelLead(null)} onRefresh={()=>loadData(false)} onCreateAppt={()=>{}}/>}
@@ -2358,187 +2511,156 @@ function MapPage(){
 // ========================================================================
 function TelemarketingPage(){
     const{af,user}=useA();const toast=useT();
-    const[queue,setQueue]=useState([]);const[leads,setLeads]=useState([]);const[appts,setAppts]=useState([]);const[loading,sLd]=useState(true);
-    const[showNewLead,setSNL]=useState(false);const[showNewAppt,setSNA]=useState(false);
-    const[selLead,setSelLead]=useState(null);const[showScript,setShowScript]=useState(null);const[tmTab,setTMTab]=useState("queue");
-    const[leadForm,setLF]=useState({first_name:"",last_name:"",phone:"",email:"",property_address:"",city:"",state:"CA",zip_code:"",average_monthly_bill:"",notes:""});
-    const[apptForm,setAF]=useState({lead_id:"",assigned_rep_id:"",appointment_date:"",appointment_time:"",notes:""});
-    const[reps,setReps]=useState([]);
+    const[queue,setQueue]=useState([]);const[loading,sLd]=useState(true);
+    const[activeCard,setActiveCard]=useState(null);const[noteText,setNoteText]=useState("");const[notesBusy,setNotesBusy]=useState(false);
+    const[showScript,setShowScript]=useState(null);const[showOutcome,setShowOutcome]=useState(null);
+    const[fuDate,setFuDate]=useState("");const noteRef=useRef(null);
 
     useEffect(()=>{loadQueue()},[]);
     const loadQueue=async()=>{
         sLd(true);
         try{
-            const[qr,lr,ar,rr]=await Promise.all([af("/api/confirmation/my-queue"),af("/api/confirmation/leads"),af("/api/appointments"),af("/api/admin/reps")]);
-            if(qr.ok)setQueue(await qr.json());
-            if(lr.ok){const d=await lr.json();setLeads(Array.isArray(d)?d:(d.items||[]))}
-            if(ar.ok){const ad=await ar.json();setAppts(Array.isArray(ad)?ad:[])}
-            if(rr&&rr.ok){const d=await rr.json();setReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
+            const r=await af("/api/confirmation/queue");
+            if(r.ok){const d=await r.json();setQueue(Array.isArray(d)?d:[])}
         }catch{}
         sLd(false);
     };
 
+    // Confirmation outcomes - real business flow
+    const outcomes=[
+        {k:"confirmed",l:"Confirmed",c:"#22c55e",icon:"✓",desc:"Homeowner confirmed. Moves to Dispatch Ready."},
+        {k:"no_answer",l:"No Answer",c:"#f59e0b",icon:"📞",desc:"No pickup. Stays in queue."},
+        {k:"voicemail",l:"Left Voicemail",c:"#eab308",icon:"📧",desc:"Left message. Stays in queue."},
+        {k:"rescheduled",l:"Rescheduled",c:"#a855f7",icon:"📅",desc:"New date set. Requires follow-up date."},
+        {k:"not_interested",l:"Not Interested",c:"#ef4444",icon:"✗",desc:"Moves to Rehash queue."},
+        {k:"needs_time",l:"Needs Time",c:"#3b82f6",icon:"⏳",desc:"Moves to Rehash. Will circle back."},
+        {k:"dnc",l:"Do Not Call",c:"#7f1d1d",icon:"🚫",desc:"Dead. Marked DNC permanently."},
+        {k:"follow_up_later",l:"Follow Up Later",c:"#3b82f6",icon:"🔄",desc:"Stays in confirmation. Requires date."},
+    ];
+
     const logAttempt=async(apptId,outcome)=>{
+        if(!noteText.trim()&&outcome!=="no_answer"&&outcome!=="voicemail"){toast("err","Note required for this outcome");noteRef.current?.focus();return}
+        if((outcome==="rescheduled"||outcome==="follow_up_later")&&!fuDate){toast("err","Follow-up date required");return}
         try{
-            const r=await af(`/api/confirmation/${apptId}/attempt`,{method:"POST",body:JSON.stringify({outcome})});
+            const body={outcome,notes:noteText.trim()||null,next_callback_date:fuDate||null};
+            const r=await af(`/api/confirmation/${apptId}/attempt`,{method:"POST",body:JSON.stringify(body)});
             if(r.ok){
                 toast("ok","Logged: "+sL(outcome));
-                // Auto-create follow-up task for outcomes that need it
-                if(["no_answer","voicemail","reschedule"].includes(outcome)){
-                    const appt=queue.find(q=>q.id===apptId);
-                    const followUpTitle=outcome==="reschedule"?`Reschedule appt for ${appt?.lead_name||"lead"}`:`Follow up: ${sL(outcome)} - ${appt?.lead_name||"lead"}`;
-                    const dueDate=new Date();dueDate.setDate(dueDate.getDate()+(outcome==="reschedule"?1:outcome==="no_answer"?0:1));
-                    try{
-                        await af("/api/tasks",{method:"POST",body:JSON.stringify({title:followUpTitle,task_type:"follow_up",lead_id:appt?.lead_id,due_date:dueDate.toISOString().split("T")[0],priority:outcome==="reschedule"?"high":"medium"})});
-                        toast("ok","Follow-up task created");
-                    }catch{}
-                }
+                setNoteText("");setFuDate("");setShowOutcome(null);setActiveCard(null);
                 loadQueue();
             }else{toast("err","Failed")}
         }catch{toast("err","Error")}
     };
 
-    const createLead=async()=>{
-        if(!leadForm.first_name||!leadForm.phone){toast("err","Fill required");return}
-        try{
-            const r=await af("/api/confirmation/leads",{method:"POST",body:JSON.stringify({...leadForm,average_monthly_bill:parseFloat(leadForm.average_monthly_bill)||0})});
-            if(r.ok){toast("ok","Lead created");setLF({first_name:"",last_name:"",phone:"",email:"",property_address:"",city:"",state:"CA",zip_code:"",average_monthly_bill:"",notes:""});setSNL(false);loadQueue()}else{toast("err","Failed")}
-        }catch{toast("err","Error")}
-    };
-
-    const createAppt=async()=>{
-        if(!apptForm.lead_id||!apptForm.assigned_rep_id||!apptForm.appointment_date){toast("err","Fill required");return}
-        try{
-            const r=await af("/api/confirmation/appointments",{method:"POST",body:JSON.stringify(apptForm)});
-            if(r.ok){toast("ok","Appt created");setAF({lead_id:"",assigned_rep_id:"",appointment_date:"",appointment_time:"",notes:""});setSNA(false);loadQueue()}else{toast("err","Failed")}
-        }catch{toast("err","Error")}
-    };
-
-    // Call scripts
     const scripts={
-        confirmation:"Hi, this is [Agent] from Sunbull Solar. I'm calling to confirm your appointment on [DATE] at [TIME]. Will you be available at that time? ... Great! Your solar consultant [REP] will be there. Please have a recent electric bill handy. Any questions before the appointment?",
-        reschedule:"Hi, this is [Agent] from Sunbull Solar. We had an appointment scheduled for [DATE]. Unfortunately we need to find a new time. What day works best for you this week? ... Perfect, I'll get that set up for you right away.",
-        follow_up:"Hi, this is [Agent] from Sunbull Solar following up on your solar consultation. I wanted to check if you had any questions about the proposal [REP] presented. Is now a good time to chat? ... Our current promotion is [PROMO] and it expires [DATE].",
-        no_answer:"[VOICEMAIL] Hi, this is [Agent] from Sunbull Solar. I'm calling to confirm your upcoming solar consultation. Please call us back at [NUMBER] or text CONFIRM to verify. Thank you!",
+        confirmation:"Hi, this is [Agent] from Sunbull Solar. I'm calling to confirm your appointment on [DATE] at [TIME]. Will you be available? Great! Your solar consultant will be there. Please have a recent electric bill handy.",
+        reschedule:"Hi, this is [Agent] from Sunbull Solar. We had an appointment for [DATE]. We need to find a new time. What day works best this week?",
+        follow_up:"Hi, this is [Agent] from Sunbull Solar following up on your consultation. Any questions about the proposal? Our current promotion expires [DATE].",
+        voicemail:"[VM] Hi, this is [Agent] from Sunbull Solar confirming your upcoming solar consultation. Please call us back at [NUMBER] or text CONFIRM.",
     };
 
     if(loading)return<Spin/>;
 
-    // Stats
-    const confirmed=queue.filter(q=>q.confirmation_status==="confirmed").length;
-    const pending=queue.filter(q=>q.confirmation_status!=="confirmed").length;
+    const pending=queue.filter(q=>q.confirmation_status==="pending").length;
+    const confirming=queue.filter(q=>q.confirmation_status==="confirming").length;
     const today=new Date().toISOString().split("T")[0];
-    const todayAppts=appts.filter(a=>a.appointment_date===today);
+    const todayQ=queue.filter(q=>q.appointment_date===today);
+    const urgentQ=queue.filter(q=>{const d=q.appointment_date;return d&&d<=today});
 
     return(
         <div>
-            <PH title="Telemarketing Center" sub={`${queue.length} in queue`} right={<div style={{display:"flex",gap:6}}>
+            <PH title="Confirmation Queue" sub={`${queue.length} appointments to confirm`} right={<div style={{display:"flex",gap:6}}>
                 <button className="btn" onClick={()=>setShowScript("confirmation")}><Ic d={IC.message} s={12}/> Scripts</button>
                 <button className="btn" onClick={loadQueue}><Ic d={IC.refresh} s={12}/></button>
             </div>}/>
             {/* KPI Bar */}
             <div style={{padding:"12px 24px",display:"flex",gap:8,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
-                <KPI l="Queue" v={queue.length} t={queue.length>0?"warn":null}/><KPI l="Pending" v={pending} t={pending>0?"hot":null}/><KPI l="Confirmed" v={confirmed} t="ok"/><KPI l="Today's Appts" v={todayAppts.length}/><KPI l="Total Leads" v={leads.length}/>
-            </div>
-            {/* Tab bar */}
-            <div style={{display:"flex",borderBottom:"1px solid #18181b",padding:"0 24px"}}>
-                {[["queue","My Queue"],["leads","All Leads"],["create","Create"]].map(([k,l])=>
-                    <div key={k} className={`tab ${tmTab===k?"on":""}`} onClick={()=>setTMTab(k)}>{l}</div>
-                )}
+                <KPI l="Total Queue" v={queue.length} t={queue.length>0?"warn":null}/>
+                <KPI l="New (Pending)" v={pending} t={pending>0?"hot":null}/>
+                <KPI l="In Progress" v={confirming}/>
+                <KPI l="Today's Appts" v={todayQ.length} t={todayQ.length>0?"warn":null}/>
+                <KPI l="Urgent (Past Due)" v={urgentQ.length} t={urgentQ.length>0?"hot":null}/>
             </div>
             <div style={{padding:"16px 24px"}}>
-                {tmTab==="queue"&&<div>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
-                        <h3 style={{fontSize:13,fontWeight:800}}>Confirmation Queue</h3>
-                        <button className="btn" onClick={loadQueue}><Ic d={IC.refresh} s={12}/></button>
-                    </div>
-                    {queue.length===0?<div className="cd" style={{padding:20,textAlign:"center",color:"#3f3f46"}}>Queue empty - all caught up!</div>:
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:8}}>
-                        {queue.map(q=>{
-                            const matchedLead=leads.find(l=>l.id===q.lead_id);
-                            return(
-                            <div key={q.id} className="cd" style={{padding:14,borderLeft:q.confirmation_status==="confirmed"?"3px solid #22c55e":"3px solid #f59e0b"}}>
-                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                {queue.length===0?<div className="cd" style={{padding:40,textAlign:"center",color:"#3f3f46"}}><div style={{fontSize:36,marginBottom:8}}>✓</div>Queue empty — all caught up!</div>:
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    {/* Urgent first, then by date */}
+                    {queue.sort((a,b)=>(a.appointment_date||"").localeCompare(b.appointment_date||"")||(a.appointment_time||"").localeCompare(b.appointment_time||"")).map(q=>{
+                        const isActive=activeCard===q.appointment_id;
+                        const isUrgent=q.appointment_date&&q.appointment_date<=today;
+                        const apptType=q.appointment_type||"in_person";
+                        return(
+                        <div key={q.appointment_id} className="cd" style={{padding:0,borderLeft:isUrgent?"3px solid #ef4444":q.confirmation_status==="pending"?"3px solid #f59e0b":"3px solid #3b82f6",overflow:"hidden"}}>
+                            {/* Main row - always visible */}
+                            <div style={{padding:"12px 16px",display:"grid",gridTemplateColumns:"2.5fr 1.5fr 1fr 1fr 1.5fr .8fr",alignItems:"center",gap:8,cursor:"pointer"}} onClick={()=>setActiveCard(isActive?null:q.appointment_id)}>
+                                <div>
+                                    <div style={{fontWeight:700,fontSize:14,color:"#e4e4e7"}}>{q.first_name} {q.last_name}</div>
+                                    <a href={`tel:${q.phone}`} style={{fontSize:12,color:"#3b82f6",textDecoration:"none"}} onClick={e=>e.stopPropagation()}><Ic d={IC.phone} s={10} c="#3b82f6"/> {q.phone}</a>
+                                </div>
+                                <div style={{fontSize:11,color:"#71717a"}}>{q.property_address}{q.city?`, ${q.city}`:""}</div>
+                                <div>
+                                    <div style={{fontSize:12,fontWeight:700,color:isUrgent?"#ef4444":"#e4e4e7"}}>{q.appointment_date}</div>
+                                    <div style={{fontSize:11,color:"#71717a"}}>{q.appointment_time||"TBD"}</div>
+                                </div>
+                                <div>
+                                    <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:4,background:apptType==="zoom"?"#1e1b4b":"#1c1917",color:apptType==="zoom"?"#a78bfa":"#f59e0b",border:"1px solid "+(apptType==="zoom"?"#312e81":"#292524")}}>{apptType==="in_person"?"In Person":apptType==="zoom"?"Zoom":"Phone"}</span>
+                                    {q.average_monthly_bill&&<div style={{fontSize:11,color:"#f59e0b",fontWeight:700,marginTop:2}}>{$.money(q.average_monthly_bill)}/mo</div>}
+                                </div>
+                                <div style={{fontSize:10,color:"#52525b"}}>
+                                    {q.confirmation_attempts_count>0&&<span>{q.confirmation_attempts_count} attempt{q.confirmation_attempts_count!==1?"s":""}</span>}
+                                    {q.submitted_by_name&&<div>via {q.submitted_by_name}</div>}
+                                </div>
+                                <div style={{textAlign:"right"}}>
+                                    <span className={`badge ${q.confirmation_status==="pending"?"b-yellow":"b-blue"}`}>{sL(q.confirmation_status)}</span>
+                                </div>
+                            </div>
+                            {/* Expanded detail panel */}
+                            {isActive&&<div style={{borderTop:"1px solid #18181b",padding:"14px 16px",background:"#0a0a0c"}}>
+                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:14}}>
+                                    {/* Left: homeowner detail + recording + summary */}
                                     <div>
-                                        <div style={{fontWeight:700,fontSize:14,cursor:"pointer",color:"#e4e4e7"}} onClick={()=>matchedLead&&setSelLead(matchedLead)}>{q.lead_name||"Lead"} {matchedLead&&<Ic d={IC.arrow} s={10}/>}</div>
-                                        {q.phone&&<a href={`tel:${q.phone}`} style={{fontSize:12,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:4,marginTop:2}}><Ic d={IC.phone} s={11} c="#3b82f6"/>{q.phone}</a>}
+                                        <SH title="Homeowner Details"/>
+                                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:10}}>
+                                            <DF l="Phone" v={q.phone} c="#3b82f6"/>
+                                            <DF l="Email" v={q.email||"--"}/>
+                                            <DF l="Address" v={q.property_address}/>
+                                            <DF l="Bill" v={q.average_monthly_bill?$.money(q.average_monthly_bill)+"/mo":"--"} c="#f59e0b"/>
+                                        </div>
+                                        {q.telemarketing_summary&&<div style={{background:"#111113",border:"1px solid #1e1e21",borderRadius:6,padding:10,marginBottom:8}}>
+                                            <div style={{fontSize:9,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:4}}>TM Summary</div>
+                                            <div style={{fontSize:12,color:"#a1a1aa",lineHeight:1.5,whiteSpace:"pre-wrap"}}>{q.telemarketing_summary}</div>
+                                        </div>}
+                                        {q.recording_url&&<a href={q.recording_url} target="_blank" rel="noopener" style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,color:"#3b82f6",textDecoration:"none",marginBottom:8}}>🎙 Listen to Recording</a>}
+                                        {q.notes&&<div style={{fontSize:11,color:"#71717a",marginTop:4}}>Notes: {q.notes}</div>}
                                     </div>
-                                    <span className={`badge ${q.confirmation_status==="confirmed"?"b-green":"b-yellow"}`}>{sL(q.confirmation_status||"pending")}</span>
+                                    {/* Right: confirmation action panel */}
+                                    <div>
+                                        <SH title="Log Confirmation Attempt"/>
+                                        <div style={{marginBottom:8}}>
+                                            <a href={`tel:${q.phone}`} style={{display:"block",textAlign:"center",background:"#052e16",border:"1px solid #166534",borderRadius:6,padding:"10px",color:"#22c55e",fontWeight:800,fontSize:13,textDecoration:"none",marginBottom:8}}>📞 CALL {q.phone}</a>
+                                        </div>
+                                        <textarea ref={noteRef} className="inp" placeholder="What happened on this call? (required for most outcomes)" value={noteText} onChange={e=>setNoteText(e.target.value)} style={{marginBottom:8,minHeight:60}}/>
+                                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:4,marginBottom:8}}>
+                                            {outcomes.map(o=>(
+                                                <button key={o.k} className="btn" onClick={()=>{
+                                                    if(o.k==="rescheduled"||o.k==="follow_up_later"){setShowOutcome(o.k)}else{logAttempt(q.appointment_id,o.k)}
+                                                }} style={{padding:"8px 6px",fontSize:11,fontWeight:700,background:o.k==="confirmed"?"#052e16":o.k==="dnc"?"#450a0a":"transparent",borderColor:o.c,color:o.c}}>{o.icon} {o.l}</button>
+                                            ))}
+                                        </div>
+                                        {/* Follow-up date picker for reschedule/follow_up_later */}
+                                        {showOutcome&&<div style={{background:"#111113",border:"1px solid #27272a",borderRadius:6,padding:10,marginBottom:8}}>
+                                            <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",marginBottom:6}}>{showOutcome==="rescheduled"?"New Appointment Date":"Follow-Up Date"}</div>
+                                            <input type="date" className="inp" value={fuDate} onChange={e=>setFuDate(e.target.value)} style={{marginBottom:6}}/>
+                                            <div style={{display:"flex",gap:6}}>
+                                                <button className="btn btn-p" style={{flex:1,padding:8,fontSize:11}} onClick={()=>logAttempt(q.appointment_id,showOutcome)}>Submit</button>
+                                                <button className="btn" style={{padding:8,fontSize:11}} onClick={()=>setShowOutcome(null)}>Cancel</button>
+                                            </div>
+                                        </div>}
+                                    </div>
                                 </div>
-                                <div style={{fontSize:11,color:"#71717a",marginBottom:4}}><Ic d={IC.cal} s={11}/> {q.appointment_date} at {q.appointment_time||"TBD"}</div>
-                                {matchedLead&&<div style={{fontSize:10,color:"#52525b",marginBottom:8}}>{matchedLead.property_address}, {matchedLead.city} &middot; {$.money(matchedLead.average_monthly_bill)}/mo</div>}
-                                {q.attempts_count>0&&<div style={{fontSize:10,color:"#f59e0b",marginBottom:6}}>{q.attempts_count} attempt{q.attempts_count!==1?"s":""} &middot; Last: {sL(q.last_outcome||"none")}</div>}
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
-                                    <button className="btn btn-g" onClick={()=>logAttempt(q.id,"confirmed")} style={{flex:1,padding:"8px",fontSize:11,fontWeight:800}}>CONFIRMED</button>
-                                    <button className="btn" onClick={()=>logAttempt(q.id,"no_answer")} style={{flex:1,padding:"8px",fontSize:11}}>No Answer</button>
-                                </div>
-                                <div style={{display:"flex",gap:4}}>
-                                    <button className="btn" onClick={()=>logAttempt(q.id,"voicemail")} style={{flex:1,fontSize:10,padding:"6px"}}>Voicemail</button>
-                                    <button className="btn" onClick={()=>logAttempt(q.id,"reschedule")} style={{flex:1,fontSize:10,padding:"6px"}}>Reschedule</button>
-                                    <button className="btn" onClick={()=>logAttempt(q.id,"follow_up")} style={{flex:1,fontSize:10,padding:"6px",color:"#3b82f6"}}>Follow Up</button>
-                                    <button className="btn btn-r" onClick={()=>logAttempt(q.id,"not_interested")} style={{flex:1,fontSize:10,padding:"6px"}}>Not Int.</button>
-                                </div>
-                            </div>
-                        )})}
-                    </div>
-                    }
-                </div>}
-
-                {tmTab==="leads"&&<div>
-                    <div className="cd" style={{overflow:"hidden"}}>
-                        <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr .8fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}>
-                            <div>Name</div><div>Location</div><div>Bill</div><div>Status</div>
+                            </div>}
                         </div>
-                        {leads.length===0&&<div style={{padding:24,textAlign:"center",color:"#3f3f46"}}>No leads</div>}
-                        {leads.map(l=>(
-                            <div key={l.id} className="tr" style={{gridTemplateColumns:"2fr 1.5fr 1fr .8fr",cursor:"pointer"}} onClick={()=>setSelLead(l)}>
-                                <div><div style={{fontWeight:700,fontSize:12}}>{l.first_name} {l.last_name}</div>{l.phone&&<a href={`tel:${l.phone}`} style={{fontSize:10,color:"#3b82f6",textDecoration:"none"}} onClick={e=>e.stopPropagation()}>{l.phone}</a>}</div>
-                                <div style={{fontSize:11,color:"#71717a"}}>{l.city}, {l.state}</div>
-                                <div style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>{$.money(l.average_monthly_bill)}</div>
-                                <div><span className={`badge ${sB(l.deal_status)}`}>{sL(l.deal_status)}</span></div>
-                            </div>
-                        ))}
-                    </div>
-                </div>}
-
-                {tmTab==="create"&&<div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-                        <div className="cd" style={{padding:16}}>
-                            <SH title="New Lead"/>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                                <input className="inp" placeholder="First Name *" value={leadForm.first_name} onChange={e=>setLF(o=>({...o,first_name:e.target.value}))}/>
-                                <input className="inp" placeholder="Last Name" value={leadForm.last_name} onChange={e=>setLF(o=>({...o,last_name:e.target.value}))}/>
-                                <input className="inp" placeholder="Phone *" value={leadForm.phone} onChange={e=>setLF(o=>({...o,phone:e.target.value}))}/>
-                                <input className="inp" placeholder="Email" value={leadForm.email} onChange={e=>setLF(o=>({...o,email:e.target.value}))}/>
-                                <input className="inp" style={{gridColumn:"span 2"}} placeholder="Address" value={leadForm.property_address} onChange={e=>setLF(o=>({...o,property_address:e.target.value}))}/>
-                                <input className="inp" placeholder="City" value={leadForm.city} onChange={e=>setLF(o=>({...o,city:e.target.value}))}/>
-                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                                    <select className="inp" value={leadForm.state} onChange={e=>setLF(o=>({...o,state:e.target.value}))}><option>CA</option><option>TX</option><option>AZ</option><option>FL</option><option>NV</option></select>
-                                    <input className="inp" placeholder="ZIP" value={leadForm.zip_code} onChange={e=>setLF(o=>({...o,zip_code:e.target.value}))}/>
-                                </div>
-                                <input className="inp" placeholder="Monthly Bill" type="number" value={leadForm.average_monthly_bill} onChange={e=>setLF(o=>({...o,average_monthly_bill:e.target.value}))}/>
-                            </div>
-                            <textarea className="inp" placeholder="Notes" value={leadForm.notes} onChange={e=>setLF(o=>({...o,notes:e.target.value}))} style={{marginBottom:8}}/>
-                            <button className="btn btn-p" style={{width:"100%",padding:10}} onClick={createLead}>Create Lead</button>
-                        </div>
-                        <div className="cd" style={{padding:16}}>
-                            <SH title="New Appointment"/>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                                <select className="inp" style={{gridColumn:"span 2"}} value={apptForm.lead_id} onChange={e=>setAF(o=>({...o,lead_id:e.target.value}))}>
-                                    <option value="">Select Lead *</option>
-                                    {leads.map(l=><option key={l.id} value={l.id}>{l.first_name} {l.last_name}</option>)}
-                                </select>
-                                <select className="inp" style={{gridColumn:"span 2"}} value={apptForm.assigned_rep_id} onChange={e=>setAF(o=>({...o,assigned_rep_id:e.target.value}))}>
-                                    <option value="">Assign Rep *</option>
-                                    {reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}
-                                </select>
-                                <input className="inp" type="date" value={apptForm.appointment_date} onChange={e=>setAF(o=>({...o,appointment_date:e.target.value}))}/>
-                                <input className="inp" type="time" value={apptForm.appointment_time} onChange={e=>setAF(o=>({...o,appointment_time:e.target.value}))}/>
-                            </div>
-                            <textarea className="inp" placeholder="Notes" value={apptForm.notes} onChange={e=>setAF(o=>({...o,notes:e.target.value}))} style={{marginBottom:8}}/>
-                            <button className="btn btn-p" style={{width:"100%",padding:10}} onClick={createAppt}>Create Appointment</button>
-                        </div>
-                    </div>
+                    )})}
                 </div>}
             </div>
             {/* Call Script Modal */}
@@ -2555,11 +2677,8 @@ function TelemarketingPage(){
                         <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>{sL(showScript)} Script</div>
                         <div style={{fontSize:13,color:"#a1a1aa",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{scripts[showScript]||"Select a script above."}</div>
                     </div>
-                    <div style={{marginTop:12,fontSize:10,color:"#3f3f46"}}>Replace [bracketed] placeholders with actual details before calling.</div>
                 </div></div>
             )}
-            {/* Lead Drawer */}
-            {selLead&&<LeadDrawer lead={selLead} reps={reps} onClose={()=>setSelLead(null)} onRefresh={loadQueue} onCreateAppt={()=>{}}/>}
         </div>
     );
 }

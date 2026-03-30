@@ -3,11 +3,13 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import or_
 from app.database import get_db
 from app.models import Lead, User, Appointment
 from app.auth import get_current_user, require_role
 from services.audit import create_audit_log
-from datetime import datetime
+from services.actions import log_action
+from datetime import datetime, date, timedelta
 
 router = APIRouter(prefix="/api/dispatch", tags=["dispatch"])
 
@@ -209,3 +211,156 @@ def get_dispatch_scores(
         "lead_location": f"{lead.city}, {lead.state}",
         "rep_scores": scores,
     }
+
+
+# ============================================================================
+# DISPATCH QUEUE - Confirmed appointments ready for dispatch
+# ============================================================================
+
+@router.get("/queue")
+def get_dispatch_queue(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get confirmed appointments ready for dispatch."""
+    if current_user.role not in ["admin"]:
+        raise HTTPException(status_code=403, detail="Admin only")
+
+    # Get appointments that are confirmed but not yet dispatched/completed
+    appointments = (
+        db.query(Appointment)
+        .filter(
+            Appointment.confirmation_status == "confirmed",
+            Appointment.appointment_status.in_(["scheduled", "confirmed"]),
+        )
+        .order_by(Appointment.appointment_date.asc(), Appointment.appointment_time.asc())
+        .all()
+    )
+
+    queue = []
+    for appt in appointments:
+        lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
+        rep = db.query(User).filter(User.id == appt.assigned_rep_id).first() if appt.assigned_rep_id else None
+        backup = db.query(User).filter(User.id == appt.backup_rep_id).first() if getattr(appt, "backup_rep_id", None) else None
+
+        # Check for timing conflicts
+        conflicts = []
+        if rep and appt.appointment_date:
+            same_day = (
+                db.query(Appointment)
+                .filter(
+                    Appointment.assigned_rep_id == rep.id,
+                    Appointment.appointment_date == appt.appointment_date,
+                    Appointment.id != appt.id,
+                    Appointment.appointment_status.notin_(["cancelled", "no_show"]),
+                )
+                .all()
+            )
+            for c in same_day:
+                if c.appointment_time and appt.appointment_time:
+                    # Simple overlap check: within 90 min
+                    c_mins = c.appointment_time.hour * 60 + c.appointment_time.minute
+                    a_mins = appt.appointment_time.hour * 60 + appt.appointment_time.minute
+                    if abs(c_mins - a_mins) < 90:
+                        cl = db.query(Lead).filter(Lead.id == c.lead_id).first()
+                        conflicts.append({
+                            "appointment_id": c.id,
+                            "time": str(c.appointment_time),
+                            "lead_name": f"{cl.first_name} {cl.last_name}" if cl else "Unknown",
+                        })
+
+        queue.append({
+            "appointment_id": appt.id,
+            "lead_id": lead.id if lead else None,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else "Unknown",
+            "phone": lead.phone if lead else None,
+            "address": lead.property_address if lead else appt.appointment_address,
+            "city": lead.city if lead else None,
+            "state": lead.state if lead else None,
+            "monthly_bill": lead.average_monthly_bill if lead else None,
+            "appointment_date": str(appt.appointment_date),
+            "appointment_time": str(appt.appointment_time) if appt.appointment_time else None,
+            "appointment_type": getattr(appt, "appointment_type", "in_person"),
+            "dispatch_status": getattr(appt, "dispatch_status", "pending"),
+            "assigned_rep_id": appt.assigned_rep_id,
+            "assigned_rep_name": rep.full_name if rep else None,
+            "backup_rep_id": getattr(appt, "backup_rep_id", None),
+            "backup_rep_name": backup.full_name if backup else None,
+            "rep_acknowledged": bool(getattr(appt, "rep_acknowledged_at", None)),
+            "conflicts": conflicts,
+            "telemarketing_summary": getattr(appt, "telemarketing_summary", None),
+            "notes": appt.notes,
+        })
+
+    return queue
+
+
+class DispatchAction(BaseModel):
+    appointment_id: int
+    rep_id: int
+    backup_rep_id: Optional[int] = None
+
+
+@router.post("/assign")
+def dispatch_assign_rep(
+    data: DispatchAction,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Assign a rep to a confirmed appointment and mark as dispatched."""
+    appt = db.query(Appointment).filter(Appointment.id == data.appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    rep = db.query(User).filter(User.id == data.rep_id).first()
+    if not rep:
+        raise HTTPException(status_code=404, detail="Rep not found")
+
+    appt.assigned_rep_id = data.rep_id
+    appt.assigned_at = datetime.utcnow()
+    appt.dispatch_status = "assigned"
+    if data.backup_rep_id:
+        appt.backup_rep_id = data.backup_rep_id
+
+    # Update lead status
+    lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
+    if lead:
+        lead.assigned_rep_id = data.rep_id
+        lead.deal_status = "assigned"
+
+    log_action(db=db, lead_id=appt.lead_id, action_type="assigned",
+               rep_id=current_user.id,
+               note=f"Dispatched to {rep.full_name}")
+
+    create_audit_log(
+        db=db, user_id=current_user.id, action="dispatch",
+        entity_type="appointment", entity_id=appt.id,
+        new_value=str(data.rep_id),
+        details=f"Dispatched appointment to {rep.full_name}",
+    )
+
+    db.commit()
+    return {"ok": True, "message": f"Dispatched to {rep.full_name}"}
+
+
+@router.post("/acknowledge/{appointment_id}")
+def acknowledge_dispatch(
+    appointment_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Rep acknowledges dispatch assignment."""
+    appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if appt.assigned_rep_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not your appointment")
+
+    appt.rep_acknowledged_at = datetime.utcnow()
+    appt.dispatch_status = "acknowledged"
+
+    log_action(db=db, lead_id=appt.lead_id, action_type="status_change",
+               rep_id=current_user.id, note="Rep acknowledged dispatch")
+
+    db.commit()
+    return {"ok": True, "message": "Dispatch acknowledged"}
