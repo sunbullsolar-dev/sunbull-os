@@ -114,24 +114,50 @@ def startup_event():
             try:
                 from sqlalchemy import inspect, text as _sql_text
                 inspector = inspect(engine)
-                lead_columns = [col['name'] for col in inspector.get_columns('leads')]
 
-                with engine.connect() as conn:
-                    missing_cols = {
-                        'is_held': "ALTER TABLE leads ADD COLUMN is_held BOOLEAN DEFAULT 0",
+                # Map of table -> {column_name: ALTER TABLE SQL}
+                migrations = {
+                    'leads': {
+                        'is_held': "ALTER TABLE leads ADD COLUMN is_held BOOLEAN DEFAULT FALSE",
                         'last_outcome': "ALTER TABLE leads ADD COLUMN last_outcome VARCHAR(30)",
                         'follow_up_note': "ALTER TABLE leads ADD COLUMN follow_up_note TEXT",
                         'runner_id': "ALTER TABLE leads ADD COLUMN runner_id INTEGER",
                         'rehash_rep_id': "ALTER TABLE leads ADD COLUMN rehash_rep_id INTEGER",
-                    }
-                    for col_name, sql in missing_cols.items():
-                        if col_name not in lead_columns:
-                            try:
-                                conn.execute(_sql_text(sql))
-                                print(f"Added missing column: {col_name}")
-                            except Exception:
-                                pass  # Column may already exist
+                    },
+                    'users': {
+                        'close_rate': "ALTER TABLE users ADD COLUMN close_rate FLOAT DEFAULT 0.0",
+                        'total_deals': "ALTER TABLE users ADD COLUMN total_deals INTEGER DEFAULT 0",
+                        'territory': "ALTER TABLE users ADD COLUMN territory VARCHAR(100)",
+                    },
+                    'appointments': {
+                        'route_order_index': "ALTER TABLE appointments ADD COLUMN route_order_index INTEGER",
+                        'estimated_travel_time_minutes': "ALTER TABLE appointments ADD COLUMN estimated_travel_time_minutes INTEGER",
+                        'rep_checked_in_at': "ALTER TABLE appointments ADD COLUMN rep_checked_in_at TIMESTAMP",
+                        'rep_checked_out_at': "ALTER TABLE appointments ADD COLUMN rep_checked_out_at TIMESTAMP",
+                    },
+                    'deals': {
+                        'delay_reason': "ALTER TABLE deals ADD COLUMN delay_reason VARCHAR(255)",
+                    },
+                    'commissions': {
+                        'paid_at': "ALTER TABLE commissions ADD COLUMN paid_at TIMESTAMP",
+                    },
+                }
+
+                with engine.connect() as conn:
+                    for table_name, cols in migrations.items():
+                        try:
+                            existing = [c['name'] for c in inspector.get_columns(table_name)]
+                        except Exception:
+                            continue  # Table doesn't exist yet, create_all will handle it
+                        for col_name, sql in cols.items():
+                            if col_name not in existing:
+                                try:
+                                    conn.execute(_sql_text(sql))
+                                    print(f"Added {table_name}.{col_name}")
+                                except Exception:
+                                    pass
                     conn.commit()
+                print("Column migration complete.")
             except Exception as e:
                 print(f"Column migration note: {e}")
 
