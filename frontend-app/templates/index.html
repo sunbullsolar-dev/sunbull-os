@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sunbull OS — Command Center</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#f5f5f7;color:#1d1d1f;-webkit-font-smoothing:antialiased}
+        ::-webkit-scrollbar{width:6px}
+        ::-webkit-scrollbar-track{background:transparent}
+        ::-webkit-scrollbar-thumb{background:#d1d1d6;border-radius:3px}
+        .sidebar{width:240px;background:#1d1d1f;min-height:100vh;position:fixed;left:0;top:0;z-index:30;display:flex;flex-direction:column}
+        .sidebar-link{display:flex;align-items:center;gap:10px;padding:10px 20px;color:#a1a1a6;font-size:14px;font-weight:500;cursor:pointer;border-radius:8px;margin:2px 12px;transition:all .15s}
+        .sidebar-link:hover{color:#fff;background:rgba(255,255,255,.08)}
+        .sidebar-link.active{color:#fff;background:rgba(255,159,10,.15)}
+        .sidebar-link.active svg{color:#FF9F0A}
+        .main-content{margin-left:240px;min-height:100vh;padding:0}
+        .page-header{padding:24px 32px 16px;background:#fff;border-bottom:1px solid #e5e5ea}
+        .page-body{padding:24px 32px}
+        .metric-card{background:#fff;border-radius:16px;padding:20px 24px;box-shadow:0 1px 3px rgba(0,0,0,.04);border:1px solid rgba(0,0,0,.04)}
+        .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600;letter-spacing:.02em}
+        .badge-green{background:#dcfce7;color:#166534}
+        .badge-yellow{background:#fef9c3;color:#854d0e}
+        .badge-red{background:#fee2e2;color:#991b1b}
+        .badge-blue{background:#dbeafe;color:#1e40af}
+        .badge-gray{background:#f3f4f6;color:#374151}
+        .badge-orange{background:#ffedd5;color:#9a3412}
+        .table-row{display:grid;align-items:center;padding:12px 20px;border-bottom:1px solid #f3f4f6;font-size:14px;cursor:pointer;transition:background .1s}
+        .table-row:hover{background:#fafafa}
+        .drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:40;opacity:0;animation:fadeIn .2s forwards}
+        .drawer{position:fixed;right:0;top:0;bottom:0;width:480px;background:#fff;z-index:50;box-shadow:-4px 0 24px rgba(0,0,0,.1);transform:translateX(100%);animation:slideLeft .25s forwards;overflow-y:auto}
+        @keyframes fadeIn{to{opacity:1}}
+        @keyframes slideLeft{to{transform:translateX(0)}}
+        .toast{position:fixed;bottom:24px;right:24px;z-index:60;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:500;color:#fff;animation:toastIn .3s forwards}
+        .toast-success{background:#30D158}
+        .toast-error{background:#FF453A}
+        @keyframes toastIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .spinner{border:3px solid rgba(0,0,0,.06);border-top:3px solid #FF9F0A;border-radius:50%;width:32px;height:32px;animation:spin .7s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .input{width:100%;padding:10px 14px;border:1.5px solid #e5e5ea;border-radius:10px;font-size:14px;font-family:inherit;outline:none;transition:border-color .15s}
+        .input:focus{border-color:#FF9F0A}
+        .btn-primary{background:#1d1d1f;color:#fff;border:none;padding:10px 20px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer}
+        .btn-primary:hover{background:#333}
+        .btn-accent{background:#FF9F0A;color:#fff;border:none;padding:10px 20px;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer}
+        .btn-accent:hover{background:#e68f00}
+        .btn-accent:disabled{opacity:.4;cursor:not-allowed}
+        .btn-ghost{background:transparent;border:1.5px solid #e5e5ea;padding:8px 16px;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;color:#1d1d1f}
+        .btn-ghost:hover{border-color:#bbb}
+        @media(max-width:768px){
+            .sidebar{width:64px}
+            .sidebar .nav-label,.sidebar .logo-text{display:none}
+            .sidebar-link{justify-content:center;padding:12px}
+            .main-content{margin-left:64px}
+            .drawer{width:100%}
+        }
+    </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel" data-type="module">
+const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } = React;
+
+// ===== CONFIG =====
+const API = window.location.origin;
+
+// ===== AUTH CONTEXT =====
+const AuthCtx = createContext(null);
+
+function useAuth() {
+    return useContext(AuthCtx);
+}
+
+function AuthProvider({ children }) {
+    const [user, setUser] = useState(null);
+    const [token, setToken] = useState(localStorage.getItem("sb_token") || "");
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        if (!token) { setLoading(false); return; }
+        fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.ok ? r.json() : Promise.reject())
+            .then(u => { setUser(u); setLoading(false); })
+            .catch(() => { setToken(""); localStorage.removeItem("sb_token"); setLoading(false); });
+    }, [token]);
+
+    const login = async (email, password) => {
+        const r = await fetch(`${API}/api/auth/login`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email, password }),
+        });
+        if (!r.ok) throw new Error("Invalid credentials");
+        const data = await r.json();
+        localStorage.setItem("sb_token", data.access_token);
+        setToken(data.access_token);
+        return data;
+    };
+
+    const logout = () => {
+        localStorage.removeItem("sb_token");
+        setToken("");
+        setUser(null);
+    };
+
+    const authFetch = useCallback(async (url, opts = {}) => {
+        const r = await fetch(`${API}${url}`, {
+            ...opts,
+            headers: { ...opts.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        });
+        if (r.status === 401) { logout(); throw new Error("Session expired"); }
+        return r;
+    }, [token]);
+
+    return (
+        <AuthCtx.Provider value={{ user, token, login, logout, authFetch, loading }}>
+            {children}
+        </AuthCtx.Provider>
+    );
+}
+
+// ===== ROUTER =====
+function useHash() {
+    const [hash, setHash] = useState(window.location.hash.slice(1) || "/dashboard");
+    useEffect(() => {
+        const handler = () => setHash(window.location.hash.slice(1) || "/dashboard");
+        window.addEventListener("hashchange", handler);
+        return () => window.removeEventListener("hashchange", handler);
+    }, []);
+    return hash;
+}
+
+function navigate(path) { window.location.hash = path; }
+
+// ===== ICONS (inline SVG) =====
+const Icon = ({ name, size = 18 }) => {
+    const icons = {
+        dashboard: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>,
+        leads: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+        calendar: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>,
+        users: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
+        tasks: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>,
+        pipeline: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>,
+        logout: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1-2 2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>,
+        search: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+        x: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>,
+        chevron: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>,
+        phone: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>,
+        mail: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>,
+        dollar: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>,
+        map: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>,
+        star: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>,
+        alert: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>,
+        plus: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>,
+        refresh: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>,
+        home: <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+    };
+    return icons[name] || null;
+};
+
+// ===== HELPERS =====
+const fmt = {
+    currency: (v) => v != null ? `$${Number(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : "—",
+    pct: (v) => v != null ? `${Number(v).toFixed(1)}%` : "—",
+    date: (v) => v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—",
+    datetime: (v) => v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—",
+    time: (v) => v || "—",
+    score: (s) => {
+        if (s >= 70) return { label: "Hot", cls: "badge-red" };
+        if (s >= 50) return { label: "Warm", cls: "badge-orange" };
+        if (s >= 30) return { label: "Cool", cls: "badge-yellow" };
+        return { label: "Cold", cls: "badge-blue" };
+    },
+    status: (s) => {
+        const map = {
+            new: "badge-blue", confirmed: "badge-green", appointed: "badge-green",
+            confirming: "badge-yellow", unconfirmed: "badge-yellow", follow_up: "badge-yellow",
+            closed_won: "badge-green", closed_lost: "badge-red", cancelled: "badge-red",
+            dispatched: "badge-blue", en_route: "badge-blue", arrived: "badge-orange",
+            held: "badge-yellow", closed: "badge-green", not_closed: "badge-red",
+            no_show: "badge-red", declined: "badge-red", reschedule: "badge-yellow",
+            scheduled: "badge-blue", completed: "badge-green", rescheduled: "badge-yellow",
+            on_the_way: "badge-blue",
+        };
+        return map[s] || "badge-gray";
+    },
+};
+
+function statusLabel(s) {
+    return (s || "").replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+}
+
+// ===== LOGIN PAGE =====
+function LoginPage() {
+    const { login } = useAuth();
+    const [email, setEmail] = useState("");
+    const [password, setPassword] = useState("");
+    const [err, setErr] = useState("");
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setErr("");
+        setLoading(true);
+        try {
+            await login(email, password);
+            navigate("/dashboard");
+        } catch (ex) {
+            setErr("Invalid email or password");
+        }
+        setLoading(false);
+    };
+
+    return (
+        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "linear-gradient(135deg, #1d1d1f 0%, #2c2c2e 100%)" }}>
+            <div style={{ width: 380, background: "#fff", borderRadius: 20, padding: "40px 32px", boxShadow: "0 8px 40px rgba(0,0,0,.2)" }}>
+                <div style={{ textAlign: "center", marginBottom: 32 }}>
+                    <div style={{ fontSize: 28, fontWeight: 800, letterSpacing: "-.03em" }}>
+                        <span style={{ color: "#FF9F0A" }}>Sunbull</span> OS
+                    </div>
+                    <div style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>Command Center</div>
+                </div>
+                <form onSubmit={handleSubmit}>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#86868b", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em" }}>Email</label>
+                        <input className="input" type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@sunbull.com" required />
+                    </div>
+                    <div style={{ marginBottom: 24 }}>
+                        <label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#86868b", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".04em" }}>Password</label>
+                        <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Enter password" required />
+                    </div>
+                    {err && <div style={{ color: "#FF453A", fontSize: 13, marginBottom: 16, textAlign: "center" }}>{err}</div>}
+                    <button className="btn-accent" type="submit" disabled={loading} style={{ width: "100%", padding: "14px", fontSize: 16 }}>
+                        {loading ? "Signing in..." : "Sign In"}
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+// ===== SIDEBAR =====
+function Sidebar() {
+    const { user, logout } = useAuth();
+    const hash = useHash();
+    const isAdmin = user?.role === "admin";
+
+    const links = [
+        { path: "/dashboard", icon: "dashboard", label: "Dashboard" },
+        { path: "/leads", icon: "leads", label: "Leads" },
+        { path: "/appointments", icon: "calendar", label: "Appointments" },
+        ...(isAdmin ? [{ path: "/reps", icon: "users", label: "Reps" }] : []),
+        { path: "/tasks", icon: "tasks", label: "Tasks" },
+        { path: "/pipeline", icon: "pipeline", label: "Pipeline" },
+    ];
+
+    return (
+        <div className="sidebar">
+            <div style={{ padding: "20px 20px 16px", borderBottom: "1px solid rgba(255,255,255,.08)" }}>
+                <div style={{ fontSize: 20, fontWeight: 800, color: "#fff", letterSpacing: "-.02em" }}>
+                    <span style={{ color: "#FF9F0A" }}>Sunbull</span> <span className="logo-text">OS</span>
+                </div>
+                <div className="logo-text" style={{ color: "#86868b", fontSize: 11, marginTop: 2, textTransform: "uppercase", letterSpacing: ".06em" }}>Command Center</div>
+            </div>
+            <nav style={{ flex: 1, padding: "12px 0" }}>
+                {links.map(l => (
+                    <div key={l.path} className={`sidebar-link ${hash.startsWith(l.path) ? "active" : ""}`} onClick={() => navigate(l.path)}>
+                        <Icon name={l.icon} />
+                        <span className="nav-label">{l.label}</span>
+                    </div>
+                ))}
+            </nav>
+            <div style={{ padding: "16px 12px", borderTop: "1px solid rgba(255,255,255,.08)" }}>
+                <div style={{ padding: "8px 12px", marginBottom: 8 }}>
+                    <div style={{ color: "#fff", fontSize: 13, fontWeight: 600 }}>{user?.full_name}</div>
+                    <div style={{ color: "#86868b", fontSize: 11 }}>{statusLabel(user?.role)}</div>
+                </div>
+                <div className="sidebar-link" onClick={logout}>
+                    <Icon name="logout" />
+                    <span className="nav-label">Sign Out</span>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ===== ADMIN DASHBOARD =====
+function DashboardPage() {
+    const { authFetch, user } = useAuth();
+    const [data, setData] = useState(null);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        loadDashboard();
+    }, []);
+
+    const loadDashboard = async () => {
+        setLoading(true);
+        try {
+            if (user?.role === "admin") {
+                const r = await authFetch("/api/admin/dashboard");
+                if (r.ok) setData(await r.json());
+            } else {
+                // Rep dashboard - load their own stats
+                const [leadsR, apptsR, tasksR] = await Promise.all([
+                    authFetch("/api/leads?limit=100"),
+                    authFetch("/api/appointments"),
+                    authFetch("/api/tasks"),
+                ]);
+                const leads = leadsR.ok ? await leadsR.json() : [];
+                const appts = apptsR.ok ? await apptsR.json() : [];
+                const tasks = tasksR.ok ? await tasksR.json() : [];
+                setData({
+                    _rep: true,
+                    total_leads: Array.isArray(leads) ? leads.length : (leads.items || []).length,
+                    appointments_today: Array.isArray(appts) ? appts.filter(a => a.appointment_date === new Date().toISOString().split("T")[0]).length : 0,
+                    open_tasks: Array.isArray(tasks) ? tasks.filter(t => t.status !== "completed").length : 0,
+                    leads: Array.isArray(leads) ? leads.slice(0, 5) : (leads.items || []).slice(0, 5),
+                    appointments: Array.isArray(appts) ? appts.slice(0, 5) : appts.slice(0, 5),
+                });
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="spinner" /></div>;
+
+    // ADMIN DASHBOARD
+    if (user?.role === "admin" && data && !data._rep) {
+        return (
+            <div>
+                <div className="page-header">
+                    <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>War Room</h1>
+                    <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>Real-time operations overview</p>
+                </div>
+                <div className="page-body">
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
+                        <MetricCard label="Leads / Day" value={data.leads_per_day?.toFixed(1)} sub="Last 30 days" color="#FF9F0A" />
+                        <MetricCard label="Close Rate" value={`${data.close_rate?.toFixed(1)}%`} sub={`${data.closed_won_leads} / ${data.total_leads}`} color={data.close_rate > 20 ? "#30D158" : "#FF453A"} />
+                        <MetricCard label="Revenue / Rep" value={fmt.currency(data.revenue_per_rep)} sub="Avg deal value" color="#007AFF" />
+                        <MetricCard label="Follow-up Rate" value={`${data.held_rate?.toFixed(1)}%`} sub="Needs attention" color={data.held_rate > 20 ? "#FF453A" : "#30D158"} />
+                    </div>
+                    {data.enforcement && (
+                        <div style={{ marginBottom: 32 }}>
+                            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Enforcement Overview</h3>
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                                <div className="metric-card" style={{ borderLeft: "4px solid #FF453A" }}>
+                                    <div style={{ fontSize: 11, color: "#86868b", textTransform: "uppercase", fontWeight: 600, letterSpacing: ".04em" }}>Overdue Tasks</div>
+                                    <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{data.enforcement.overdue_tasks || 0}</div>
+                                </div>
+                                <div className="metric-card" style={{ borderLeft: "4px solid #FF9F0A" }}>
+                                    <div style={{ fontSize: 11, color: "#86868b", textTransform: "uppercase", fontWeight: 600, letterSpacing: ".04em" }}>Active Violations</div>
+                                    <div style={{ fontSize: 28, fontWeight: 700, marginTop: 4 }}>{data.enforcement.active_violations || 0}</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+                        <div className="metric-card" style={{ padding: 24 }}>
+                            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>Quick Actions</h3>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                <button className="btn-ghost" onClick={() => navigate("/leads")}>View All Leads</button>
+                                <button className="btn-ghost" onClick={() => navigate("/appointments")}>Today's Appointments</button>
+                                <button className="btn-ghost" onClick={() => navigate("/tasks")}>Open Tasks</button>
+                                <button className="btn-ghost" onClick={() => navigate("/reps")}>Rep Performance</button>
+                            </div>
+                        </div>
+                        <div className="metric-card" style={{ padding: 24 }}>
+                            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 16 }}>System Status</h3>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontSize: 14, color: "#86868b" }}>Total Leads</span>
+                                    <span style={{ fontSize: 14, fontWeight: 600 }}>{data.total_leads}</span>
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontSize: 14, color: "#86868b" }}>Closed Won</span>
+                                    <span style={{ fontSize: 14, fontWeight: 600, color: "#30D158" }}>{data.closed_won_leads}</span>
+                                </div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                    <span style={{ fontSize: 14, color: "#86868b" }}>Pipeline Active</span>
+                                    <span style={{ fontSize: 14, fontWeight: 600 }}>{data.total_leads - data.closed_won_leads}</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    // REP DASHBOARD
+    return (
+        <div>
+            <div className="page-header">
+                <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>My Dashboard</h1>
+                <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>Welcome back, {user?.full_name}</p>
+            </div>
+            <div className="page-body">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 32 }}>
+                    <MetricCard label="My Leads" value={data?.total_leads || 0} color="#007AFF" />
+                    <MetricCard label="Today's Appts" value={data?.appointments_today || 0} color="#FF9F0A" />
+                    <MetricCard label="Open Tasks" value={data?.open_tasks || 0} color={data?.open_tasks > 5 ? "#FF453A" : "#30D158"} />
+                </div>
+                {data?.leads?.length > 0 && (
+                    <div className="metric-card" style={{ padding: 24, marginBottom: 24 }}>
+                        <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>Recent Leads</h3>
+                        {data.leads.map(l => (
+                            <div key={l.id} className="table-row" style={{ gridTemplateColumns: "1fr auto", borderRadius: 8, cursor: "pointer" }} onClick={() => navigate(`/leads?id=${l.id}`)}>
+                                <div>
+                                    <span style={{ fontWeight: 600 }}>{l.first_name} {l.last_name}</span>
+                                    <span style={{ color: "#86868b", marginLeft: 8, fontSize: 13 }}>{l.city}, {l.state}</span>
+                                </div>
+                                <span className={`badge ${fmt.status(l.deal_status)}`}>{statusLabel(l.deal_status)}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function MetricCard({ label, value, sub, color }) {
+    return (
+        <div className="metric-card">
+            <div style={{ fontSize: 11, color: "#86868b", textTransform: "uppercase", fontWeight: 600, letterSpacing: ".04em", marginBottom: 8 }}>{label}</div>
+            <div style={{ fontSize: 32, fontWeight: 700, color: color || "#1d1d1f", letterSpacing: "-.02em" }}>{value}</div>
+            {sub && <div style={{ fontSize: 12, color: "#86868b", marginTop: 4 }}>{sub}</div>}
+        </div>
+    );
+}
+
+// ===== LEADS PAGE =====
+function LeadsPage() {
+    const { authFetch, user } = useAuth();
+    const [leads, setLeads] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("");
+    const [selectedLead, setSelectedLead] = useState(null);
+    const [drawerOpen, setDrawerOpen] = useState(false);
+
+    useEffect(() => { loadLeads(); }, []);
+
+    // Check URL for lead id param
+    const hash = useHash();
+    useEffect(() => {
+        const params = new URLSearchParams(hash.split("?")[1] || "");
+        const id = params.get("id");
+        if (id && leads.length) {
+            const lead = leads.find(l => l.id === parseInt(id));
+            if (lead) { setSelectedLead(lead); setDrawerOpen(true); }
+        }
+    }, [hash, leads]);
+
+    const loadLeads = async () => {
+        setLoading(true);
+        try {
+            const r = await authFetch("/api/leads?limit=200");
+            if (r.ok) {
+                const d = await r.json();
+                setLeads(Array.isArray(d) ? d : (d.items || d.leads || []));
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    const openDrawer = (lead) => { setSelectedLead(lead); setDrawerOpen(true); };
+    const closeDrawer = () => { setDrawerOpen(false); setSelectedLead(null); };
+
+    const filtered = useMemo(() => {
+        return leads.filter(l => {
+            const matchSearch = !search || `${l.first_name} ${l.last_name} ${l.city} ${l.phone} ${l.email}`.toLowerCase().includes(search.toLowerCase());
+            const matchStatus = !statusFilter || l.deal_status === statusFilter;
+            return matchSearch && matchStatus;
+        });
+    }, [leads, search, statusFilter]);
+
+    const statuses = [...new Set(leads.map(l => l.deal_status).filter(Boolean))].sort();
+
+    if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="spinner" /></div>;
+
+    return (
+        <div>
+            <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                    <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Leads</h1>
+                    <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>{leads.length} total leads</p>
+                </div>
+                <button className="btn-accent" onClick={() => navigate("/leads/new")} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Icon name="plus" size={16} /> New Lead
+                </button>
+            </div>
+            <div className="page-body">
+                {/* Filters */}
+                <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+                    <div style={{ position: "relative", flex: 1, maxWidth: 320 }}>
+                        <div style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)", color: "#86868b" }}><Icon name="search" size={16} /></div>
+                        <input className="input" style={{ paddingLeft: 36 }} placeholder="Search leads..." value={search} onChange={e => setSearch(e.target.value)} />
+                    </div>
+                    <select className="input" style={{ width: 180 }} value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                        <option value="">All Statuses</option>
+                        {statuses.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+                    </select>
+                    <button className="btn-ghost" onClick={loadLeads} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <Icon name="refresh" size={14} /> Refresh
+                    </button>
+                </div>
+
+                {/* Table */}
+                <div className="metric-card" style={{ padding: 0, overflow: "hidden" }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "2fr 1.2fr 1fr 1fr 1fr .6fr", padding: "12px 20px", background: "#fafafa", borderBottom: "1px solid #f3f4f6", fontSize: 11, fontWeight: 600, color: "#86868b", textTransform: "uppercase", letterSpacing: ".04em" }}>
+                        <div>Name</div>
+                        <div>Location</div>
+                        <div>Bill</div>
+                        <div>Score</div>
+                        <div>Status</div>
+                        <div>Source</div>
+                    </div>
+                    {filtered.length === 0 && (
+                        <div style={{ padding: 40, textAlign: "center", color: "#86868b" }}>No leads found</div>
+                    )}
+                    {filtered.map(l => {
+                        const sc = fmt.score(l.lead_quality_score || 0);
+                        return (
+                            <div key={l.id} className="table-row" style={{ gridTemplateColumns: "2fr 1.2fr 1fr 1fr 1fr .6fr" }} onClick={() => openDrawer(l)}>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: 14 }}>{l.first_name} {l.last_name}</div>
+                                    <div style={{ fontSize: 12, color: "#86868b" }}>{l.phone}</div>
+                                </div>
+                                <div style={{ fontSize: 13 }}>{l.city}, {l.state}</div>
+                                <div style={{ fontWeight: 600 }}>{fmt.currency(l.average_monthly_bill)}</div>
+                                <div><span className={`badge ${sc.cls}`}>{l.lead_quality_score} - {sc.label}</span></div>
+                                <div><span className={`badge ${fmt.status(l.deal_status)}`}>{statusLabel(l.deal_status)}</span></div>
+                                <div style={{ fontSize: 12, color: "#86868b" }}>{statusLabel(l.source_type)}</div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+
+            {/* Lead Drawer */}
+            {drawerOpen && selectedLead && (
+                <LeadDrawer lead={selectedLead} onClose={closeDrawer} onRefresh={loadLeads} />
+            )}
+        </div>
+    );
+}
+
+// ===== LEAD DETAIL DRAWER =====
+function LeadDrawer({ lead, onClose, onRefresh }) {
+    const { authFetch, user } = useAuth();
+    const [tab, setTab] = useState("details");
+    const [updating, setUpdating] = useState(false);
+    const [toast, setToast] = useState(null);
+
+    const sc = fmt.score(lead.lead_quality_score || 0);
+
+    const updateStatus = async (newStatus) => {
+        setUpdating(true);
+        try {
+            const r = await authFetch(`/api/leads/${lead.id}`, {
+                method: "PUT",
+                body: JSON.stringify({ deal_status: newStatus }),
+            });
+            if (r.ok) {
+                setToast({ type: "success", msg: `Status updated to ${statusLabel(newStatus)}` });
+                onRefresh();
+                setTimeout(() => setToast(null), 3000);
+            }
+        } catch (e) { console.error(e); }
+        setUpdating(false);
+    };
+
+    return (
+        <>
+            <div className="drawer-overlay" onClick={onClose} />
+            <div className="drawer">
+                <div style={{ padding: "20px 24px", borderBottom: "1px solid #f3f4f6", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div>
+                        <h2 style={{ fontSize: 20, fontWeight: 700 }}>{lead.first_name} {lead.last_name}</h2>
+                        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                            <span className={`badge ${sc.cls}`}>{lead.lead_quality_score} - {sc.label}</span>
+                            <span className={`badge ${fmt.status(lead.deal_status)}`}>{statusLabel(lead.deal_status)}</span>
+                        </div>
+                    </div>
+                    <div style={{ cursor: "pointer", padding: 8 }} onClick={onClose}><Icon name="x" size={20} /></div>
+                </div>
+
+                {/* Tabs */}
+                <div style={{ display: "flex", borderBottom: "1px solid #f3f4f6" }}>
+                    {["details", "actions"].map(t => (
+                        <div key={t} onClick={() => setTab(t)} style={{ padding: "12px 20px", fontSize: 13, fontWeight: 600, cursor: "pointer", borderBottom: tab === t ? "2px solid #FF9F0A" : "2px solid transparent", color: tab === t ? "#1d1d1f" : "#86868b" }}>
+                            {t.charAt(0).toUpperCase() + t.slice(1)}
+                        </div>
+                    ))}
+                </div>
+
+                <div style={{ padding: 24 }}>
+                    {tab === "details" && (
+                        <div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                                <InfoField icon="phone" label="Phone" value={lead.phone} />
+                                <InfoField icon="mail" label="Email" value={lead.email} />
+                                <InfoField icon="map" label="Address" value={lead.property_address} />
+                                <InfoField icon="map" label="City / State" value={`${lead.city}, ${lead.state} ${lead.zip_code}`} />
+                                <InfoField icon="dollar" label="Monthly Bill" value={fmt.currency(lead.average_monthly_bill)} />
+                                <InfoField icon="star" label="Quality Score" value={`${lead.lead_quality_score || 0} / 100`} />
+                                <InfoField label="Source" value={statusLabel(lead.source_type)} />
+                                <InfoField label="Property" value={statusLabel(lead.property_type)} />
+                                <InfoField label="Homeowner" value={statusLabel(lead.homeowner_status)} />
+                                <InfoField label="Created" value={fmt.datetime(lead.created_at)} />
+                            </div>
+                            {lead.notes && (
+                                <div style={{ marginTop: 20, padding: 16, background: "#f9fafb", borderRadius: 12 }}>
+                                    <div style={{ fontSize: 11, fontWeight: 600, color: "#86868b", textTransform: "uppercase", marginBottom: 6 }}>Notes</div>
+                                    <div style={{ fontSize: 14 }}>{lead.notes}</div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {tab === "actions" && (
+                        <div>
+                            <div style={{ fontSize: 13, fontWeight: 600, color: "#86868b", marginBottom: 12 }}>Update Status</div>
+                            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                                {["new", "confirmed", "appointed", "dispatched", "closed_won", "closed_lost", "follow_up", "no_show"].map(s => (
+                                    <button key={s} className="btn-ghost" disabled={updating || lead.deal_status === s} style={{ fontSize: 12, padding: "6px 12px", opacity: lead.deal_status === s ? .4 : 1 }} onClick={() => updateStatus(s)}>
+                                        {statusLabel(s)}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+            {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
+        </>
+    );
+}
+
+function InfoField({ icon, label, value }) {
+    return (
+        <div style={{ marginBottom: 4 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: "#86868b", textTransform: "uppercase", letterSpacing: ".03em", marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                {icon && <Icon name={icon} size={12} />} {label}
+            </div>
+            <div style={{ fontSize: 14, fontWeight: 500 }}>{value || "—"}</div>
+        </div>
+    );
+}
+
+// ===== APPOINTMENTS PAGE =====
+function AppointmentsPage() {
+    const { authFetch } = useAuth();
+    const [appts, setAppts] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [view, setView] = useState("list");
+
+    useEffect(() => { loadAppts(); }, []);
+
+    const loadAppts = async () => {
+        setLoading(true);
+        try {
+            const r = await authFetch("/api/appointments");
+            if (r.ok) {
+                const d = await r.json();
+                setAppts(Array.isArray(d) ? d : (d.items || []));
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    const today = new Date().toISOString().split("T")[0];
+    const todayAppts = appts.filter(a => a.appointment_date === today);
+    const upcomingAppts = appts.filter(a => a.appointment_date > today);
+    const pastAppts = appts.filter(a => a.appointment_date < today);
+
+    if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="spinner" /></div>;
+
+    return (
+        <div>
+            <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                    <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Appointments</h1>
+                    <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>{todayAppts.length} today, {upcomingAppts.length} upcoming</p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                    {["list", "today"].map(v => (
+                        <button key={v} className="btn-ghost" style={{ background: view === v ? "#1d1d1f" : "transparent", color: view === v ? "#fff" : "#1d1d1f" }} onClick={() => setView(v)}>
+                            {v === "list" ? "All" : "Today"}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className="page-body">
+                {view === "today" && (
+                    <AppointmentList title="Today" appts={todayAppts} emptyMsg="No appointments today" />
+                )}
+                {view === "list" && (
+                    <>
+                        <AppointmentList title="Today" appts={todayAppts} emptyMsg="No appointments today" />
+                        <AppointmentList title="Upcoming" appts={upcomingAppts} emptyMsg="No upcoming appointments" />
+                        <AppointmentList title="Past" appts={pastAppts} emptyMsg="No past appointments" />
+                    </>
+                )}
+            </div>
+        </div>
+    );
+}
+
+function AppointmentList({ title, appts, emptyMsg }) {
+    return (
+        <div style={{ marginBottom: 32 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12 }}>{title} ({appts.length})</h3>
+            {appts.length === 0 ? (
+                <div className="metric-card" style={{ padding: 32, textAlign: "center", color: "#86868b" }}>{emptyMsg}</div>
+            ) : (
+                <div className="metric-card" style={{ padding: 0, overflow: "hidden" }}>
+                    {appts.map(a => (
+                        <div key={a.id} className="table-row" style={{ gridTemplateColumns: "1.5fr 1fr 1fr 1fr", display: "grid" }}>
+                            <div>
+                                <div style={{ fontWeight: 600, fontSize: 14 }}>{a.lead_name || `Lead #${a.lead_id}`}</div>
+                                <div style={{ fontSize: 12, color: "#86868b" }}>{a.appointment_address || "No address"}</div>
+                            </div>
+                            <div style={{ fontSize: 13 }}>{fmt.date(a.appointment_date)}</div>
+                            <div style={{ fontSize: 13 }}>{a.appointment_time || "TBD"}</div>
+                            <div><span className={`badge ${fmt.status(a.appointment_status)}`}>{statusLabel(a.appointment_status)}</span></div>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ===== REPS PAGE =====
+function RepsPage() {
+    const { authFetch } = useAuth();
+    const [reps, setReps] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => { loadReps(); }, []);
+
+    const loadReps = async () => {
+        setLoading(true);
+        try {
+            const r = await authFetch("/api/admin/reps");
+            if (r.ok) {
+                const d = await r.json();
+                setReps(Array.isArray(d) ? d : (d.reps || d.items || []));
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="spinner" /></div>;
+
+    return (
+        <div>
+            <div className="page-header">
+                <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Sales Reps</h1>
+                <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>{reps.length} active reps</p>
+            </div>
+            <div className="page-body">
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                    {reps.map(rep => (
+                        <div key={rep.id} className="metric-card" style={{ padding: 20 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                                <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#FF9F0A", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 700, fontSize: 16 }}>
+                                    {(rep.full_name || "?")[0]}
+                                </div>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: 15 }}>{rep.full_name}</div>
+                                    <div style={{ fontSize: 12, color: "#86868b" }}>{rep.email}</div>
+                                </div>
+                            </div>
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, textAlign: "center" }}>
+                                <div>
+                                    <div style={{ fontSize: 20, fontWeight: 700, color: "#30D158" }}>{fmt.pct((rep.close_rate || 0) * 100)}</div>
+                                    <div style={{ fontSize: 10, color: "#86868b", textTransform: "uppercase", fontWeight: 600 }}>Close Rate</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 20, fontWeight: 700 }}>{rep.total_deals || 0}</div>
+                                    <div style={{ fontSize: 10, color: "#86868b", textTransform: "uppercase", fontWeight: 600 }}>Deals</div>
+                                </div>
+                                <div>
+                                    <div style={{ fontSize: 20, fontWeight: 700, color: rep.is_active ? "#30D158" : "#FF453A" }}>{rep.is_active ? "Active" : "Off"}</div>
+                                    <div style={{ fontSize: 10, color: "#86868b", textTransform: "uppercase", fontWeight: 600 }}>Status</div>
+                                </div>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ===== TASKS PAGE =====
+function TasksPage() {
+    const { authFetch } = useAuth();
+    const [tasks, setTasks] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [filter, setFilter] = useState("pending");
+
+    useEffect(() => { loadTasks(); }, [filter]);
+
+    const loadTasks = async () => {
+        setLoading(true);
+        try {
+            const url = filter ? `/api/tasks?status=${filter}` : "/api/tasks";
+            const r = await authFetch(url);
+            if (r.ok) {
+                const d = await r.json();
+                setTasks(Array.isArray(d) ? d : (d.items || d.tasks || []));
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    const completeTask = async (taskId) => {
+        try {
+            const r = await authFetch(`/api/tasks/${taskId}/complete`, {
+                method: "POST",
+                body: JSON.stringify({ completion_notes: "Completed from Command Center" }),
+            });
+            if (r.ok) loadTasks();
+        } catch (e) { console.error(e); }
+    };
+
+    if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="spinner" /></div>;
+
+    return (
+        <div>
+            <div className="page-header" style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                    <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Tasks</h1>
+                    <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>{tasks.length} tasks</p>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                    {["pending", "overdue", "completed", ""].map(f => (
+                        <button key={f} className="btn-ghost" style={{ fontSize: 12, background: filter === f ? "#1d1d1f" : "transparent", color: filter === f ? "#fff" : "#1d1d1f" }} onClick={() => setFilter(f)}>
+                            {f || "All"}
+                        </button>
+                    ))}
+                </div>
+            </div>
+            <div className="page-body">
+                {tasks.length === 0 ? (
+                    <div className="metric-card" style={{ padding: 40, textAlign: "center", color: "#86868b" }}>No tasks found</div>
+                ) : (
+                    <div className="metric-card" style={{ padding: 0, overflow: "hidden" }}>
+                        <div style={{ display: "grid", gridTemplateColumns: "2fr 1.5fr 1fr 1fr .8fr", padding: "12px 20px", background: "#fafafa", borderBottom: "1px solid #f3f4f6", fontSize: 11, fontWeight: 600, color: "#86868b", textTransform: "uppercase", letterSpacing: ".04em" }}>
+                            <div>Task</div>
+                            <div>Lead</div>
+                            <div>Due</div>
+                            <div>Status</div>
+                            <div></div>
+                        </div>
+                        {tasks.map(t => (
+                            <div key={t.id} className="table-row" style={{ gridTemplateColumns: "2fr 1.5fr 1fr 1fr .8fr", display: "grid" }}>
+                                <div>
+                                    <div style={{ fontWeight: 600, fontSize: 14 }}>{t.title}</div>
+                                    <div style={{ fontSize: 12, color: "#86868b" }}>{t.task_type}</div>
+                                </div>
+                                <div style={{ fontSize: 13 }}>{t.lead_name || `Lead #${t.lead_id}`}</div>
+                                <div style={{ fontSize: 13 }}>{fmt.date(t.due_date)}</div>
+                                <div><span className={`badge ${t.status === "overdue" ? "badge-red" : t.status === "completed" ? "badge-green" : "badge-yellow"}`}>{statusLabel(t.status)}</span></div>
+                                <div>
+                                    {t.status !== "completed" && (
+                                        <button className="btn-ghost" style={{ fontSize: 11, padding: "4px 10px" }} onClick={() => completeTask(t.id)}>Done</button>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+}
+
+// ===== PIPELINE PAGE =====
+function PipelinePage() {
+    const { authFetch } = useAuth();
+    const [leads, setLeads] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => { loadLeads(); }, []);
+
+    const loadLeads = async () => {
+        setLoading(true);
+        try {
+            const r = await authFetch("/api/leads?limit=200");
+            if (r.ok) {
+                const d = await r.json();
+                setLeads(Array.isArray(d) ? d : (d.items || []));
+            }
+        } catch (e) { console.error(e); }
+        setLoading(false);
+    };
+
+    const stages = [
+        { key: "new", label: "New Leads", color: "#007AFF" },
+        { key: "confirmed", label: "Confirmed", color: "#30D158" },
+        { key: "appointed", label: "Appointed", color: "#FF9F0A" },
+        { key: "dispatched", label: "Dispatched", color: "#5856D6" },
+        { key: "closed_won", label: "Closed Won", color: "#30D158" },
+        { key: "closed_lost", label: "Closed Lost", color: "#FF453A" },
+    ];
+
+    const grouped = useMemo(() => {
+        const g = {};
+        stages.forEach(s => { g[s.key] = []; });
+        g["other"] = [];
+        leads.forEach(l => {
+            const status = l.deal_status || "new";
+            if (g[status]) g[status].push(l);
+            else g["other"].push(l);
+        });
+        return g;
+    }, [leads]);
+
+    if (loading) return <div style={{ display: "flex", justifyContent: "center", padding: 80 }}><div className="spinner" /></div>;
+
+    return (
+        <div>
+            <div className="page-header">
+                <h1 style={{ fontSize: 24, fontWeight: 700, letterSpacing: "-.02em" }}>Pipeline</h1>
+                <p style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>Visual deal flow</p>
+            </div>
+            <div className="page-body" style={{ overflowX: "auto" }}>
+                <div style={{ display: "flex", gap: 16, minWidth: stages.length * 240 }}>
+                    {stages.map(stage => (
+                        <div key={stage.key} style={{ flex: 1, minWidth: 220 }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12, padding: "0 4px" }}>
+                                <div style={{ width: 10, height: 10, borderRadius: "50%", background: stage.color }} />
+                                <span style={{ fontSize: 13, fontWeight: 600 }}>{stage.label}</span>
+                                <span style={{ fontSize: 12, color: "#86868b", marginLeft: "auto" }}>{(grouped[stage.key] || []).length}</span>
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                                {(grouped[stage.key] || []).map(l => (
+                                    <div key={l.id} className="metric-card" style={{ padding: 14, cursor: "pointer", borderLeft: `3px solid ${stage.color}` }} onClick={() => navigate(`/leads?id=${l.id}`)}>
+                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{l.first_name} {l.last_name}</div>
+                                        <div style={{ fontSize: 12, color: "#86868b", marginTop: 2 }}>{l.city}, {l.state}</div>
+                                        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 6, color: stage.color }}>{fmt.currency(l.average_monthly_bill)}/mo</div>
+                                    </div>
+                                ))}
+                                {(grouped[stage.key] || []).length === 0 && (
+                                    <div style={{ padding: 24, textAlign: "center", color: "#d1d1d6", fontSize: 13, border: "2px dashed #e5e5ea", borderRadius: 12 }}>Empty</div>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ===== APP SHELL =====
+function AppShell() {
+    const hash = useHash();
+    const page = hash.split("?")[0];
+
+    const routes = {
+        "/dashboard": DashboardPage,
+        "/leads": LeadsPage,
+        "/appointments": AppointmentsPage,
+        "/reps": RepsPage,
+        "/tasks": TasksPage,
+        "/pipeline": PipelinePage,
+    };
+
+    const PageComponent = routes[page] || DashboardPage;
+
+    return (
+        <div>
+            <Sidebar />
+            <div className="main-content">
+                <PageComponent />
+            </div>
+        </div>
+    );
+}
+
+// ===== ROOT =====
+function App() {
+    const { user, loading } = useAuth();
+
+    if (loading) return <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}><div className="spinner" /></div>;
+    if (!user) return <LoginPage />;
+    return <AppShell />;
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(
+    <AuthProvider><App /></AuthProvider>
+);
+</script>
+</body>
+</html>

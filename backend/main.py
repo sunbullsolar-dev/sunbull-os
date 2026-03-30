@@ -527,21 +527,44 @@ def startup_event():
 
 
 # ---- STATIC FILES & FRONTEND ----
-frontend_path = Path(__file__).parent.parent / "frontend"
-static_path = frontend_path / "static"
-templates_path = frontend_path / "templates"
+# Three frontends: customer site (/), command center (/app), legacy (/legacy)
+base_path = Path(__file__).parent.parent
 
+# Frontend paths
+frontend_site_path = base_path / "frontend-site" / "templates"
+frontend_app_path = base_path / "frontend-app" / "templates"
+legacy_frontend_path = base_path / "frontend" / "templates"
+
+# Static files (shared)
+static_path = base_path / "frontend" / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
 
 @app.get("/")
 async def root():
-    """Serve the main frontend."""
-    index_file = templates_path / "index.html"
-    if index_file.exists():
-        return FileResponse(index_file)
+    """Serve the customer-facing website."""
+    # Try new frontend-site first, fall back to legacy
+    site_index = frontend_site_path / "index.html"
+    if site_index.exists():
+        return FileResponse(site_index)
+    legacy_index = legacy_frontend_path / "index.html"
+    if legacy_index.exists():
+        return FileResponse(legacy_index)
     return {"message": "Sunbull OS API running. Frontend not found."}
+
+
+@app.get("/app")
+async def command_center():
+    """Serve the Command Center (admin/rep dashboard)."""
+    app_index = frontend_app_path / "index.html"
+    if app_index.exists():
+        return FileResponse(app_index)
+    # Fall back to legacy frontend
+    legacy_index = legacy_frontend_path / "index.html"
+    if legacy_index.exists():
+        return FileResponse(legacy_index)
+    return {"message": "Command Center not found."}
 
 
 @app.get("/health")
