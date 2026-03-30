@@ -81,25 +81,8 @@ def startup_event():
     Base.metadata.create_all(bind=engine)
     print("Database tables created.")
 
-    # Add new columns to existing tables (safe ALTER TABLE — ignores if already exists)
-    from sqlalchemy import text as _sql_text
-    with engine.connect() as conn:
-        alter_statements = [
-            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS is_held BOOLEAN DEFAULT FALSE",
-            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS last_outcome VARCHAR(30)",
-            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS follow_up_note TEXT",
-            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS runner_id INTEGER",
-            "ALTER TABLE leads ADD COLUMN IF NOT EXISTS rehash_rep_id INTEGER",
-            # New tables created by models, but ensure they exist
-            # (create_all will handle this, but documenting for clarity)
-        ]
-        for stmt in alter_statements:
-            try:
-                conn.execute(_sql_text(stmt))
-            except Exception as e:
-                print(f"ALTER TABLE note (safe to ignore): {e}")
-        conn.commit()
-        print("Schema migration check complete.")
+    # Add new columns to existing tables (already handled in seed logic below)
+    print("Database initialization complete.")
 
     db = SessionLocal()
     try:
@@ -126,6 +109,32 @@ def startup_event():
                         rep.total_deals = _rand.randint(2, 15)
                 db.commit()
                 print(f"Fixed {len(zero_reps)} reps with close_rate=0.")
+
+            # For existing databases: add missing columns safely
+            try:
+                from sqlalchemy import inspect
+                inspector = inspect(engine)
+                lead_columns = [col['name'] for col in inspector.get_columns('leads')]
+
+                with engine.connect() as conn:
+                    missing_cols = {
+                        'is_held': "ALTER TABLE leads ADD COLUMN is_held BOOLEAN DEFAULT 0",
+                        'last_outcome': "ALTER TABLE leads ADD COLUMN last_outcome VARCHAR(30)",
+                        'follow_up_note': "ALTER TABLE leads ADD COLUMN follow_up_note TEXT",
+                        'runner_id': "ALTER TABLE leads ADD COLUMN runner_id INTEGER",
+                        'rehash_rep_id': "ALTER TABLE leads ADD COLUMN rehash_rep_id INTEGER",
+                    }
+                    for col_name, sql in missing_cols.items():
+                        if col_name not in lead_columns:
+                            try:
+                                conn.execute(_sql_text(sql))
+                                print(f"Added missing column: {col_name}")
+                            except Exception:
+                                pass  # Column may already exist
+                    conn.commit()
+            except Exception as e:
+                print(f"Column migration note: {e}")
+
             print("Seed data already exists.")
             return
 

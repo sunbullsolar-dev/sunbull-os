@@ -821,6 +821,6 @@ class FileUpload(Base):
     file_url = Column(String(500), nullable=False)  # base64 data URI or path
     file_size = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    used_at = Column(DateTime, nullable=True)
 
     uploader = relationship("User")
-    used_at = Column(DateTime, nullable=True)
