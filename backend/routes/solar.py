@@ -10,6 +10,34 @@ from services.audit import create_audit_log
 
 router = APIRouter(prefix="/api/solar", tags=["solar"])
 
+# State name to code mapping (handle full names from forms)
+STATE_NAME_TO_CODE = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
+    "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
+    "wisconsin": "WI", "wyoming": "WY",
+}
+
+
+def normalize_state(state_input: str) -> str:
+    """Convert state name to 2-letter code. Pass through if already a code."""
+    if not state_input:
+        return state_input
+    s = state_input.strip()
+    if len(s) <= 2:
+        return s.upper()
+    return STATE_NAME_TO_CODE.get(s.lower(), s[:2].upper())
+
+
 # Solar constants
 PANEL_WATTAGE = 435  # Watts
 HOURS_PER_DAY = 4.5  # Average solar peak hours
@@ -414,9 +442,12 @@ def full_savings_analysis(
     """Public: Create Lead + BillAnalysis + return savings. No auth."""
     from services.scoring import calculate_lead_score
 
+    # Normalize state: accept full names ("California") or codes ("CA")
+    state_code = normalize_state(data.state)
+
     quality_score = calculate_lead_score(
         average_monthly_bill=data.average_monthly_bill,
-        city=data.city, state=data.state,
+        city=data.city, state=state_code,
     )
     mo_kwh = data.average_monthly_bill / data.cost_per_kwh
 
@@ -424,7 +455,7 @@ def full_savings_analysis(
         first_name=data.first_name, last_name=data.last_name,
         phone=data.phone, email=data.email,
         property_address=data.property_address,
-        city=data.city, state=data.state, zip_code=data.zip_code,
+        city=data.city, state=state_code, zip_code=data.zip_code,
         utility_company=data.utility_company,
         average_monthly_bill=data.average_monthly_bill,
         estimated_annual_kwh=mo_kwh * 12, cost_per_kwh=data.cost_per_kwh,
@@ -446,12 +477,12 @@ def full_savings_analysis(
     mo_sav = (mo_prod * data.cost_per_kwh) - mo_pay
     yr_sav = mo_sav * 12
     payback = cost / yr_sav if yr_sav > 0 else 99.0
-    good_loc = _is_good_sunlight_location(data.state)
+    good_loc = _is_good_sunlight_location(state_code)
 
     analysis = BillAnalysis(
         lead_id=lead.id, annual_kwh=mo_kwh * 12, monthly_kwh=mo_kwh,
         cost_per_kwh=data.cost_per_kwh,
-        average_monthly_bill=data.average_monthly_bill, state=data.state,
+        average_monthly_bill=data.average_monthly_bill, state=state_code,
         system_size_kw=real_kw, panel_count=panels,
         offset_percentage=round(offset, 2),
         estimated_monthly_payment=round(mo_pay, 2),

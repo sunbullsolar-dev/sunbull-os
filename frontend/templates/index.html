@@ -408,15 +408,20 @@
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(payload),
                     });
-                    const data = await response.json();
 
-                    if (data.lead_id) {
-                        setPublicData(prev => ({ ...prev, formData, analysis: data }));
-                        // Brief pause so user sees "Generating your plan..."
-                        setTimeout(() => navigate('/savings'), 400);
-                    } else {
-                        setError(data.detail || 'Something went wrong. Please try again.');
+                    if (!response.ok) {
+                        const errText = await response.text().catch(() => '');
+                        setError(errText || 'Server error. Please try again in a moment.');
                         setLoading(false);
+                    } else {
+                        const data = await response.json();
+                        if (data.lead_id) {
+                            setPublicData(prev => ({ ...prev, formData, analysis: data }));
+                            setTimeout(() => navigate('/savings'), 400);
+                        } else {
+                            setError(data.detail || 'Something went wrong. Please try again.');
+                            setLoading(false);
+                        }
                     }
                 } catch (err) {
                     setError('Connection error. Please check your internet and try again.');
