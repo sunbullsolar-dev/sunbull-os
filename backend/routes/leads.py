@@ -59,6 +59,8 @@ class LeadUpdate(BaseModel):
     campaign: Optional[str] = None
     notes: Optional[str] = None
     deal_status: Optional[str] = None
+    geo_lat: Optional[float] = None
+    geo_lng: Optional[float] = None
 
 
 class LeadAssign(BaseModel):
@@ -476,6 +478,11 @@ def update_lead(
     if lead_data.deal_status is not None and lead.deal_status != lead_data.deal_status:
         updates.append(("deal_status", lead.deal_status, lead_data.deal_status))
         lead.deal_status = lead_data.deal_status
+
+    if lead_data.geo_lat is not None:
+        lead.geo_lat = lead_data.geo_lat
+    if lead_data.geo_lng is not None:
+        lead.geo_lng = lead_data.geo_lng
 
     # Save changes
     db.add(lead)
