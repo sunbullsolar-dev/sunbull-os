@@ -50,6 +50,7 @@ def list_tasks(
     status: Optional[str] = Query(None),
     task_type: Optional[str] = Query(None),
     assigned_to: Optional[int] = Query(None),
+    lead_id: Optional[int] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -68,6 +69,8 @@ def list_tasks(
     elif assigned_to:
         query = query.filter(Task.assigned_to == assigned_to)
 
+    if lead_id:
+        query = query.filter(Task.lead_id == lead_id)
     if status:
         query = query.filter(Task.status == status)
     if task_type:

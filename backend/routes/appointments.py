@@ -69,6 +69,8 @@ class AppointmentResponse(BaseModel):
     notes: Optional[str]
     photo_proof_url: Optional[str]
     created_at: datetime
+    lead_name: Optional[str] = None
+    appointment_address: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -164,7 +166,7 @@ def list_appointments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List appointments filtered by role/rep."""
+    """List appointments filtered by role/rep, enriched with lead name."""
     query = db.query(Appointment)
 
     if current_user.role == "rep":
@@ -175,10 +177,28 @@ def list_appointments(
     if appointment_status:
         query = query.filter(Appointment.appointment_status == appointment_status)
 
-    return (
+    appointments = (
         query.order_by(Appointment.appointment_date.asc(), Appointment.appointment_time.asc())
         .offset(skip).limit(limit).all()
     )
+
+    # Enrich with lead names
+    lead_ids = list({a.lead_id for a in appointments if a.lead_id})
+    leads_map = {}
+    if lead_ids:
+        leads = db.query(Lead).filter(Lead.id.in_(lead_ids)).all()
+        leads_map = {l.id: l for l in leads}
+
+    result = []
+    for a in appointments:
+        data = AppointmentResponse.model_validate(a).model_dump()
+        lead = leads_map.get(a.lead_id)
+        if lead:
+            data["lead_name"] = f"{lead.first_name} {lead.last_name}"
+            data["appointment_address"] = getattr(lead, "property_address", None) or f"{lead.city}, {lead.state}" if lead.city else None
+        result.append(data)
+
+    return result
 
 
 @router.get("/calendar/{rep_id}")
@@ -289,6 +309,59 @@ def update_appointment(
     db.commit()
     db.refresh(appointment)
     return appointment
+
+
+# =================================================================
+# QUICK STATUS UPDATE (used by RepApptCard and DispatchPage)
+# =================================================================
+
+class StatusUpdate(BaseModel):
+    """Simple status update model."""
+    appointment_status: str
+
+
+@router.put("/{appointment_id}/status")
+def update_appointment_status(
+    appointment_id: int,
+    data: StatusUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Quick status update for appointments (confirm, en_route, arrived, etc.)."""
+    appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+    if not appointment:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    if current_user.role == "rep" and appointment.assigned_rep_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    new_status = data.appointment_status
+    if new_status not in VALID_APPOINTMENT_STATUSES:
+        raise HTTPException(status_code=400, detail=f"Invalid status: {new_status}")
+
+    old_status = appointment.appointment_status
+    appointment.appointment_status = new_status
+
+    # Update lead status to mirror appointment status where appropriate
+    lead = db.query(Lead).filter(Lead.id == appointment.lead_id).first()
+    if lead:
+        status_map = {
+            "confirmed": "confirmed",
+            "en_route": "dispatched",
+            "arrived": "arrived",
+        }
+        if new_status in status_map:
+            lead.deal_status = status_map[new_status]
+
+    create_audit_log(
+        db=db, user_id=current_user.id, action="status_change",
+        entity_type="appointment", entity_id=appointment.id,
+        details=f"Status: {old_status} -> {new_status}",
+    )
+
+    db.commit()
+    db.refresh(appointment)
+    return {"ok": True, "appointment_status": appointment.appointment_status}
 
 
 # =================================================================

@@ -192,7 +192,7 @@ function DashboardPage(){
                 if(ar.ok){const a=await ar.json();sAppts(Array.isArray(a)?a:[])}
                 if(tr.ok){const t=await tr.json();sTasks(Array.isArray(t)?t:(t.items||[]))}
                 // Load rehash
-                try{const rr=await af("/api/leads/rehash");if(rr.ok)sRehash(await rr.json())}catch{}
+                try{const rr=await af("/api/leads/rehash-queue");if(rr.ok)sRehash(await rr.json())}catch{}
             } else {
                 const leads=dr.ok?await dr.json():[];
                 const a=ar.ok?await ar.json():[];
