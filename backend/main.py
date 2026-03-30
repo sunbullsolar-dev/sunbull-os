@@ -75,6 +75,44 @@ app.include_router(uploads_router)
 app.include_router(projects_router)
 
 
+@app.get("/api/admin/fix-geo")
+def fix_geo_columns():
+    """Debug: ensure geo columns exist and backfill coords."""
+    from sqlalchemy import inspect, text as _t
+    results = []
+    inspector = inspect(engine)
+    existing = {c['name'] for c in inspector.get_columns('leads')}
+    results.append(f"Existing columns: {len(existing)}")
+    results.append(f"geo_lat exists: {'geo_lat' in existing}")
+    results.append(f"geo_lng exists: {'geo_lng' in existing}")
+
+    with engine.connect() as conn:
+        for col in ['geo_lat', 'geo_lng']:
+            if col not in existing:
+                try:
+                    conn.execute(_t(f'ALTER TABLE leads ADD COLUMN {col} DOUBLE PRECISION'))
+                    results.append(f"Added {col}")
+                except Exception as e:
+                    results.append(f"Error adding {col}: {e}")
+        geo_map = {
+            "Phoenix": (33.4484, -112.0740), "Los Angeles": (34.0522, -118.2437),
+            "Houston": (29.7604, -95.3698), "San Diego": (32.7157, -117.1611),
+            "Austin": (30.2672, -97.7431), "Miami": (25.7617, -80.1918),
+            "Tampa": (27.9506, -82.4572), "Sacramento": (38.5816, -121.4944),
+            "Mesa": (33.4152, -111.8315), "Orlando": (28.5383, -81.3792),
+            "Dallas": (32.7767, -96.7970), "San Antonio": (29.4241, -98.4936),
+            "Tarzana": (34.1725, -118.5353), "Encino": (34.1592, -118.5013),
+            "Burbank": (34.1808, -118.3090), "Granada Hills": (34.2764, -118.5015),
+        }
+        total = 0
+        for city, (lat, lng) in geo_map.items():
+            r = conn.execute(_t(f"UPDATE leads SET geo_lat = :lat, geo_lng = :lng WHERE city = :city AND (geo_lat IS NULL)"), {"lat": lat, "lng": lng, "city": city})
+            total += r.rowcount
+        conn.commit()
+        results.append(f"Updated {total} leads with geo coords")
+    return {"results": results}
+
+
 @app.on_event("startup")
 def startup_event():
     """Create database tables and seed initial data."""
