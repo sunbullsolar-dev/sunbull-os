@@ -1,5 +1,5 @@
 """Authentication routes for login and user management."""
-from datetime import timedelta
+from datetime import timedelta, datetime
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -8,10 +8,13 @@ from app.auth import (
     create_access_token,
     verify_password,
     get_current_user,
+    hash_password,
+    require_role,
     ACCESS_TOKEN_EXPIRE_HOURS,
 )
 from app.database import get_db
-from app.models import User
+from app.models import User, Invite
+import secrets
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -116,3 +119,163 @@ def get_me(current_user: User = Depends(get_current_user)):
         Current user information
     """
     return current_user
+
+
+class InviteRequest(BaseModel):
+    """Invite creation request model."""
+
+    email: str
+    full_name: str
+    role: str = "rep"
+
+
+class RegisterRequest(BaseModel):
+    """Registration request model."""
+
+    token: str
+    password: str
+
+
+@router.post("/invite")
+def create_invite(
+    req: InviteRequest,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin creates an invite for a new rep.
+
+    Args:
+        req: Invite request with email, full_name, and optional role
+        current_user: Current authenticated admin user
+        db: Database session
+
+    Returns:
+        Invite details with token and invite link
+    """
+    # Check if email already exists as user
+    existing = db.query(User).filter(User.email == req.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User with this email already exists")
+
+    # Check for existing unused invite
+    existing_invite = (
+        db.query(Invite)
+        .filter(Invite.email == req.email, Invite.used == False)
+        .first()
+    )
+    if existing_invite:
+        # Return existing invite token
+        return {
+            "invite_id": existing_invite.id,
+            "token": existing_invite.token,
+            "email": existing_invite.email,
+            "full_name": existing_invite.full_name,
+            "invite_link": f"/register?token={existing_invite.token}",
+        }
+
+    token = secrets.token_urlsafe(32)
+    invite = Invite(
+        email=req.email,
+        full_name=req.full_name,
+        token=token,
+        role=req.role,
+        invited_by=current_user.id,
+    )
+    db.add(invite)
+    db.commit()
+    db.refresh(invite)
+
+    return {
+        "invite_id": invite.id,
+        "token": invite.token,
+        "email": invite.email,
+        "full_name": invite.full_name,
+        "invite_link": f"/register?token={invite.token}",
+    }
+
+
+@router.get("/invite/{token}")
+def get_invite_info(token: str, db: Session = Depends(get_db)):
+    """Public: Get invite details so registration form can pre-fill.
+
+    Args:
+        token: Invite token
+        db: Database session
+
+    Returns:
+        Invite information (email, full_name, role)
+    """
+    invite = (
+        db.query(Invite)
+        .filter(Invite.token == token, Invite.used == False)
+        .first()
+    )
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found or already used")
+    return {
+        "email": invite.email,
+        "full_name": invite.full_name,
+        "role": invite.role,
+    }
+
+
+@router.post("/register")
+def register_with_invite(
+    req: RegisterRequest,
+    db: Session = Depends(get_db),
+):
+    """Public: Rep registers using invite token.
+
+    Args:
+        req: Registration request with token and password
+        db: Database session
+
+    Returns:
+        Access token and user information
+    """
+    invite = (
+        db.query(Invite)
+        .filter(Invite.token == req.token, Invite.used == False)
+        .first()
+    )
+    if not invite:
+        raise HTTPException(status_code=404, detail="Invite not found or already used")
+
+    # Check if user already exists
+    existing = db.query(User).filter(User.email == invite.email).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User already exists")
+
+    # Create user
+    user = User(
+        email=invite.email,
+        hashed_password=hash_password(req.password),
+        full_name=invite.full_name,
+        role=invite.role,
+        is_active=True,
+    )
+    db.add(user)
+
+    # Mark invite as used
+    invite.used = True
+    invite.used_at = datetime.utcnow()
+
+    db.commit()
+    db.refresh(user)
+
+    # Auto-login: return token
+    access_token = create_access_token(
+        data={"sub": user.email},
+        expires_delta=timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS),
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role,
+        },
+    }

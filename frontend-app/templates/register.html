@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Sunbull OS</title>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;-webkit-font-smoothing:antialiased;background:linear-gradient(135deg,#1d1d1f 0%,#2c2c2e 100%);min-height:100vh;display:flex;align-items:center;justify-content:center}
+        .input{width:100%;padding:14px 16px;border:1.5px solid #e5e5ea;border-radius:12px;font-size:16px;font-family:inherit;outline:none;transition:border-color .15s}
+        .input:focus{border-color:#FF9F0A;box-shadow:0 0 0 3px rgba(255,159,10,.12)}
+        .btn-accent{background:#FF9F0A;color:#fff;border:none;padding:14px 28px;border-radius:980px;font-weight:600;font-size:17px;cursor:pointer;font-family:inherit;width:100%}
+        .btn-accent:hover{background:#E68F00}
+        .btn-accent:disabled{opacity:.4;cursor:not-allowed}
+    </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const API = window.location.origin;
+
+function App() {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("token");
+
+    const [invite, setInvite] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirm, setConfirm] = useState("");
+    const [submitting, setSubmitting] = useState(false);
+    const [done, setDone] = useState(false);
+
+    useEffect(() => {
+        if (!token) { setError("No invite token provided."); setLoading(false); return; }
+        fetch(`${API}/api/auth/invite/${token}`)
+            .then(r => r.ok ? r.json() : Promise.reject("Invalid or expired invite link."))
+            .then(d => { setInvite(d); setLoading(false); })
+            .catch(e => { setError(typeof e === "string" ? e : "Invalid or expired invite link."); setLoading(false); });
+    }, []);
+
+    const submit = async () => {
+        if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+        if (password !== confirm) { setError("Passwords don't match."); return; }
+        setError("");
+        setSubmitting(true);
+        try {
+            const r = await fetch(`${API}/api/auth/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ token, password }),
+            });
+            if (r.ok) {
+                const data = await r.json();
+                localStorage.setItem("sb_token", data.access_token);
+                setDone(true);
+                setTimeout(() => { window.location.href = "/app"; }, 1500);
+            } else {
+                const d = await r.json().catch(() => ({}));
+                setError(d.detail || "Registration failed.");
+            }
+        } catch (e) { setError("Network error."); }
+        setSubmitting(false);
+    };
+
+    if (done) {
+        return (
+            <div style={{ width: 400, background: "#fff", borderRadius: 20, padding: "48px 32px", boxShadow: "0 8px 40px rgba(0,0,0,.2)", textAlign: "center" }}>
+                <div style={{ width: 56, height: 56, borderRadius: "50%", background: "#dcfce7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 16px" }}>
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+                <h2 style={{ fontSize: 22, fontWeight: 700 }}>Welcome to Sunbull!</h2>
+                <p style={{ color: "#86868b", fontSize: 14, marginTop: 8 }}>Redirecting to your dashboard...</p>
+            </div>
+        );
+    }
+
+    return (
+        <div style={{ width: 400, background: "#fff", borderRadius: 20, padding: "40px 32px", boxShadow: "0 8px 40px rgba(0,0,0,.2)" }}>
+            <div style={{ textAlign: "center", marginBottom: 28 }}>
+                <div style={{ fontSize: 26, fontWeight: 800, letterSpacing: "-.03em" }}>
+                    <span style={{ color: "#FF9F0A" }}>Sunbull</span> OS
+                </div>
+                <div style={{ color: "#86868b", fontSize: 14, marginTop: 4 }}>Create Your Account</div>
+            </div>
+
+            {loading && <div style={{ textAlign: "center", padding: 20, color: "#86868b" }}>Loading invite...</div>}
+
+            {!loading && error && !invite && (
+                <div style={{ textAlign: "center", color: "#FF453A", fontSize: 14, padding: 20 }}>{error}</div>
+            )}
+
+            {invite && (
+                <div>
+                    <div style={{ background: "#f9fafb", borderRadius: 12, padding: 16, marginBottom: 24, textAlign: "center" }}>
+                        <div style={{ fontSize: 18, fontWeight: 700 }}>{invite.full_name}</div>
+                        <div style={{ fontSize: 14, color: "#86868b", marginTop: 2 }}>{invite.email}</div>
+                        <div style={{ display: "inline-block", marginTop: 8, background: "#FF9F0A", color: "#fff", fontSize: 11, fontWeight: 600, padding: "3px 12px", borderRadius: 20, textTransform: "uppercase", letterSpacing: ".04em" }}>{invite.role}</div>
+                    </div>
+                    <div style={{ marginBottom: 16 }}>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Create Password</label>
+                        <input className="input" type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="Min 6 characters" />
+                    </div>
+                    <div style={{ marginBottom: 24 }}>
+                        <label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 6 }}>Confirm Password</label>
+                        <input className="input" type="password" value={confirm} onChange={e => setConfirm(e.target.value)} placeholder="Re-enter password" onKeyDown={e => e.key === "Enter" && submit()} />
+                    </div>
+                    {error && <div style={{ color: "#FF453A", fontSize: 13, marginBottom: 16, textAlign: "center" }}>{error}</div>}
+                    <button className="btn-accent" disabled={submitting} onClick={submit}>
+                        {submitting ? "Creating Account..." : "Create Account & Sign In"}
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>

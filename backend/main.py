@@ -21,7 +21,7 @@ from app.models import (
     LeadOwnershipHistory, FollowUp, Deal, Commission,
     InstallerProfile, AutomationRule, Notification,
     AccountabilityFlag, RehashEntry, BillAnalysis, WebsitePage,
-    Action, Task, Project, Violation,
+    Action, Task, Project, Violation, Invite,
     UserRole, LeadStatus, LeadSource, AppointmentStatus,
     DealStage, CommissionStatus, SolarEstimate,
 )
@@ -565,6 +565,15 @@ async def command_center():
     if legacy_index.exists():
         return FileResponse(legacy_index)
     return {"message": "Command Center not found."}
+
+
+@app.get("/register")
+async def register_page():
+    """Serve the rep registration page."""
+    reg_file = frontend_app_path / "register.html"
+    if reg_file.exists():
+        return FileResponse(reg_file)
+    return {"message": "Registration page not found."}
 
 
 @app.get("/health")
