@@ -1474,21 +1474,22 @@ function PipelinePage(){
 }
 
 // ========================================================================
-// PROJECTS PAGE (POST-SALE PIPELINE)
+// PROJECTS PAGE (POST-SALE PIPELINE + KANBAN)
 // ========================================================================
 function ProjectsPage(){
     const{af,user}=useA();const toast=useT();
     const[projects,setProjects]=useState([]);const[kpis,setKpis]=useState(null);const[loading,sLd]=useState(true);
     const[installFilter,setInstallFilter]=useState("");const[fundingFilter,setFundingFilter]=useState("");const[search,setSearch]=useState("");
-    const[selProject,setSelProject]=useState(null);
+    const[selProject,setSelProject]=useState(null);const[viewMode,setViewMode]=useState("table");const[selLead,setSelLead]=useState(null);const[reps,setReps]=useState([]);
 
     useEffect(()=>{load()},[]);
     const load=async()=>{
         sLd(true);
         try{
-            const[kr,pr]=await Promise.all([af("/api/projects/dashboard/summary"),af("/api/projects")]);
+            const[kr,pr,rr]=await Promise.all([af("/api/projects/dashboard/summary"),af("/api/projects"),user?.role==="admin"?af("/api/admin/reps"):Promise.resolve(null)]);
             if(kr.ok)setKpis(await kr.json());
             if(pr.ok){const pd=await pr.json();setProjects(Array.isArray(pd)?pd:(pd.projects||[]))}
+            if(rr&&rr.ok){const d=await rr.json();setReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
         }catch{}
         sLd(false);
     };
@@ -1505,13 +1506,21 @@ function ProjectsPage(){
     const getDaysInStage=(p)=>{if(!p.sold_date)return 0;return Math.floor((now-new Date(p.sold_date))/(1000*60*60*24))};
     const isDelayed=(p)=>getDaysInStage(p)>30;
 
+    // Kanban grouping by install_status
+    const kanbanStages=[{k:"pending_survey",l:"Survey",c:"#3b82f6"},{k:"pending_permit",l:"Permit",c:"#a855f7"},{k:"pending_install",l:"Install",c:"#f59e0b"},{k:"installed",l:"Installed",c:"#22c55e"},{k:"inspection",l:"Inspection",c:"#eab308"},{k:"pto",l:"PTO",c:"#3b82f6"},{k:"completed",l:"Done",c:"#22c55e"}];
+    const kanbanGroups=useMemo(()=>{const g={};kanbanStages.forEach(s=>g[s.k]=[]);filtered.forEach(p=>{const s=p.install_status||"pending_survey";if(g[s])g[s].push(p);else g["pending_survey"]?.push(p)});return g},[filtered]);
+
     if(loading)return<Spin/>;
 
     const kData=kpis||{};
 
     return(
         <div>
-            <PH title="Projects" sub="Post-sale pipeline" right={<button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>}/>
+            <PH title="Projects" sub="Post-sale pipeline" right={<div style={{display:"flex",gap:6}}>
+                <button className={`btn ${viewMode==="table"?"btn-p":""}`} onClick={()=>setViewMode("table")}>Table</button>
+                <button className={`btn ${viewMode==="kanban"?"btn-p":""}`} onClick={()=>setViewMode("kanban")}>Kanban</button>
+                <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>
+            </div>}/>
             <div style={{padding:"16px 24px"}}>
                 <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
                     {(kData.install_stages||[]).map(s=><KPI key={s.stage} l={sL(s.stage)} v={s.count} t={s.stage==="completed"?"ok":null}/>)}
@@ -1528,7 +1537,7 @@ function ProjectsPage(){
                     <select className="inp" style={{minWidth:140}} value={fundingFilter} onChange={e=>setFundingFilter(e.target.value)}><option value="">Funding: All</option><option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="funded">Funded</option><option value="declined">Declined</option></select>
                 </div>
 
-                <div className="cd" style={{overflow:"hidden"}}>
+                {viewMode==="table"&&<div className="cd" style={{overflow:"hidden"}}>
                     {filtered.length===0?<div style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No projects</div>:
                     <div>
                         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr .8fr .8fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}>
@@ -1539,7 +1548,7 @@ function ProjectsPage(){
                             const delayed=isDelayed(p);
                             return(
                                 <div key={p.id} className="tr" style={{gridTemplateColumns:"2fr 1fr 1fr .8fr .8fr .5fr",cursor:"pointer"}} onClick={()=>setSelProject(p)}>
-                                    <div><div style={{fontWeight:700,fontSize:12}}>{p.lead_name||`Project #${p.id}`}</div><div style={{fontSize:10,color:"#52525b"}}>{p.sold_date?`${daysInStage} days in stage`:"Not sold"}</div></div>
+                                    <div><div style={{fontWeight:700,fontSize:12}}>{p.lead_name||`Project #${p.id}`}</div><div style={{fontSize:10,color:"#52525b"}}>{p.lead_address||""} {p.lead_city||""}</div></div>
                                     <div style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>{$.money(p.deal_value)}</div>
                                     <div style={{fontSize:11,color:"#71717a"}}>{p.closer_name||"--"}</div>
                                     <div><span className={`badge ${sB(p.install_status||"pending")}`}>{sL(p.install_status||"pending")}</span></div>
@@ -1553,16 +1562,79 @@ function ProjectsPage(){
                         })}
                     </div>
                     }
-                </div>
+                </div>}
+
+                {/* KANBAN VIEW */}
+                {viewMode==="kanban"&&<div style={{overflowX:"auto"}}>
+                    <div style={{display:"flex",gap:10,minWidth:kanbanStages.length*200}}>
+                        {kanbanStages.map(s=>(
+                            <div key={s.k} style={{flex:1,minWidth:170}}>
+                                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:6,borderBottom:`2px solid ${s.c}30`}}>
+                                    <div style={{width:7,height:7,borderRadius:"50%",background:s.c}}/>
+                                    <span style={{fontSize:11,fontWeight:800,color:"#71717a"}}>{s.l}</span>
+                                    <span style={{fontSize:10,color:"#3f3f46",marginLeft:"auto"}}>{(kanbanGroups[s.k]||[]).length}</span>
+                                    <span style={{fontSize:9,color:"#52525b"}}>{$.money((kanbanGroups[s.k]||[]).reduce((a,p)=>a+(p.deal_value||0),0))}</span>
+                                </div>
+                                <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                                    {(kanbanGroups[s.k]||[]).map(p=>(
+                                        <div key={p.id} className="cd" style={{padding:10,borderLeft:`3px solid ${s.c}`,cursor:"pointer"}} onClick={()=>setSelProject(p)}>
+                                            <div style={{fontWeight:700,fontSize:11}}>{p.lead_name||`#${p.id}`}</div>
+                                            <div style={{fontSize:10,color:"#52525b"}}>{p.lead_city||""}</div>
+                                            <div style={{display:"flex",justifyContent:"space-between",marginTop:4}}>
+                                                <span style={{fontSize:11,fontWeight:700,color:"#f59e0b"}}>{$.money(p.deal_value)}</span>
+                                                {isDelayed(p)&&<span className="badge b-red" style={{fontSize:8}}>DELAYED</span>}
+                                            </div>
+                                            <div style={{fontSize:9,color:"#3f3f46",marginTop:3}}>{p.closer_name||""} &middot; {getDaysInStage(p)}d</div>
+                                        </div>
+                                    ))}
+                                    {(kanbanGroups[s.k]||[]).length===0&&<div style={{padding:16,textAlign:"center",color:"#27272a",fontSize:10,border:"1px dashed #1e1e21",borderRadius:6}}>Empty</div>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>}
             </div>
-            {selProject&&user?.role==="admin"&&(
+            {selProject&&(
                 <div className="modal-ov" onClick={()=>setSelProject(null)}>
-                    <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                            <div><h3 style={{fontSize:16,fontWeight:800}}>Edit Project #{selProject.id}</h3><div style={{fontSize:11,color:"#52525b",marginTop:2}}>{selProject.lead_name} &middot; {$.money(selProject.deal_value)}</div></div>
+                    <div className="modal" style={{width:600}} onClick={e=>e.stopPropagation()}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                            <div>
+                                <h3 style={{fontSize:16,fontWeight:800}}>Project #{selProject.id}</h3>
+                                <div style={{display:"flex",gap:6,alignItems:"center",marginTop:3}}>
+                                    <span style={{fontSize:12,fontWeight:700,cursor:"pointer",color:"#3b82f6",textDecoration:"underline"}} onClick={()=>{setSelProject(null);nav(`/leads?id=${selProject.lead_id}`)}}>{selProject.lead_name}</span>
+                                    <span style={{fontSize:11,color:"#52525b"}}>&middot; {$.money(selProject.deal_value)}</span>
+                                </div>
+                                {selProject.lead_address&&<div style={{fontSize:10,color:"#3f3f46",marginTop:2}}>{selProject.lead_address}, {selProject.lead_city}</div>}
+                            </div>
                             <div style={{cursor:"pointer"}} onClick={()=>setSelProject(null)}><Ic d={IC.x}/></div>
                         </div>
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                        {/* Visual Timeline */}
+                        <div style={{background:"#09090b",border:"1px solid #1e1e21",borderRadius:8,padding:12,marginBottom:16}}>
+                            <div style={{fontSize:9,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:8}}>Project Timeline</div>
+                            <div style={{display:"flex",alignItems:"center",gap:0}}>
+                                {[["sold_date","Sold","#3b82f6"],["survey_date","Survey","#a855f7"],["permit_date","Permit","#f59e0b"],["install_date","Install","#22c55e"],["inspection_date","Inspect","#eab308"],["pto_date","PTO","#3b82f6"],["funded_date","Funded","#22c55e"],["paid_date","Paid","#22c55e"]].map(([k,l,c],i)=>{
+                                    const done=!!selProject[k];
+                                    return<React.Fragment key={k}>
+                                        {i>0&&<div style={{flex:1,height:2,background:done?"#27272a":"#18181b"}}/>}
+                                        <div style={{textAlign:"center",minWidth:44}}>
+                                            <div style={{width:16,height:16,borderRadius:"50%",background:done?c:"#18181b",border:`2px solid ${done?c:"#27272a"}`,margin:"0 auto 3px",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                                {done&&<div style={{width:6,height:6,borderRadius:"50%",background:"#fff"}}/>}
+                                            </div>
+                                            <div style={{fontSize:8,fontWeight:800,color:done?c:"#3f3f46"}}>{l}</div>
+                                            {done&&<div style={{fontSize:7,color:"#52525b"}}>{$.date(selProject[k])}</div>}
+                                        </div>
+                                    </React.Fragment>
+                                })}
+                            </div>
+                        </div>
+                        {/* Status + Closer Info */}
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
+                            <DF l="Install" v={sL(selProject.install_status||"pending")}/><DF l="Funding" v={sL(selProject.funding_status||"pending")}/><DF l="Payment" v={sL(selProject.payment_status||"pending")}/><DF l="Closer" v={selProject.closer_name||"--"}/>
+                            <DF l="System Size" v={selProject.system_size_kw?`${selProject.system_size_kw} kW`:"--"}/><DF l="Panels" v={selProject.panel_count||"--"}/><DF l="Sold" v={selProject.sold_date?$.date(selProject.sold_date):"--"}/><DF l="Days" v={getDaysInStage(selProject)} c={isDelayed(selProject)?"#ef4444":"#a1a1aa"}/>
+                        </div>
+                        {/* Admin Edit Controls */}
+                        {user?.role==="admin"&&<>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:16}}>
                             <div>
                                 <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Install Status</label>
                                 <select className="inp" defaultValue={selProject.install_status||"pending_survey"} onChange={e=>{
@@ -1589,7 +1661,7 @@ function ProjectsPage(){
                             </div>
                         </div>
                         <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Key Dates</div>
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
                             {[["survey_date","Survey"],["permit_date","Permit"],["install_date","Install"],["inspection_date","Inspection"],["pto_date","PTO"],["funded_date","Funded"],["paid_date","Paid"]].map(([k,l])=>(
                                 <div key={k}><label style={{fontSize:9,color:"#3f3f46",display:"block",marginBottom:2}}>{l}</label><input type="date" className="inp" defaultValue={selProject[k]?selProject[k].split("T")[0]:""} onChange={e=>{if(e.target.value){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({[k]:e.target.value})}).then(r=>{if(r.ok)toast("ok",`${l} updated`);else toast("err","Failed")})}}}/></div>
                             ))}
@@ -1598,10 +1670,12 @@ function ProjectsPage(){
                             <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Notes</label>
                             <textarea className="inp" defaultValue={selProject.notes||""} placeholder="Project notes..." onBlur={e=>{if(e.target.value!==selProject.notes){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({notes:e.target.value})}).then(r=>{if(r.ok)toast("ok","Notes saved");else toast("err","Failed")})}}}/>
                         </div>
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
-                            <DF l="System Size" v={selProject.system_size_kw?`${selProject.system_size_kw} kW`:"--"}/><DF l="Panel Count" v={selProject.panel_count||"--"}/><DF l="Sold Date" v={selProject.sold_date?$.date(selProject.sold_date):"--"}/><DF l="Created" v={$.dt(selProject.created_at)}/>
+                        </>}
+                        {selProject.notes&&!user?.role==="admin"&&<div style={{background:"#18181b",borderRadius:8,padding:12,marginBottom:16}}><div style={{fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:4}}>Notes</div><div style={{fontSize:12,color:"#a1a1aa"}}>{selProject.notes}</div></div>}
+                        <div style={{display:"flex",gap:6}}>
+                            <button className="btn btn-p" style={{flex:1}} onClick={()=>{setSelProject(null);nav(`/leads?id=${selProject.lead_id}`)}}>View Lead</button>
+                            <button className="btn" style={{flex:1}} onClick={()=>setSelProject(null)}>Close</button>
                         </div>
-                        <button className="btn" style={{width:"100%"}} onClick={()=>setSelProject(null)}>Done</button>
                     </div>
                 </div>
             )}
@@ -1610,28 +1684,34 @@ function ProjectsPage(){
 }
 
 // ========================================================================
-// MAP PAGE (FIELD DISPATCH VISUALIZATION)
+// MAP PAGE (FIELD DISPATCH + ALL LEADS VISUALIZATION)
 // ========================================================================
 function MapPage(){
-    const{af}=useA();const toast=useT();
-    const[appts,sAppts]=useState([]);const[leads,sLeads]=useState({});const[loading,sLd]=useState(true);
-    const[mapFilter,setFilter]=useState("all");const[selAppt,setSelAppt]=useState(null);
+    const{af,user}=useA();const toast=useT();
+    const[appts,sAppts]=useState([]);const[leads,sLeads]=useState({});const[leadsArr,sLeadsArr]=useState([]);const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);
+    const[mapMode,setMode]=useState("appointments");const[mapFilter,setFilter]=useState("all");const[selAppt,setSelAppt]=useState(null);const[selLead,setSelLead]=useState(null);
+    const[stats,setStats]=useState({total:0,withGeo:0,todayAppts:0});
     const mapRef=useRef(null);const mapInstance=useRef(null);
 
     useEffect(()=>{loadData()},[]);
     const loadData=async()=>{
         sLd(true);
         try{
-            const[ar,lr]=await Promise.all([af("/api/appointments"),af("/api/leads?limit=500")]);
+            const calls=[af("/api/appointments"),af("/api/leads?limit=500")];
+            if(user?.role==="admin")calls.push(af("/api/admin/reps"));
+            const[ar,lr,rr]=await Promise.all(calls);
             if(ar.ok){const d=await ar.json();sAppts(Array.isArray(d)?d:[])}
-            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sLeads(m)}
+            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sLeads(m);sLeadsArr(arr);
+                const withGeo=arr.filter(l=>l.geo_lat&&l.geo_lng).length;
+                setStats(s=>({...s,total:arr.length,withGeo}))}
+            if(rr&&rr.ok){const d=await rr.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
         }catch{}
         sLd(false);
     };
 
     useEffect(()=>{
         if(!mapInstance.current&&mapRef.current&&typeof L!=="undefined"){
-            mapInstance.current=L.map(mapRef.current).setView([33.5,-112],10);
+            mapInstance.current=L.map(mapRef.current).setView([34.0,-118.0],7);
             L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapInstance.current);
         }
         return()=>{if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null}}
@@ -1639,44 +1719,90 @@ function MapPage(){
 
     useEffect(()=>{
         if(!mapInstance.current)return;
-        mapInstance.current.eachLayer(l=>{if(l instanceof L.Marker)mapInstance.current.removeLayer(l)});
+        mapInstance.current.eachLayer(l=>{if(l instanceof L.CircleMarker||l instanceof L.Marker)mapInstance.current.removeLayer(l)});
         const today=new Date().toISOString().split("T")[0];
-        const todayAppts=appts.filter(a=>a.appointment_date===today&&(mapFilter==="all"||a.appointment_status===mapFilter));
-        todayAppts.forEach(a=>{
-            const lead=leads[a.lead_id];
-            if(lead?.geo_lat&&lead?.geo_lng){
-                const colors={confirmed:"#22c55e",scheduled:"#eab308",en_route:"#3b82f6",arrived:"#f59e0b",no_show:"#ef4444",completed:"#52525b"};
-                const color=colors[a.appointment_status]||"#999";
-                const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{radius:8,fillColor:color,color:color,weight:2,opacity:1,fillOpacity:0.8});
-                marker.bindPopup(`<div style="font-size:12px"><b>${lead.first_name} ${lead.last_name}</b><br/>${lead.property_address}<br/>${a.appointment_time||"TBD"}</div>`);
-                marker.on("click",()=>setSelAppt(a));
+
+        if(mapMode==="appointments"){
+            const todayAppts=appts.filter(a=>a.appointment_date===today&&(mapFilter==="all"||a.appointment_status===mapFilter));
+            setStats(s=>({...s,todayAppts:todayAppts.length}));
+            const bounds=[];
+            todayAppts.forEach(a=>{
+                const lead=leads[a.lead_id];
+                if(lead?.geo_lat&&lead?.geo_lng){
+                    const colors={confirmed:"#22c55e",scheduled:"#eab308",en_route:"#3b82f6",arrived:"#f59e0b",no_show:"#ef4444",completed:"#52525b"};
+                    const color=colors[a.appointment_status]||"#999";
+                    const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{radius:10,fillColor:color,color:"#fff",weight:2,opacity:1,fillOpacity:0.9});
+                    marker.bindPopup(`<div style="font-size:12px;min-width:140px"><b>${lead.first_name} ${lead.last_name}</b><br/>${lead.property_address}<br/><span style="color:${color};font-weight:700">${(a.appointment_status||"").replace(/_/g," ")}</span><br/>${a.appointment_time||"TBD"}</div>`);
+                    marker.on("click",()=>setSelAppt(a));
+                    marker.addTo(mapInstance.current);
+                    bounds.push([lead.geo_lat,lead.geo_lng]);
+                }
+            });
+            if(bounds.length>1)mapInstance.current.fitBounds(bounds,{padding:[40,40]});
+            else if(bounds.length===1)mapInstance.current.setView(bounds[0],12);
+        } else {
+            // All leads mode
+            const statusColors={new:"#3b82f6",confirmed:"#22c55e",appointed:"#f59e0b",dispatched:"#a855f7",closed_won:"#22c55e",closed_lost:"#ef4444",follow_up:"#eab308",no_show:"#ef4444",rehash:"#f59e0b"};
+            const filteredLeads=leadsArr.filter(l=>l.geo_lat&&l.geo_lng&&(mapFilter==="all"||l.deal_status===mapFilter));
+            const bounds=[];
+            filteredLeads.forEach(l=>{
+                const color=statusColors[l.deal_status]||"#71717a";
+                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{radius:7,fillColor:color,color:"#fff",weight:1.5,opacity:0.9,fillOpacity:0.85});
+                marker.bindPopup(`<div style="font-size:12px;min-width:140px"><b>${l.first_name} ${l.last_name}</b><br/>${l.property_address}<br/>${l.city}, ${l.state}<br/><span style="color:${color};font-weight:700">${(l.deal_status||"").replace(/_/g," ")}</span><br/>${$.money(l.average_monthly_bill)}/mo</div>`);
+                marker.on("click",()=>setSelLead(l));
                 marker.addTo(mapInstance.current);
-            }
-        });
-    },[appts,leads,mapFilter]);
+                bounds.push([l.geo_lat,l.geo_lng]);
+            });
+            if(bounds.length>1)mapInstance.current.fitBounds(bounds,{padding:[40,40]});
+            else if(bounds.length===1)mapInstance.current.setView(bounds[0],12);
+        }
+    },[appts,leads,leadsArr,mapFilter,mapMode]);
 
     if(loading)return<Spin/>;
-    const statuses=["all","scheduled","confirmed","en_route","arrived","completed"];
+    const apptStatuses=["all","scheduled","confirmed","en_route","arrived","completed"];
+    const leadStatuses=["all","new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up"];
 
     return(
         <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
-            <PH title="Field Dispatch Map" right={<button className="btn" onClick={loadData}><Ic d={IC.refresh} s={12}/></button>}/>
-            <div style={{padding:"12px 24px",display:"flex",gap:8}}>
-                {statuses.map(s=><button key={s} className={`btn ${mapFilter===s?"btn-p":""}`} onClick={()=>setFilter(s)}>{sL(s)}</button>)}
+            <div style={{padding:"12px 24px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
+                <div><h1 style={{fontSize:18,fontWeight:900}}>Field Map</h1><div style={{fontSize:10,color:"#3f3f46"}}>{stats.withGeo} of {stats.total} leads mapped</div></div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <button className={`btn ${mapMode==="appointments"?"btn-p":""}`} onClick={()=>{setMode("appointments");setFilter("all")}}>Today's Appts</button>
+                    <button className={`btn ${mapMode==="leads"?"btn-p":""}`} onClick={()=>{setMode("leads");setFilter("all")}}>All Leads</button>
+                    <button className="btn" onClick={loadData}><Ic d={IC.refresh} s={12}/></button>
+                </div>
             </div>
-            <div ref={mapRef} style={{flex:1,background:"#09090b"}}/>
-            {selAppt&&<AppointmentDrawer appt={selAppt} leads={leads} reps={{}} onClose={()=>setSelAppt(null)} onRefresh={loadData}/>}
+            <div style={{padding:"8px 24px",display:"flex",gap:6,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
+                {(mapMode==="appointments"?apptStatuses:leadStatuses).map(s=><button key={s} className={`btn ${mapFilter===s?"btn-p":""}`} style={{fontSize:10,padding:"4px 10px"}} onClick={()=>setFilter(s)}>{sL(s)}</button>)}
+            </div>
+            <div style={{flex:1,position:"relative"}}>
+                <div ref={mapRef} style={{position:"absolute",inset:0,background:"#09090b"}}/>
+                {/* Legend */}
+                <div style={{position:"absolute",bottom:16,left:16,background:"#0c0c0fdd",border:"1px solid #27272a",borderRadius:8,padding:"8px 12px",zIndex:1000,fontSize:10}}>
+                    {mapMode==="appointments"?
+                        [{c:"#eab308",l:"Scheduled"},{c:"#22c55e",l:"Confirmed"},{c:"#3b82f6",l:"En Route"},{c:"#f59e0b",l:"Arrived"},{c:"#52525b",l:"Completed"}].map(x=>
+                            <div key={x.l} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}><div style={{width:8,height:8,borderRadius:"50%",background:x.c}}/><span style={{color:"#a1a1aa"}}>{x.l}</span></div>
+                        ):
+                        [{c:"#3b82f6",l:"New"},{c:"#22c55e",l:"Confirmed/Won"},{c:"#f59e0b",l:"Appointed"},{c:"#a855f7",l:"Dispatched"},{c:"#ef4444",l:"Lost/No Show"}].map(x=>
+                            <div key={x.l} style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}><div style={{width:8,height:8,borderRadius:"50%",background:x.c}}/><span style={{color:"#a1a1aa"}}>{x.l}</span></div>
+                        )
+                    }
+                </div>
+            </div>
+            {selAppt&&<AppointmentDrawer appt={selAppt} leads={leads} reps={reps.reduce((m,r)=>{m[r.id]=r;return m},{})} onClose={()=>setSelAppt(null)} onRefresh={loadData}/>}
+            {selLead&&<LeadDrawer lead={selLead} reps={reps} onClose={()=>setSelLead(null)} onRefresh={loadData} onCreateAppt={()=>{}}/>}
         </div>
     );
 }
 
 // ========================================================================
-// TELEMARKETING PAGE (CONFIRMATION QUEUE)
+// TELEMARKETING PAGE (CONFIRMATION QUEUE + CALL CENTER)
 // ========================================================================
 function TelemarketingPage(){
     const{af,user}=useA();const toast=useT();
     const[queue,setQueue]=useState([]);const[leads,setLeads]=useState([]);const[appts,setAppts]=useState([]);const[loading,sLd]=useState(true);
     const[showNewLead,setSNL]=useState(false);const[showNewAppt,setSNA]=useState(false);
+    const[selLead,setSelLead]=useState(null);const[showScript,setShowScript]=useState(null);const[tmTab,setTMTab]=useState("queue");
     const[leadForm,setLF]=useState({first_name:"",last_name:"",phone:"",email:"",property_address:"",city:"",state:"CA",zip_code:"",average_monthly_bill:"",notes:""});
     const[apptForm,setAF]=useState({lead_id:"",assigned_rep_id:"",appointment_date:"",appointment_time:"",notes:""});
     const[reps,setReps]=useState([]);
@@ -1717,81 +1843,151 @@ function TelemarketingPage(){
         }catch{toast("err","Error")}
     };
 
+    // Call scripts
+    const scripts={
+        confirmation:"Hi, this is [Agent] from Sunbull Solar. I'm calling to confirm your appointment on [DATE] at [TIME]. Will you be available at that time? ... Great! Your solar consultant [REP] will be there. Please have a recent electric bill handy. Any questions before the appointment?",
+        reschedule:"Hi, this is [Agent] from Sunbull Solar. We had an appointment scheduled for [DATE]. Unfortunately we need to find a new time. What day works best for you this week? ... Perfect, I'll get that set up for you right away.",
+        follow_up:"Hi, this is [Agent] from Sunbull Solar following up on your solar consultation. I wanted to check if you had any questions about the proposal [REP] presented. Is now a good time to chat? ... Our current promotion is [PROMO] and it expires [DATE].",
+        no_answer:"[VOICEMAIL] Hi, this is [Agent] from Sunbull Solar. I'm calling to confirm your upcoming solar consultation. Please call us back at [NUMBER] or text CONFIRM to verify. Thank you!",
+    };
+
     if(loading)return<Spin/>;
+
+    // Stats
+    const confirmed=queue.filter(q=>q.confirmation_status==="confirmed").length;
+    const pending=queue.filter(q=>q.confirmation_status!=="confirmed").length;
+    const today=new Date().toISOString().split("T")[0];
+    const todayAppts=appts.filter(a=>a.appointment_date===today);
 
     return(
         <div>
-            <PH title="Telemarketing Queue" sub={`${queue.length} to confirm`}/>
+            <PH title="Telemarketing Center" sub={`${queue.length} in queue`} right={<div style={{display:"flex",gap:6}}>
+                <button className="btn" onClick={()=>setShowScript("confirmation")}><Ic d={IC.message} s={12}/> Scripts</button>
+                <button className="btn" onClick={loadQueue}><Ic d={IC.refresh} s={12}/></button>
+            </div>}/>
+            {/* KPI Bar */}
+            <div style={{padding:"12px 24px",display:"flex",gap:8,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
+                <KPI l="Queue" v={queue.length} t={queue.length>0?"warn":null}/><KPI l="Pending" v={pending} t={pending>0?"hot":null}/><KPI l="Confirmed" v={confirmed} t="ok"/><KPI l="Today's Appts" v={todayAppts.length}/><KPI l="Total Leads" v={leads.length}/>
+            </div>
+            {/* Tab bar */}
+            <div style={{display:"flex",borderBottom:"1px solid #18181b",padding:"0 24px"}}>
+                {[["queue","My Queue"],["leads","All Leads"],["create","Create"]].map(([k,l])=>
+                    <div key={k} className={`tab ${tmTab===k?"on":""}`} onClick={()=>setTMTab(k)}>{l}</div>
+                )}
+            </div>
             <div style={{padding:"16px 24px"}}>
-                <div style={{marginBottom:20}}>
+                {tmTab==="queue"&&<div>
                     <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
-                        <h3 style={{fontSize:13,fontWeight:800}}>My Queue</h3>
+                        <h3 style={{fontSize:13,fontWeight:800}}>Confirmation Queue</h3>
                         <button className="btn" onClick={loadQueue}><Ic d={IC.refresh} s={12}/></button>
                     </div>
-                    {queue.length===0?<div className="cd" style={{padding:20,textAlign:"center",color:"#3f3f46"}}>Queue empty</div>:
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:8}}>
-                        {queue.map(q=>(
-                            <div key={q.id} className="cd" style={{padding:12}}>
-                                <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>{q.lead_name||"Lead"}</div>
-                                {q.phone&&<a href={`tel:${q.phone}`} style={{fontSize:11,color:"#3b82f6",textDecoration:"none",display:"block",marginBottom:4}}>{q.phone}</a>}
-                                <div style={{fontSize:10,color:"#52525b",marginBottom:8}}>{q.appointment_date} at {q.appointment_time||"TBD"}</div>
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
-                                    <button className="btn btn-g" onClick={()=>logAttempt(q.id,"confirmed")} style={{flex:1,fontSize:10,padding:"6px"}}>Confirmed</button>
-                                    <button className="btn" onClick={()=>logAttempt(q.id,"no_answer")} style={{flex:1,fontSize:10,padding:"6px"}}>No Answer</button>
+                    {queue.length===0?<div className="cd" style={{padding:20,textAlign:"center",color:"#3f3f46"}}>Queue empty - all caught up!</div>:
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:8}}>
+                        {queue.map(q=>{
+                            const matchedLead=leads.find(l=>l.id===q.lead_id);
+                            return(
+                            <div key={q.id} className="cd" style={{padding:14,borderLeft:q.confirmation_status==="confirmed"?"3px solid #22c55e":"3px solid #f59e0b"}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                                    <div>
+                                        <div style={{fontWeight:700,fontSize:14,cursor:"pointer",color:"#e4e4e7"}} onClick={()=>matchedLead&&setSelLead(matchedLead)}>{q.lead_name||"Lead"} {matchedLead&&<Ic d={IC.arrow} s={10}/>}</div>
+                                        {q.phone&&<a href={`tel:${q.phone}`} style={{fontSize:12,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:4,marginTop:2}}><Ic d={IC.phone} s={11} c="#3b82f6"/>{q.phone}</a>}
+                                    </div>
+                                    <span className={`badge ${q.confirmation_status==="confirmed"?"b-green":"b-yellow"}`}>{sL(q.confirmation_status||"pending")}</span>
+                                </div>
+                                <div style={{fontSize:11,color:"#71717a",marginBottom:4}}><Ic d={IC.cal} s={11}/> {q.appointment_date} at {q.appointment_time||"TBD"}</div>
+                                {matchedLead&&<div style={{fontSize:10,color:"#52525b",marginBottom:8}}>{matchedLead.property_address}, {matchedLead.city} &middot; {$.money(matchedLead.average_monthly_bill)}/mo</div>}
+                                {q.attempts_count>0&&<div style={{fontSize:10,color:"#f59e0b",marginBottom:6}}>{q.attempts_count} attempt{q.attempts_count!==1?"s":""} &middot; Last: {sL(q.last_outcome||"none")}</div>}
+                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:6}}>
+                                    <button className="btn btn-g" onClick={()=>logAttempt(q.id,"confirmed")} style={{flex:1,padding:"8px",fontSize:11,fontWeight:800}}>CONFIRMED</button>
+                                    <button className="btn" onClick={()=>logAttempt(q.id,"no_answer")} style={{flex:1,padding:"8px",fontSize:11}}>No Answer</button>
                                 </div>
                                 <div style={{display:"flex",gap:4}}>
-                                    <button className="btn" style={{flex:1,fontSize:10,padding:"6px"}}>Reschedule</button>
-                                    <button className="btn" style={{flex:1,fontSize:10,padding:"6px"}}>Not Interested</button>
+                                    <button className="btn" onClick={()=>logAttempt(q.id,"voicemail")} style={{flex:1,fontSize:10,padding:"6px"}}>Voicemail</button>
+                                    <button className="btn" onClick={()=>logAttempt(q.id,"reschedule")} style={{flex:1,fontSize:10,padding:"6px"}}>Reschedule</button>
+                                    <button className="btn btn-r" onClick={()=>logAttempt(q.id,"not_interested")} style={{flex:1,fontSize:10,padding:"6px"}}>Not Interested</button>
                                 </div>
+                            </div>
+                        )})}
+                    </div>
+                    }
+                </div>}
+
+                {tmTab==="leads"&&<div>
+                    <div className="cd" style={{overflow:"hidden"}}>
+                        <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr .8fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}>
+                            <div>Name</div><div>Location</div><div>Bill</div><div>Status</div>
+                        </div>
+                        {leads.length===0&&<div style={{padding:24,textAlign:"center",color:"#3f3f46"}}>No leads</div>}
+                        {leads.map(l=>(
+                            <div key={l.id} className="tr" style={{gridTemplateColumns:"2fr 1.5fr 1fr .8fr",cursor:"pointer"}} onClick={()=>setSelLead(l)}>
+                                <div><div style={{fontWeight:700,fontSize:12}}>{l.first_name} {l.last_name}</div>{l.phone&&<a href={`tel:${l.phone}`} style={{fontSize:10,color:"#3b82f6",textDecoration:"none"}} onClick={e=>e.stopPropagation()}>{l.phone}</a>}</div>
+                                <div style={{fontSize:11,color:"#71717a"}}>{l.city}, {l.state}</div>
+                                <div style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>{$.money(l.average_monthly_bill)}</div>
+                                <div><span className={`badge ${sB(l.deal_status)}`}>{sL(l.deal_status)}</span></div>
                             </div>
                         ))}
                     </div>
-                    }
-                </div>
+                </div>}
 
-                <div style={{marginBottom:20}}>
-                    <button className="btn btn-p" style={{marginBottom:12}} onClick={()=>setSNL(!showNewLead)}><Ic d={IC.plus} s={12}/> New Lead</button>
-                    {showNewLead&&(
-                        <div className="cd" style={{padding:14}}>
+                {tmTab==="create"&&<div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+                        <div className="cd" style={{padding:16}}>
+                            <SH title="New Lead"/>
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                                <input className="inp" placeholder="First Name" value={leadForm.first_name} onChange={e=>setLF(o=>({...o,first_name:e.target.value}))}/>
+                                <input className="inp" placeholder="First Name *" value={leadForm.first_name} onChange={e=>setLF(o=>({...o,first_name:e.target.value}))}/>
                                 <input className="inp" placeholder="Last Name" value={leadForm.last_name} onChange={e=>setLF(o=>({...o,last_name:e.target.value}))}/>
-                                <input className="inp" placeholder="Phone" value={leadForm.phone} onChange={e=>setLF(o=>({...o,phone:e.target.value}))}/>
+                                <input className="inp" placeholder="Phone *" value={leadForm.phone} onChange={e=>setLF(o=>({...o,phone:e.target.value}))}/>
                                 <input className="inp" placeholder="Email" value={leadForm.email} onChange={e=>setLF(o=>({...o,email:e.target.value}))}/>
                                 <input className="inp" style={{gridColumn:"span 2"}} placeholder="Address" value={leadForm.property_address} onChange={e=>setLF(o=>({...o,property_address:e.target.value}))}/>
                                 <input className="inp" placeholder="City" value={leadForm.city} onChange={e=>setLF(o=>({...o,city:e.target.value}))}/>
-                                <select className="inp" value={leadForm.state} onChange={e=>setLF(o=>({...o,state:e.target.value}))}><option>CA</option><option>TX</option><option>AZ</option><option>FL</option></select>
-                                <input className="inp" placeholder="ZIP" value={leadForm.zip_code} onChange={e=>setLF(o=>({...o,zip_code:e.target.value}))}/>
-                                <input className="inp" placeholder="Monthly Bill" value={leadForm.average_monthly_bill} onChange={e=>setLF(o=>({...o,average_monthly_bill:e.target.value}))}/>
+                                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                                    <select className="inp" value={leadForm.state} onChange={e=>setLF(o=>({...o,state:e.target.value}))}><option>CA</option><option>TX</option><option>AZ</option><option>FL</option><option>NV</option></select>
+                                    <input className="inp" placeholder="ZIP" value={leadForm.zip_code} onChange={e=>setLF(o=>({...o,zip_code:e.target.value}))}/>
+                                </div>
+                                <input className="inp" placeholder="Monthly Bill" type="number" value={leadForm.average_monthly_bill} onChange={e=>setLF(o=>({...o,average_monthly_bill:e.target.value}))}/>
                             </div>
                             <textarea className="inp" placeholder="Notes" value={leadForm.notes} onChange={e=>setLF(o=>({...o,notes:e.target.value}))} style={{marginBottom:8}}/>
-                            <button className="btn btn-p" style={{width:"100%"}} onClick={createLead}>Create Lead</button>
+                            <button className="btn btn-p" style={{width:"100%",padding:10}} onClick={createLead}>Create Lead</button>
                         </div>
-                    )}
-                </div>
-
-                <div>
-                    <button className="btn btn-p" style={{marginBottom:12}} onClick={()=>setSNA(!showNewAppt)}><Ic d={IC.plus} s={12}/> New Appointment</button>
-                    {showNewAppt&&(
-                        <div className="cd" style={{padding:14}}>
+                        <div className="cd" style={{padding:16}}>
+                            <SH title="New Appointment"/>
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
-                                <select className="inp" value={apptForm.lead_id} onChange={e=>setAF(o=>({...o,lead_id:e.target.value}))}>
-                                    <option value="">Select Lead...</option>
+                                <select className="inp" style={{gridColumn:"span 2"}} value={apptForm.lead_id} onChange={e=>setAF(o=>({...o,lead_id:e.target.value}))}>
+                                    <option value="">Select Lead *</option>
                                     {leads.map(l=><option key={l.id} value={l.id}>{l.first_name} {l.last_name}</option>)}
                                 </select>
-                                <select className="inp" value={apptForm.assigned_rep_id} onChange={e=>setAF(o=>({...o,assigned_rep_id:e.target.value}))}>
-                                    <option value="">Select Rep...</option>
+                                <select className="inp" style={{gridColumn:"span 2"}} value={apptForm.assigned_rep_id} onChange={e=>setAF(o=>({...o,assigned_rep_id:e.target.value}))}>
+                                    <option value="">Assign Rep *</option>
                                     {reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}
                                 </select>
                                 <input className="inp" type="date" value={apptForm.appointment_date} onChange={e=>setAF(o=>({...o,appointment_date:e.target.value}))}/>
                                 <input className="inp" type="time" value={apptForm.appointment_time} onChange={e=>setAF(o=>({...o,appointment_time:e.target.value}))}/>
                             </div>
                             <textarea className="inp" placeholder="Notes" value={apptForm.notes} onChange={e=>setAF(o=>({...o,notes:e.target.value}))} style={{marginBottom:8}}/>
-                            <button className="btn btn-p" style={{width:"100%"}} onClick={createAppt}>Create Appointment</button>
+                            <button className="btn btn-p" style={{width:"100%",padding:10}} onClick={createAppt}>Create Appointment</button>
                         </div>
-                    )}
-                </div>
+                    </div>
+                </div>}
             </div>
+            {/* Call Script Modal */}
+            {showScript&&(
+                <div className="modal-ov" onClick={()=>setShowScript(null)}><div className="modal" style={{width:520}} onClick={e=>e.stopPropagation()}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+                        <h3 style={{fontSize:16,fontWeight:800}}>Call Scripts</h3>
+                        <div style={{cursor:"pointer"}} onClick={()=>setShowScript(null)}><Ic d={IC.x}/></div>
+                    </div>
+                    <div style={{display:"flex",gap:4,marginBottom:16,flexWrap:"wrap"}}>
+                        {Object.keys(scripts).map(k=><button key={k} className={`btn ${showScript===k?"btn-p":""}`} onClick={()=>setShowScript(k)}>{sL(k)}</button>)}
+                    </div>
+                    <div style={{background:"#09090b",border:"1px solid #27272a",borderRadius:8,padding:16}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>{sL(showScript)} Script</div>
+                        <div style={{fontSize:13,color:"#a1a1aa",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{scripts[showScript]||"Select a script above."}</div>
+                    </div>
+                    <div style={{marginTop:12,fontSize:10,color:"#3f3f46"}}>Replace [bracketed] placeholders with actual details before calling.</div>
+                </div></div>
+            )}
+            {/* Lead Drawer */}
+            {selLead&&<LeadDrawer lead={selLead} reps={reps} onClose={()=>setSelLead(null)} onRefresh={loadQueue} onCreateAppt={()=>{}}/>}
         </div>
     );
 }
