@@ -1229,18 +1229,21 @@ function LeadsPage(){
     );
 }
 
-// ===== LEAD DETAIL DRAWER (ALL TABS) =====
+// ===== LEAD COMMAND PANEL (ACTION-FIRST, NO TABS) =====
 function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
     const{af,user}=useA();const toast=useT();
-    const[tab,sTab]=useState("overview");const[timeline,sTL]=useState([]);const[tasks,sTasks]=useState([]);const[appts,sAppts]=useState([]);
+    const[timeline,sTL]=useState([]);const[tasks,sTasks]=useState([]);const[appts,sAppts]=useState([]);
     const[lockInfo,sLock]=useState(null);const[deleting,sDel]=useState(false);
-    const sc=lead.lead_quality_score||0;
+    const[actionMode,setAM]=useState(null);const[noteText,setNote]=useState("");const[notesBusy,setNB]=useState(false);
+    const[statusPick,setSP]=useState(false);const[assignPick,setAP]=useState(false);const[detailsOpen,setDO]=useState(false);
+    const sc=lead.lead_quality_score||0;const isAdmin=user?.role==="admin";
+    const dealVal=lead.deal_value||((lead.average_monthly_bill||200)*12*20*0.6);
 
     useEffect(()=>{loadExtra()},[lead.id]);
     const loadExtra=async()=>{
         try{
             const calls=[af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af("/api/appointments")];
-            if(user?.role==="admin")calls.push(af(`/api/admin/lead-lock/${lead.id}`));
+            if(isAdmin)calls.push(af(`/api/admin/lead-lock/${lead.id}`));
             const[tr,tskr,ar,lr]=await Promise.all(calls);
             if(tr.ok)sTL(await tr.json());
             if(tskr.ok){const d=await tskr.json();sTasks(Array.isArray(d)?d:(d.items||[]))}
@@ -1249,165 +1252,200 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
         }catch{}
     };
 
-    const updStatus=async(s)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({deal_status:s})});if(r.ok){toast("ok",sL(s));onRefresh()}}catch{toast("err","Failed")}};
-    const assignRep=async(rid)=>{try{const r=await af(`/api/leads/${lead.id}/assign`,{method:"POST",body:JSON.stringify({rep_id:rid})});if(r.ok){toast("ok","Assigned");onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}};
-    const completeTask=async(tid)=>{try{const r=await af(`/api/tasks/${tid}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from lead drawer"})});if(r.ok){toast("ok","Done");loadExtra()}}catch{toast("err","Failed")}};
-    const deleteLead=async()=>{if(!confirm("Archive this lead? This will soft-delete it."))return;sDel(true);try{const r=await af(`/api/admin/leads/${lead.id}`,{method:"DELETE"});if(r.ok){toast("ok","Lead archived");onClose();onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}sDel(false)};
+    const updStatus=async(s)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({deal_status:s})});if(r.ok){toast("ok",sL(s));setSP(false);onRefresh();loadExtra()}}catch{toast("err","Failed")}};
+    const assignRep=async(rid)=>{try{const r=await af(`/api/leads/${lead.id}/assign`,{method:"POST",body:JSON.stringify({rep_id:rid})});if(r.ok){toast("ok","Assigned");setAP(false);onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}};
+    const completeTask=async(tid)=>{try{const r=await af(`/api/tasks/${tid}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from lead panel"})});if(r.ok){toast("ok","Done");loadExtra()}}catch{toast("err","Failed")}};
+    const deleteLead=async()=>{if(!confirm("Archive this lead?"))return;sDel(true);try{const r=await af(`/api/admin/leads/${lead.id}`,{method:"DELETE"});if(r.ok){toast("ok","Archived");onClose();onRefresh()}else{toast("err","Failed")}}catch{toast("err","Failed")}sDel(false)};
     const cancelAppt=async(aid)=>{if(!confirm("Cancel this appointment?"))return;try{const r=await af(`/api/admin/appointments/${aid}`,{method:"DELETE"});if(r.ok){toast("ok","Cancelled");loadExtra()}else{toast("err","Failed")}}catch{toast("err","Failed")}};
+    const addNote=async()=>{if(!noteText.trim()){toast("err","Enter a note");return}setNB(true);try{const r=await af(`/api/leads/${lead.id}/notes`,{method:"POST",body:JSON.stringify({note:noteText,note_type:actionMode==="call"?"call_log":"general"})});if(r.ok){toast("ok",actionMode==="call"?"Call logged":"Note added");setNote("");setAM(null);loadExtra()}else{toast("err","Failed")}}catch{toast("err","Failed")}setNB(false)};
 
-    const tabs=["overview","timeline","appointments","tasks","ownership","actions"];
+    const rn=id=>{if(!id)return"--";const r=reps.find(x=>x.id===id);return r?r.full_name:`Rep #${id}`};
+    const today=new Date().toISOString().split("T")[0];
+    const nextAppt=appts.filter(a=>a.appointment_date>=today&&!["completed","cancelled","no_show"].includes(a.appointment_status)).sort((a,b)=>`${a.appointment_date}${a.appointment_time||""}`.localeCompare(`${b.appointment_date}${b.appointment_time||""}`))[0];
+    const overdueTasks=tasks.filter(t=>t.lead_id===lead.id&&t.status==="overdue");
+    const pendingTasks=tasks.filter(t=>t.lead_id===lead.id&&t.status==="pending");
+    const fuTask=tasks.find(t=>t.lead_id===lead.id&&t.task_type==="follow_up"&&t.status!=="completed");
+    const tlArr=Array.isArray(timeline)?timeline:(timeline?.timeline||[]);
+
+    // ---- NEXT ACTION LOGIC ----
+    let nextAction=null;
+    if(!nextAppt&&!["closed_won","closed_lost"].includes(lead.deal_status)){
+        nextAction={label:"NO APPOINTMENT SET",sub:"This lead has no upcoming appointment. Set one now.",color:"#ef4444",icon:IC.cal,btn:"SET APPOINTMENT",act:()=>{onClose();onCreateAppt(lead)}};
+    }else if(nextAppt){
+        const[hh,mm]=(nextAppt.appointment_time||"00:00").split(":").map(Number);
+        const apptMs=new Date(new Date(nextAppt.appointment_date).getFullYear(),new Date(nextAppt.appointment_date).getMonth(),new Date(nextAppt.appointment_date).getDate(),hh,mm).getTime();
+        const minsAway=Math.round((apptMs-Date.now())/60000);
+        if(minsAway>0&&minsAway<=60){
+            nextAction={label:`APPOINTMENT IN ${minsAway} MIN`,sub:`${$.t12(nextAppt.appointment_time)} — ${sL(nextAppt.appointment_status)}`,color:"#f59e0b",icon:IC.clock,btn:"GO TO DISPATCH",act:()=>{onClose();nav("/dispatch")}};
+        }
+    }
+    if(!nextAction&&overdueTasks.length>0){
+        nextAction={label:"OVERDUE TASK",sub:overdueTasks[0].title,color:"#ef4444",icon:IC.alert,btn:"COMPLETE",act:()=>completeTask(overdueTasks[0].id)};
+    }
+    if(!nextAction&&fuTask){
+        nextAction={label:"FOLLOW-UP DUE",sub:`${fuTask.title} — due ${$.date(fuTask.due_date)}`,color:"#3b82f6",icon:IC.phone,btn:"LOG CALL",act:()=>setAM("call")};
+    }
+    if(!nextAction&&["follow_up","appointed","dispatched"].includes(lead.deal_status)&&dealVal>15000){
+        nextAction={label:"READY TO CLOSE",sub:`${$.money(dealVal)} deal — push for commitment`,color:"#22c55e",icon:IC.zap,btn:"UPDATE STATUS",act:()=>setSP(true)};
+    }
+    if(!nextAction&&!["closed_won","closed_lost"].includes(lead.deal_status)){
+        nextAction={label:"ADD ACTIVITY",sub:"Keep this lead moving forward",color:"#52525b",icon:IC.edit,btn:"ADD NOTE",act:()=>setAM("note")};
+    }
 
     return(
         <><div className="dov" onClick={onClose}/><div className="drw">
-            <div style={{padding:"16px 20px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div>
-                    <h2 style={{fontSize:17,fontWeight:900}}>{lead.first_name} {lead.last_name}</h2>
-                    <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
-                        <span className="badge" style={{background:sC(sc)+"18",color:sC(sc)}}>{sc}pt</span>
-                        <span className={`badge ${sB(lead.deal_status)}`}>{sL(lead.deal_status)}</span>
-                        {lead.is_held&&<span className="badge b-green">Held</span>}
-                        {lockInfo&&lockInfo.is_locked&&<span className="badge b-red">LOCKED ({lockInfo.open_task_count} tasks)</span>}
+            {/* ========== HEADER ========== */}
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #18181b"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                    <div style={{flex:1}}>
+                        <h2 style={{fontSize:19,fontWeight:900,marginBottom:4}}>{lead.first_name} {lead.last_name}</h2>
+                        <div style={{fontSize:12,color:"#71717a"}}>{lead.property_address||"No address"}{lead.city?`, ${lead.city}`:""}{lead.state?` ${lead.state}`:""} {lead.zip_code||""}</div>
                     </div>
+                    <div style={{cursor:"pointer",padding:6,flexShrink:0}} onClick={onClose}><Ic d={IC.x}/></div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"10px 16px",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:5}}><Ic d={IC.phone} s={14} c="#22c55e"/>CALL</button></a>}
-                    <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"10px 18px",fontSize:14,fontWeight:900,display:"flex",alignItems:"center",gap:6,minHeight:44}}><Ic d={IC.phone} s={16} c="#22c55e"/>CALL {lead.phone}</button></a>}
+                    <span className={`badge ${sB(lead.deal_status)}`} style={{fontSize:12,padding:"4px 12px"}}>{sL(lead.deal_status)}</span>
+                    {lead.average_monthly_bill>0&&<span className="badge b-orange" style={{fontSize:12,padding:"4px 10px"}}>{$.money(lead.average_monthly_bill)}/mo</span>}
+                    <span className="badge" style={{background:sC(sc)+"18",color:sC(sc),fontSize:11}}>{sc}pt</span>
+                    {lockInfo&&lockInfo.is_locked&&<span className="badge b-red">LOCKED</span>}
                 </div>
             </div>
-            {/* Tabs */}
-            <div style={{display:"flex",borderBottom:"1px solid #18181b",overflowX:"auto"}}>{tabs.map(t=><div key={t} className={`tab ${tab===t?"on":""}`} onClick={()=>sTab(t)}>{t}</div>)}</div>
-            <div style={{padding:20}}>
-                {/* OVERVIEW */}
-                {tab==="overview"&&(
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                        <div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Phone</div>{lead.phone?<a href={`tel:${lead.phone}`} style={{fontSize:12,fontWeight:600,color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a>:<div style={{fontSize:12,fontWeight:600,color:"#a1a1aa"}}>--</div>}</div><DF l="Email" v={lead.email}/>
-                        <DF l="Address" v={lead.property_address}/><DF l="City/State" v={`${lead.city}, ${lead.state} ${lead.zip_code}`}/>
-                        <DF l="Monthly Bill" v={$.money(lead.average_monthly_bill)} c="#f59e0b"/><DF l="Annual kWh" v={lead.estimated_annual_kwh}/>
-                        <DF l="Source" v={sL(lead.source_type)}/><DF l="Property" v={sL(lead.property_type)}/>
-                        <DF l="Homeowner" v={sL(lead.homeowner_status)}/><DF l="Created" v={$.dt(lead.created_at)}/>
-                        <DF l="Last Outcome" v={sL(lead.last_outcome)}/><DF l="Follow-up" v={lead.next_follow_up_date?$.date(lead.next_follow_up_date):"None"}/>
-                        {lead.notes&&<div style={{gridColumn:"span 2",padding:12,background:"#18181b",borderRadius:8}}><div style={{fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:4}}>Notes</div><div style={{fontSize:12,color:"#a1a1aa"}}>{lead.notes}</div></div>}
+
+            {/* ========== NEXT ACTION ENGINE ========== */}
+            {nextAction&&<div style={{margin:"12px 16px 0",background:`${nextAction.color}12`,border:`2px solid ${nextAction.color}`,borderRadius:10,padding:16,cursor:"pointer"}} onClick={nextAction.act}>
+                <div style={{fontSize:9,fontWeight:900,color:nextAction.color,textTransform:"uppercase",letterSpacing:".1em",marginBottom:4,display:"flex",alignItems:"center",gap:5}}><Ic d={nextAction.icon} s={13} c={nextAction.color}/> NEXT ACTION</div>
+                <div style={{fontSize:16,fontWeight:900,color:"#e4e4e7",marginBottom:3}}>{nextAction.label}</div>
+                <div style={{fontSize:12,color:"#a1a1aa",marginBottom:10}}>{nextAction.sub}</div>
+                <button className="btn btn-p" style={{padding:"10px 20px",fontSize:13,fontWeight:900}}>{nextAction.btn}</button>
+            </div>}
+
+            <div style={{padding:"12px 16px",overflowY:"auto"}}>
+                {/* ========== UPCOMING APPOINTMENT (if exists) ========== */}
+                {nextAppt&&<div className="cd" style={{padding:12,marginBottom:12,borderLeft:"3px solid #3b82f6"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <div><div style={{fontSize:9,fontWeight:800,color:"#3b82f6",textTransform:"uppercase",letterSpacing:".06em"}}>Next Appointment</div><div style={{fontSize:14,fontWeight:800,marginTop:2}}>{$.date(nextAppt.appointment_date)} at {$.t12(nextAppt.appointment_time)}</div></div>
+                        <span className={`badge ${sB(nextAppt.appointment_status)}`}>{sL(nextAppt.appointment_status)}</span>
                     </div>
-                )}
-                {/* TIMELINE */}
-                {tab==="timeline"&&(
-                    <div>{Array.isArray(timeline)&&timeline.length>0?
-                        <div style={{display:"flex",flexDirection:"column",gap:0}}>
-                            {(Array.isArray(timeline)?timeline:(timeline.timeline||[])).map((e,i)=>(
-                                <div key={i} style={{display:"flex",gap:10}}>
-                                    <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
-                                        <div className="tl-dot" style={{background:e.entry_type==="action"?"#f59e0b":e.entry_type==="task"?"#3b82f6":"#22c55e"}}/>
-                                        {i<(Array.isArray(timeline)?timeline:(timeline.timeline||[])).length-1&&<div className="tl-line" style={{flex:1}}/>}
-                                    </div>
-                                    <div style={{paddingBottom:14,flex:1}}>
-                                        <div style={{fontSize:12,fontWeight:700}}>{sL(e.action_type||e.task_type||e.entry_type)}</div>
-                                        <div style={{fontSize:11,color:"#52525b"}}>{e.note||e.description||e.title||""}</div>
-                                        <div style={{fontSize:10,color:"#3f3f46",marginTop:2}}>{e.rep_name||""} &middot; {$.dt(e.created_at)}</div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        :<div style={{color:"#3f3f46",fontSize:12,textAlign:"center",padding:20}}>No timeline events</div>
-                    }</div>
-                )}
-                {/* APPOINTMENTS */}
-                {tab==="appointments"&&(
-                    <div>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
-                            <span style={{fontSize:12,fontWeight:700}}>{appts.length} appointments</span>
-                            <button className="btn btn-p" onClick={()=>{onClose();onCreateAppt(lead)}}><Ic d={IC.plus} s={11}/> New Appt</button>
-                        </div>
-                        {appts.map(a=>(
-                            <div key={a.id} className="cd" style={{padding:12,marginBottom:6}}>
-                                <div style={{display:"flex",justifyContent:"space-between"}}>
-                                    <div><div style={{fontSize:13,fontWeight:700}}>{$.date(a.appointment_date)} at {a.appointment_time||"TBD"}</div><div style={{fontSize:11,color:"#52525b"}}>{a.appointment_address}</div></div>
-                                    <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
-                                </div>
-                                {a.outcome&&<div style={{fontSize:11,color:"#71717a",marginTop:4}}>Outcome: {sL(a.outcome)}</div>}
-                            </div>
-                        ))}
-                        {appts.length===0&&<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No appointments</div>}
+                </div>}
+
+                {/* ========== OVERDUE TASKS (if any) ========== */}
+                {overdueTasks.length>0&&<div style={{background:"#ef444412",border:"1px solid #ef444440",borderRadius:8,padding:12,marginBottom:12}}>
+                    <div style={{fontSize:10,fontWeight:900,color:"#ef4444",textTransform:"uppercase",marginBottom:6}}>Overdue ({overdueTasks.length})</div>
+                    {overdueTasks.map(t=><div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:"1px solid #ef444420"}}>
+                        <div><div style={{fontSize:12,fontWeight:700}}>{t.title}</div><div style={{fontSize:10,color:"#fca5a5"}}>Due {$.date(t.due_date)}</div></div>
+                        <button className="btn btn-p" style={{padding:"6px 12px",fontSize:11}} onClick={()=>completeTask(t.id)}>DONE</button>
+                    </div>)}
+                </div>}
+
+                {/* ========== ACTION PANEL ========== */}
+                <div style={{marginBottom:14}}>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6}}>
+                        <button className="btn" style={{padding:12,fontSize:11,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:56}} onClick={()=>setSP(true)}><Ic d={IC.flag} s={16} c="#f59e0b"/>Status</button>
+                        <button className="btn" style={{padding:12,fontSize:11,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:56}} onClick={()=>setAM("note")}><Ic d={IC.edit} s={16} c="#3b82f6"/>Add Note</button>
+                        <button className="btn" style={{padding:12,fontSize:11,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:56}} onClick={()=>setAM("call")}><Ic d={IC.phone} s={16} c="#22c55e"/>Log Call</button>
+                        <button className="btn" style={{padding:12,fontSize:11,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:56}} onClick={()=>{onClose();onCreateAppt(lead)}}><Ic d={IC.cal} s={16} c="#a855f7"/>Appointment</button>
+                        {isAdmin&&<button className="btn" style={{padding:12,fontSize:11,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:56}} onClick={()=>setAP(true)}><Ic d={IC.users} s={16} c="#eab308"/>Assign</button>}
+                        <button className="btn" style={{padding:12,fontSize:11,fontWeight:700,display:"flex",flexDirection:"column",alignItems:"center",gap:4,minHeight:56}} onClick={()=>setAM("note")}><Ic d={IC.camera} s={16} c="#71717a"/>Photo/File</button>
                     </div>
-                )}
-                {/* TASKS */}
-                {tab==="tasks"&&(
-                    <div>
-                        {tasks.filter(t=>t.lead_id===lead.id).length===0?<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No tasks</div>:
-                        tasks.filter(t=>t.lead_id===lead.id).map(t=>(
-                            <div key={t.id} className="cd" style={{padding:12,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                <div><div style={{fontSize:13,fontWeight:700}}>{t.title}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(t.task_type)} &middot; Due {$.date(t.due_date)}</div></div>
-                                <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                    <span className={`badge ${t.status==="overdue"?"b-red":t.status==="completed"?"b-green":"b-yellow"}`}>{sL(t.status)}</span>
-                                    {t.status!=="completed"&&<button className="btn btn-g" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>completeTask(t.id)}>Done</button>}
-                                </div>
-                            </div>
+                </div>
+
+                {/* ========== INLINE NOTE / CALL LOG PANEL ========== */}
+                {(actionMode==="note"||actionMode==="call")&&<div style={{background:"#18181b",borderRadius:8,padding:14,marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:800,color:actionMode==="call"?"#22c55e":"#3b82f6",textTransform:"uppercase",marginBottom:6}}>{actionMode==="call"?"Log Call":"Add Note"}</div>
+                    <textarea className="inp" style={{marginBottom:8}} value={noteText} onChange={e=>setNote(e.target.value)} placeholder={actionMode==="call"?"What was discussed on the call...":"Note about this lead..."}/>
+                    <div style={{display:"flex",gap:6}}>
+                        <button className="btn btn-p" style={{flex:1,padding:10}} disabled={notesBusy||!noteText.trim()} onClick={addNote}>{notesBusy?"Saving...":"Save"}</button>
+                        <button className="btn" style={{padding:10}} onClick={()=>{setAM(null);setNote("")}}>Cancel</button>
+                    </div>
+                </div>}
+
+                {/* ========== INLINE STATUS PICKER ========== */}
+                {statusPick&&<div style={{background:"#18181b",borderRadius:8,padding:14,marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",textTransform:"uppercase",marginBottom:8}}>Update Status</div>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                        {["new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up","no_show","rehash"].map(s=>(
+                            <button key={s} className={`btn ${lead.deal_status===s?"btn-p":""}`} style={{fontSize:11}} disabled={lead.deal_status===s||(lockInfo?.is_locked&&["closed_won","closed_lost"].includes(s))} onClick={()=>updStatus(s)}>{sL(s)}</button>
                         ))}
                     </div>
-                )}
-                {/* OWNERSHIP */}
-                {tab==="ownership"&&(
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                        {(()=>{const rn=id=>{if(!id)return"--";const r=reps.find(x=>x.id===id);return r?r.full_name:`Rep #${id}`};return<>
-                        <DF l="Setter" v={rn(lead.setter_id)}/><DF l="Runner" v={rn(lead.runner_id)}/>
-                        <DF l="Closer" v={rn(lead.closer_id)}/><DF l="Assigned Rep" v={lead.assigned_rep_id?rn(lead.assigned_rep_id):"Unassigned"}/>
-                        <DF l="Rehash Rep" v={rn(lead.rehash_rep_id)}/>
-                        </>})()}
-                        {user?.role==="admin"&&reps.length>0&&(
-                            <div style={{gridColumn:"span 2",marginTop:8}}>
-                                <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Reassign</div>
-                                <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:200,overflowY:"auto"}}>
-                                    {reps.map(r=>(
-                                        <div key={r.id} className="cd" style={{padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:lead.assigned_rep_id===r.id?"1px solid #f59e0b":"1px solid #1e1e21"}} onClick={()=>assignRep(r.id)}>
-                                            <span style={{fontSize:12,fontWeight:600}}>{r.full_name}</span>
-                                            {lead.assigned_rep_id===r.id&&<span className="badge b-orange">Current</span>}
-                                        </div>
-                                    ))}
+                    <button className="btn" style={{marginTop:8,width:"100%"}} onClick={()=>setSP(false)}>Cancel</button>
+                </div>}
+
+                {/* ========== INLINE ASSIGN PICKER ========== */}
+                {assignPick&&isAdmin&&<div style={{background:"#18181b",borderRadius:8,padding:14,marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#eab308",textTransform:"uppercase",marginBottom:8}}>Assign Rep</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:180,overflowY:"auto"}}>
+                        {reps.map(r=><div key={r.id} className="cd" style={{padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:lead.assigned_rep_id===r.id?"1px solid #f59e0b":"1px solid #1e1e21"}} onClick={()=>assignRep(r.id)}>
+                            <span style={{fontSize:12,fontWeight:600}}>{r.full_name}</span>
+                            {lead.assigned_rep_id===r.id&&<span className="badge b-orange" style={{fontSize:9}}>Current</span>}
+                        </div>)}
+                    </div>
+                    <button className="btn" style={{marginTop:8,width:"100%"}} onClick={()=>setAP(false)}>Cancel</button>
+                </div>}
+
+                {/* ========== UNIFIED ACTIVITY FEED ========== */}
+                <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Activity</div>
+                    {(()=>{
+                        // Merge timeline + tasks + appointments into one feed
+                        const feed=[];
+                        tlArr.forEach(e=>feed.push({type:"timeline",ts:e.created_at,title:sL(e.action_type||e.task_type||e.entry_type),sub:e.note||e.description||e.title||"",who:e.rep_name,color:e.entry_type==="action"?"#f59e0b":e.entry_type==="task"?"#3b82f6":"#22c55e"}));
+                        appts.forEach(a=>feed.push({type:"appt",ts:a.created_at||a.appointment_date,title:`Appointment: ${sL(a.appointment_status)}`,sub:`${$.date(a.appointment_date)} ${$.t12(a.appointment_time)}${a.outcome?" — "+sL(a.outcome):""}`,color:"#a855f7"}));
+                        pendingTasks.forEach(t=>feed.push({type:"task",ts:t.created_at||t.due_date,title:t.title,sub:`${sL(t.task_type)} — due ${$.date(t.due_date)}`,color:"#3b82f6",taskId:t.id,status:t.status}));
+                        feed.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));
+                        if(feed.length===0)return<div style={{textAlign:"center",color:"#27272a",fontSize:12,padding:16}}>No activity yet — add a note or log a call to start.</div>;
+                        return feed.slice(0,20).map((f,i)=>(
+                            <div key={i} style={{display:"flex",gap:10,marginBottom:0}}>
+                                <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
+                                    <div style={{width:8,height:8,borderRadius:"50%",background:f.color,marginTop:5}}/>
+                                    {i<Math.min(feed.length,20)-1&&<div style={{width:1,background:"#27272a",flex:1,minHeight:16}}/>}
+                                </div>
+                                <div style={{paddingBottom:12,flex:1,minWidth:0}}>
+                                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6}}>
+                                        <div style={{fontSize:12,fontWeight:700,color:"#a1a1aa"}}>{f.title}</div>
+                                        <div style={{fontSize:9,color:"#3f3f46",flexShrink:0}}>{$.ago(f.ts)}</div>
+                                    </div>
+                                    {f.sub&&<div style={{fontSize:11,color:"#52525b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.sub}</div>}
+                                    {f.who&&<div style={{fontSize:10,color:"#3f3f46"}}>{f.who}</div>}
+                                    {f.taskId&&f.status!=="completed"&&<button className="btn btn-g" style={{fontSize:10,padding:"3px 8px",marginTop:4}} onClick={()=>completeTask(f.taskId)}>Done</button>}
                                 </div>
                             </div>
-                        )}
+                        ));
+                    })()}
+                </div>
+
+                {/* ========== COLLAPSIBLE DETAILS ========== */}
+                <div className="cd" style={{overflow:"hidden",marginBottom:14}}>
+                    <div style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>setDO(!detailsOpen)}>
+                        <span style={{fontSize:11,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em"}}>Details</span>
+                        <Ic d={detailsOpen?"M18 15l-6-6-6 6":"M6 9l6 6 6-6"} s={14} c="#3f3f46"/>
                     </div>
-                )}
-                {/* ACTIONS */}
-                {tab==="actions"&&(
-                    <div>
-                        {lockInfo&&lockInfo.is_locked&&(
-                            <div style={{background:"#ef444418",border:"1px solid #ef444440",borderRadius:8,padding:12,marginBottom:14}}>
-                                <div style={{fontSize:11,fontWeight:800,color:"#ef4444",marginBottom:6}}>LEAD LOCKED - {lockInfo.open_task_count} OPEN TASK{lockInfo.open_task_count!==1?"S":""}</div>
-                                <div style={{fontSize:10,color:"#fca5a5"}}>This lead cannot be closed or abandoned until all tasks are completed.</div>
-                                {lockInfo.tasks&&lockInfo.tasks.map(t=>(
-                                    <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderTop:"1px solid #ef444420",marginTop:6}}>
-                                        <span style={{fontSize:11,color:"#fca5a5"}}>{t.title} ({t.status})</span>
-                                        {t.status!=="completed"&&<button className="btn btn-g" style={{fontSize:9,padding:"2px 6px"}} onClick={()=>completeTask(t.id)}>Complete</button>}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <div style={{marginBottom:16}}>
-                            <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:8}}>Update Status</div>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                                {["new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up","no_show","rehash"].map(s=>(
-                                    <button key={s} className={`btn ${lead.deal_status===s?"btn-p":""}`} disabled={lead.deal_status===s||(lockInfo&&lockInfo.is_locked&&["closed_won","closed_lost"].includes(s))} onClick={()=>updStatus(s)}>{sL(s)}</button>
-                                ))}
-                            </div>
-                        </div>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            <button className="btn btn-p" onClick={()=>{onClose();onCreateAppt(lead)}}>Create Appointment</button>
-                            <button className="btn" onClick={()=>sTab("ownership")}>Reassign</button>
-                            {user?.role==="admin"&&<button className="btn" style={{background:"#ef444418",color:"#ef4444",border:"1px solid #ef444440"}} disabled={deleting} onClick={deleteLead}>{deleting?"Archiving...":"Archive Lead"}</button>}
-                        </div>
-                        {user?.role==="admin"&&appts.length>0&&(
-                            <div style={{marginTop:16}}>
-                                <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:8}}>Admin: Cancel Appointments</div>
-                                {appts.filter(a=>!["completed","cancelled"].includes(a.appointment_status)).map(a=>(
-                                    <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #18181b"}}>
-                                        <span style={{fontSize:11}}>{$.date(a.appointment_date)} {a.appointment_time||""} - {sL(a.appointment_status)}</span>
-                                        <button className="btn" style={{fontSize:9,padding:"2px 8px",color:"#ef4444"}} onClick={()=>cancelAppt(a.id)}>Cancel</button>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                    {detailsOpen&&<div style={{padding:"0 14px 14px",display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                        <DF l="Email" v={lead.email}/>
+                        <DF l="Monthly Bill" v={$.money(lead.average_monthly_bill)} c="#f59e0b"/>
+                        <DF l="Deal Value" v={$.money(dealVal)} c="#f59e0b"/>
+                        <DF l="Annual kWh" v={lead.estimated_annual_kwh}/>
+                        <DF l="Source" v={sL(lead.source_type)}/>
+                        <DF l="Property" v={sL(lead.property_type)}/>
+                        <DF l="Homeowner" v={sL(lead.homeowner_status)}/>
+                        <DF l="Created" v={$.dt(lead.created_at)}/>
+                        <DF l="Last Outcome" v={sL(lead.last_outcome)}/>
+                        <DF l="Follow-up" v={lead.next_follow_up_date?$.date(lead.next_follow_up_date):"None"}/>
+                        <DF l="Setter" v={rn(lead.setter_id)}/>
+                        <DF l="Runner" v={rn(lead.runner_id)}/>
+                        <DF l="Closer" v={rn(lead.closer_id)}/>
+                        <DF l="Assigned" v={lead.assigned_rep_id?rn(lead.assigned_rep_id):"Unassigned"}/>
+                        {lead.notes&&<div style={{gridColumn:"span 2",padding:10,background:"#09090b",borderRadius:6}}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:3}}>Notes</div><div style={{fontSize:11,color:"#a1a1aa"}}>{lead.notes}</div></div>}
+                    </div>}
+                </div>
+
+                {/* ========== ADMIN ACTIONS ========== */}
+                {isAdmin&&<div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {appts.filter(a=>!["completed","cancelled"].includes(a.appointment_status)).length>0&&appts.filter(a=>!["completed","cancelled"].includes(a.appointment_status)).map(a=>(
+                        <button key={a.id} className="btn" style={{fontSize:10,color:"#ef4444"}} onClick={()=>cancelAppt(a.id)}>Cancel {$.date(a.appointment_date)} appt</button>
+                    ))}
+                    <button className="btn" style={{fontSize:10,color:"#ef4444",border:"1px solid #ef444440"}} disabled={deleting} onClick={deleteLead}>{deleting?"Archiving...":"Archive Lead"}</button>
+                </div>}
             </div>
         </div></>
     );

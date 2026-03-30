@@ -613,6 +613,43 @@ def get_rehash_queue(
     return result
 
 
+class NoteCreate(BaseModel):
+    note: str
+    note_type: Optional[str] = "general"
+
+
+@router.post("/{lead_id}/notes")
+def add_lead_note(
+    lead_id: int,
+    data: NoteCreate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Add a note or call log to a lead's timeline.
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+
+    if current_user.role == "rep" and lead.assigned_rep_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized")
+
+    if not data.note or not data.note.strip():
+        raise HTTPException(status_code=400, detail="Note text required")
+
+    action_type = "call_log" if data.note_type == "call_log" else "note"
+    log_action(
+        db=db,
+        lead_id=lead.id,
+        action_type=action_type,
+        rep_id=current_user.id,
+        note=data.note.strip(),
+    )
+    db.commit()
+    return {"ok": True, "message": "Note added"}
+
+
 @router.get("/{lead_id}/timeline")
 def get_lead_timeline(
     lead_id: int,
