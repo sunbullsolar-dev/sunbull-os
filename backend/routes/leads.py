@@ -242,7 +242,7 @@ def list_leads(
     Returns:
         List of Lead records
     """
-    query = db.query(Lead)
+    query = db.query(Lead).filter(Lead.is_archived == False)
 
     # Filter by role
     if current_user.role == "rep":

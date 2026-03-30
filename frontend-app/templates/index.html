@@ -53,7 +53,19 @@
         .appt-card.live{border-left:3px solid #22c55e}.appt-card.risk{border-left:3px solid #ef4444}.appt-card.wrn{border-left:3px solid #f59e0b}.appt-card.next{border-left:3px solid #3b82f6}
         .tl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
         .tl-line{width:1px;background:#27272a;margin-left:3px;flex-shrink:0;min-height:20px}
-        @media(max-width:768px){.sb{width:52px}.sb .nl,.sb .lt,.sb .ls{display:none}.sb-link{justify-content:center;padding:10px}.mc{margin-left:52px}.drw{width:100%}}
+        @media(max-width:768px){
+            .sb{width:52px}.sb .nl,.sb .lt,.sb .ls{display:none}.sb-link{justify-content:center;padding:10px}.mc{margin-left:52px}.drw{width:100%}
+            .btn{padding:8px 14px;font-size:12px;min-height:40px}
+            .appt-card{padding:16px}
+            .modal{width:95%;max-height:90vh;overflow-y:auto}
+            .tr{font-size:11px}
+            .ph-title{font-size:16px}
+        }
+        @media(max-width:480px){
+            .sb{width:0;display:none}.mc{margin-left:0}
+            .btn{padding:10px 16px;font-size:13px;min-height:44px}
+            .appt-card{padding:14px}
+        }
     </style>
 </head>
 <body>
@@ -176,6 +188,7 @@ function DashboardPage(){
     const{af,user}=useA();const toast=useT();
     const[d,sD]=useState(null);const[tasks,sTasks]=useState([]);const[rehash,sRehash]=useState([]);
     const[appts,sAppts]=useState([]);const[loading,setLd]=useState(true);
+    const[enforcement,setEnf]=useState(null);const[violations,setViol]=useState([]);
 
     useEffect(()=>{load()},[]);
     const load=async()=>{
@@ -191,8 +204,10 @@ function DashboardPage(){
                 if(dr.ok)sD(await dr.json());
                 if(ar.ok){const a=await ar.json();sAppts(Array.isArray(a)?a:[])}
                 if(tr.ok){const t=await tr.json();sTasks(Array.isArray(t)?t:(t.items||[]))}
-                // Load rehash
                 try{const rr=await af("/api/leads/rehash-queue");if(rr.ok)sRehash(await rr.json())}catch{}
+                // Load enforcement overview + violations
+                try{const er=await af("/api/admin/enforcement");if(er.ok)setEnf(await er.json())}catch{}
+                try{const vr=await af("/api/admin/violations?acknowledged=false&limit=10");if(vr.ok){const vd=await vr.json();setViol(vd.violations||[])}}catch{}
             } else {
                 const leads=dr.ok?await dr.json():[];
                 const a=ar.ok?await ar.json():[];
@@ -216,16 +231,27 @@ function DashboardPage(){
     const pending=tasks.filter(t=>t.status==="pending");
     const dueToday=pending.filter(t=>t.due_date&&t.due_date.startsWith(today));
 
-    // === REP DASHBOARD ===
+    // === REP DASHBOARD (with UI PRESSURE) ===
     if(user?.role!=="admin"||d?._rep){
+        const hasOverdue=overdue.length>0;
         return(
             <div>
+                {/* FULL-WIDTH OVERDUE ALERT BAR */}
+                {hasOverdue&&(
+                    <div style={{background:"#ef4444",padding:"12px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                            <Ic d={IC.alert} s={20} c="#fff"/>
+                            <span style={{color:"#fff",fontSize:14,fontWeight:900,textTransform:"uppercase",letterSpacing:".04em"}}>YOU HAVE {overdue.length} OVERDUE TASK{overdue.length>1?"S":""}</span>
+                        </div>
+                        <button className="btn" style={{background:"#fff",color:"#ef4444",borderColor:"#fff",fontWeight:900}} onClick={()=>nav("/tasks")}>FIX NOW</button>
+                    </div>
+                )}
                 <PH title="My Dashboard" sub={`Welcome, ${user?.full_name}`}/>
                 <div style={{padding:"16px 24px"}}>
-                    {/* Overdue tasks - RED ALERT */}
-                    {overdue.length>0&&(
-                        <div style={{background:"#ef444410",border:"1px solid #ef444430",borderRadius:10,padding:16,marginBottom:16}}>
-                            <div style={{fontSize:12,fontWeight:800,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>Overdue Tasks ({overdue.length})</div>
+                    {/* Overdue tasks - RED ALERT BLOCK */}
+                    {hasOverdue&&(
+                        <div style={{background:"#ef444415",border:"2px solid #ef4444",borderRadius:10,padding:16,marginBottom:16}}>
+                            <div style={{fontSize:13,fontWeight:900,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>BLOCKED — Complete These Tasks First</div>
                             {overdue.map(t=><TaskRow key={t.id} t={t}/>)}
                         </div>
                     )}
@@ -235,15 +261,15 @@ function DashboardPage(){
                         <KPI l="Today's Appts" v={d?.appts_today||0} t={d?.appts_today>0?"warn":null}/>
                         <KPI l="Open Tasks" v={d?.open_tasks||0} t={d?.open_tasks>3?"hot":"ok"}/>
                         <KPI l="Due Today" v={dueToday.length} t={dueToday.length>0?"warn":null}/>
+                        <KPI l="Overdue" v={overdue.length} t={overdue.length>0?"hot":null}/>
                     </div>
-                    {/* Today's appointments */}
+                    {/* Today's appointments — large mobile-friendly cards */}
                     {todayAppts.length>0&&(
                         <div style={{marginBottom:20}}>
                             <SH title="Today's Appointments" count={todayAppts.length}/>
                             {todayAppts.map(a=><RepApptCard key={a.id} a={a}/>)}
                         </div>
                     )}
-                    {/* Due today tasks */}
                     {dueToday.length>0&&(
                         <div><SH title="Due Today" count={dueToday.length}/>{dueToday.map(t=><TaskRow key={t.id} t={t}/>)}</div>
                     )}
@@ -252,19 +278,31 @@ function DashboardPage(){
         );
     }
 
-    // === ADMIN WAR ROOM (3-COLUMN LAYOUT) ===
+    // === ADMIN WAR ROOM (3-COLUMN LAYOUT) with ENFORCEMENT ===
+    const enfGlobal=enforcement?.global||{};
     return(
         <div>
+            {/* Enforcement alert bar */}
+            {(enfGlobal.total_overdue_tasks>0||enfGlobal.total_active_violations>0)&&(
+                <div style={{background:enfGlobal.reps_in_red>0?"#ef444418":"#f59e0b18",padding:"10px 24px",borderBottom:"1px solid "+(enfGlobal.reps_in_red>0?"#ef444440":"#f59e0b40"),display:"flex",alignItems:"center",gap:12}}>
+                    <Ic d={IC.alert} s={16} c={enfGlobal.reps_in_red>0?"#ef4444":"#f59e0b"}/>
+                    <span style={{fontSize:12,fontWeight:800,color:enfGlobal.reps_in_red>0?"#ef4444":"#f59e0b"}}>
+                        {enfGlobal.total_overdue_tasks} overdue tasks &middot; {enfGlobal.total_active_violations} active violations &middot; {enfGlobal.reps_in_red} reps in RED
+                    </span>
+                </div>
+            )}
             <PH title="War Room" sub="Real-time operations" right={<button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/> Refresh</button>}/>
             <div style={{padding:"16px 24px"}}>
-                {/* Top KPIs */}
+                {/* Top KPIs — now includes enforcement data */}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
                     <KPI l="Leads/Day" v={d?.leads_per_day?.toFixed(1)}/>
                     <KPI l="Close Rate" v={`${d?.close_rate?.toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/>
+                    <KPI l="Held Rate" v={`${d?.held_rate?.toFixed(1)}%`} t={d?.held_rate>50?"ok":"warn"}/>
                     <KPI l="Rev/Rep" v={$.money(d?.revenue_per_rep)}/>
                     <KPI l="Total Leads" v={d?.total_leads}/>
                     <KPI l="Closed Won" v={d?.closed_won_leads} t="ok"/>
-                    <KPI l="Overdue Tasks" v={overdue.length} t={overdue.length>0?"hot":null}/>
+                    <KPI l="Overdue Tasks" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/>
+                    <KPI l="Violations" v={d?.active_violations||0} t={(d?.active_violations||0)>0?"hot":null}/>
                     <KPI l="Follow-ups" v={rehash.length} t={rehash.length>0?"warn":null}/>
                     <KPI l="Today Appts" v={todayAppts.length} t="warn"/>
                 </div>
@@ -286,8 +324,25 @@ function DashboardPage(){
                             ))}
                         </div>
                     </div>
-                    {/* CENTER: Alerts & Activity */}
+                    {/* CENTER: Violations & Alerts */}
                     <div>
+                        {/* Active Violations */}
+                        {violations.length>0&&(
+                            <div style={{marginBottom:12}}>
+                                <SH title="Active Violations" count={violations.length}/>
+                                <div className="cd" style={{padding:0,borderColor:"#ef444430",maxHeight:260,overflowY:"auto"}}>
+                                    {violations.map(v=>(
+                                        <div key={v.id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                            <div>
+                                                <div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div>
+                                                <div style={{fontSize:10,color:"#52525b"}}>{v.rep_name} &middot; {v.lead_name||""}</div>
+                                            </div>
+                                            <span className={`badge ${v.severity==="critical"?"b-red":"b-yellow"}`}>{v.severity}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         <SH title="System Alerts"/>
                         {overdue.length>0&&(
                             <div className="cd" style={{padding:14,marginBottom:10,borderColor:"#ef444430"}}>
@@ -340,11 +395,11 @@ function RepApptCard({a}){
                 <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{a.appointment_time||"TBD"}</div></div>
             </div>
             <div style={{display:"flex",gap:4,marginBottom:8}}><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
-            <div style={{display:"flex",gap:4}}>
-                {a.appointment_status==="scheduled"&&<button className="btn btn-g" onClick={()=>go(a.id,"confirmed")}>Confirm</button>}
-                {a.appointment_status==="confirmed"&&<button className="btn btn-p" onClick={()=>go(a.id,"en_route")}>Start En Route</button>}
-                {a.appointment_status==="en_route"&&<button className="btn btn-g" onClick={()=>go(a.id,"arrived")}>Mark Arrived</button>}
-                {a.appointment_status==="arrived"&&<button className="btn btn-p" onClick={()=>nav(`/dispatch?complete=${a.id}`)}>Complete</button>}
+            <div style={{display:"flex",gap:6}}>
+                {a.appointment_status==="scheduled"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"confirmed")}>CONFIRM</button>}
+                {a.appointment_status==="confirmed"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"en_route")}>START EN ROUTE</button>}
+                {a.appointment_status==="en_route"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"arrived")}>MARK ARRIVED</button>}
+                {a.appointment_status==="arrived"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>nav(`/dispatch?complete=${a.id}`)}>COMPLETE</button>}
             </div>
         </div>
     );
@@ -357,6 +412,7 @@ function DispatchPage(){
     const{af,user}=useA();const toast=useT();
     const[appts,sA]=useState([]);const[leads,sL2]=useState({});const[reps,sR]=useState({});
     const[loading,sLd]=useState(true);const[selA,setSA]=useState(null);const[showComplete,setSC]=useState(null);
+    const[assignAppt,sAssign]=useState(null);const[recReps,sRecReps]=useState([]);const[loadingRec,sLdRec]=useState(false);
 
     useEffect(()=>{loadAll();const iv=setInterval(loadAll,30000);return()=>clearInterval(iv)},[]);
     const h=useH();
@@ -373,6 +429,14 @@ function DispatchPage(){
 
     const updSt=async(id,st)=>{
         try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",`${sL(st)}`);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
+    };
+
+    const openAssign=async(appt)=>{
+        sAssign(appt);sLdRec(true);sRecReps([]);
+        try{const r=await af(`/api/admin/recommend-rep/${appt.lead_id}`);if(r.ok){const d=await r.json();sRecReps(d.recommendations||[])}}catch{}sLdRec(false);
+    };
+    const doAssign=async(repId)=>{
+        try{const r=await af("/api/admin/reassign",{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:assignAppt.id,new_rep_id:repId})});if(r.ok){toast("ok","Assigned");sAssign(null);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
     };
 
     const today=new Date().toISOString().split("T")[0];
@@ -400,19 +464,50 @@ function DispatchPage(){
                 </div>
             </div>
             <div style={{padding:"16px 24px"}}>
-                {liveNow.length>0&&<ASection title="Live Now" color="#22c55e" items={liveNow} leads={leads} reps={reps} cls="live" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
-                {scheduled.length>0&&<ASection title="Needs Confirmation" color="#f59e0b" items={scheduled} leads={leads} reps={reps} cls="wrn" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
-                {confirmed.length>0&&<ASection title="Ready to Dispatch" color="#3b82f6" items={confirmed} leads={leads} reps={reps} cls="next" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {liveNow.length>0&&<ASection title="Live Now" color="#22c55e" items={liveNow} leads={leads} reps={reps} cls="live" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
+                {scheduled.length>0&&<ASection title="Needs Confirmation" color="#f59e0b" items={scheduled} leads={leads} reps={reps} cls="wrn" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
+                {confirmed.length>0&&<ASection title="Ready to Dispatch" color="#3b82f6" items={confirmed} leads={leads} reps={reps} cls="next" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
                 {(completed.length>0||noShow.length>0)&&<ASection title="Results" color="#52525b" items={[...completed,...noShow]} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
-                {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
                 {todayA.length===0&&upcoming.length===0&&<div className="cd" style={{padding:48,textAlign:"center",color:"#3f3f46"}}>No appointments</div>}
             </div>
             {showComplete&&<CompleteModal appt={showComplete} lead={leads[showComplete.lead_id]} onClose={()=>{setSC(null);nav("/dispatch")}} onDone={()=>{setSC(null);nav("/dispatch");loadAll()}}/>}
+            {assignAppt&&(
+                <div className="modal-ov" onClick={()=>sAssign(null)}><div className="modal" onClick={e=>e.stopPropagation()}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}>
+                        <div><h3 style={{fontSize:16,fontWeight:800}}>Assign Rep</h3><div style={{fontSize:11,color:"#52525b"}}>{leads[assignAppt.lead_id]?`${leads[assignAppt.lead_id].first_name} ${leads[assignAppt.lead_id].last_name}`:`Appt #${assignAppt.id}`} - {$.date(assignAppt.appointment_date)}</div></div>
+                        <div style={{cursor:"pointer"}} onClick={()=>sAssign(null)}><Ic d={IC.x}/></div>
+                    </div>
+                    {loadingRec?<Spin/>:(
+                        <div>
+                            {recReps.length>0&&<div style={{fontSize:10,fontWeight:800,color:"#22c55e",textTransform:"uppercase",letterSpacing:".05em",marginBottom:8}}>AI Recommended (by performance + workload)</div>}
+                            {recReps.map((r,i)=>(
+                                <div key={r.rep_id} className="cd" style={{padding:12,marginBottom:6,cursor:"pointer",border:i===0?"1px solid #22c55e40":"1px solid #1e1e21"}} onClick={()=>doAssign(r.rep_id)}>
+                                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                            {i===0&&<span className="badge b-green" style={{fontSize:9}}>BEST</span>}
+                                            <div><div style={{fontWeight:700,fontSize:13}}>{r.rep_name}</div><div style={{fontSize:10,color:"#52525b"}}>{r.email}</div></div>
+                                        </div>
+                                        <div style={{display:"flex",gap:10,textAlign:"center"}}>
+                                            <div><div style={{fontSize:12,fontWeight:800,color:"#22c55e"}}>{r.close_rate}%</div><div style={{fontSize:8,color:"#3f3f46"}}>CLOSE</div></div>
+                                            <div><div style={{fontSize:12,fontWeight:800,color:"#3b82f6"}}>{r.held_rate}%</div><div style={{fontSize:8,color:"#3f3f46"}}>HELD</div></div>
+                                            <div><div style={{fontSize:12,fontWeight:800}}>{r.active_leads}</div><div style={{fontSize:8,color:"#3f3f46"}}>LEADS</div></div>
+                                            <div><div style={{fontSize:12,fontWeight:800,color:r.violations>0?"#ef4444":"inherit"}}>{r.violations}</div><div style={{fontSize:8,color:"#3f3f46"}}>VIOL</div></div>
+                                            <div><div style={{fontSize:12,fontWeight:800}}>{r.score}</div><div style={{fontSize:8,color:"#3f3f46"}}>SCORE</div></div>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                            {recReps.length===0&&<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No reps available</div>}
+                        </div>
+                    )}
+                </div></div>
+            )}
         </div>
     );
 }
 
-function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete}){
+function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete,onAssign}){
     return(
         <div style={{marginBottom:20}}>
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><div style={{width:7,height:7,borderRadius:"50%",background:color}}/><span style={{fontSize:11,fontWeight:800,color,textTransform:"uppercase",letterSpacing:".05em"}}>{title}</span><span style={{fontSize:10,color:"#3f3f46"}}>{items.length}</span></div>
@@ -431,7 +526,7 @@ function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete}){
                                 {l?.lead_quality_score>0&&<span className="badge" style={{background:sC(l.lead_quality_score)+"18",color:sC(l.lead_quality_score)}}>{l.lead_quality_score}pt</span>}
                             </div>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                <div style={{fontSize:11,color:"#52525b"}}>{r?.full_name||"Unassigned"}</div>
+                                <div style={{fontSize:11,color:r?"#52525b":"#ef4444",cursor:onAssign?"pointer":"default",textDecoration:onAssign?"underline":"none"}} onClick={e=>{e.stopPropagation();if(onAssign)onAssign(a)}}>{r?.full_name||"Unassigned"}</div>
                                 <div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
                                     {a.appointment_status==="scheduled"&&<button className="btn btn-g" onClick={()=>onAct(a.id,"confirmed")}>Confirm</button>}
                                     {a.appointment_status==="confirmed"&&<button className="btn btn-p" onClick={()=>onAct(a.id,"en_route")}>Dispatch</button>}
@@ -571,21 +666,27 @@ function LeadsPage(){
 function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
     const{af,user}=useA();const toast=useT();
     const[tab,sTab]=useState("overview");const[timeline,sTL]=useState([]);const[tasks,sTasks]=useState([]);const[appts,sAppts]=useState([]);
+    const[lockInfo,sLock]=useState(null);const[deleting,sDel]=useState(false);
     const sc=lead.lead_quality_score||0;
 
     useEffect(()=>{loadExtra()},[lead.id]);
     const loadExtra=async()=>{
         try{
-            const[tr,tskr,ar]=await Promise.all([af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af("/api/appointments")]);
+            const calls=[af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af("/api/appointments")];
+            if(user?.role==="admin")calls.push(af(`/api/admin/lead-lock/${lead.id}`));
+            const[tr,tskr,ar,lr]=await Promise.all(calls);
             if(tr.ok)sTL(await tr.json());
             if(tskr.ok){const d=await tskr.json();sTasks(Array.isArray(d)?d:(d.items||[]))}
             if(ar.ok){const d=await ar.json();sAppts((Array.isArray(d)?d:[]).filter(a=>a.lead_id===lead.id))}
+            if(lr&&lr.ok)sLock(await lr.json());
         }catch{}
     };
 
     const updStatus=async(s)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({deal_status:s})});if(r.ok){toast("ok",sL(s));onRefresh()}}catch{toast("err","Failed")}};
     const assignRep=async(rid)=>{try{const r=await af(`/api/leads/${lead.id}/assign`,{method:"POST",body:JSON.stringify({rep_id:rid})});if(r.ok){toast("ok","Assigned");onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}};
     const completeTask=async(tid)=>{try{const r=await af(`/api/tasks/${tid}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from lead drawer"})});if(r.ok){toast("ok","Done");loadExtra()}}catch{toast("err","Failed")}};
+    const deleteLead=async()=>{if(!confirm("Archive this lead? This will soft-delete it."))return;sDel(true);try{const r=await af(`/api/admin/leads/${lead.id}`,{method:"DELETE"});if(r.ok){toast("ok","Lead archived");onClose();onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}sDel(false)};
+    const cancelAppt=async(aid)=>{if(!confirm("Cancel this appointment?"))return;try{const r=await af(`/api/admin/appointments/${aid}`,{method:"DELETE"});if(r.ok){toast("ok","Cancelled");loadExtra()}else{toast("err","Failed")}}catch{toast("err","Failed")}};
 
     const tabs=["overview","timeline","appointments","tasks","ownership","actions"];
 
@@ -594,10 +695,11 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
             <div style={{padding:"16px 20px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
                     <h2 style={{fontSize:17,fontWeight:900}}>{lead.first_name} {lead.last_name}</h2>
-                    <div style={{display:"flex",gap:5,marginTop:5}}>
+                    <div style={{display:"flex",gap:5,marginTop:5,flexWrap:"wrap"}}>
                         <span className="badge" style={{background:sC(sc)+"18",color:sC(sc)}}>{sc}pt</span>
                         <span className={`badge ${sB(lead.deal_status)}`}>{sL(lead.deal_status)}</span>
                         {lead.is_held&&<span className="badge b-green">Held</span>}
+                        {lockInfo&&lockInfo.is_locked&&<span className="badge b-red">LOCKED ({lockInfo.open_task_count} tasks)</span>}
                     </div>
                 </div>
                 <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
@@ -696,18 +798,42 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
                 {/* ACTIONS */}
                 {tab==="actions"&&(
                     <div>
+                        {lockInfo&&lockInfo.is_locked&&(
+                            <div style={{background:"#ef444418",border:"1px solid #ef444440",borderRadius:8,padding:12,marginBottom:14}}>
+                                <div style={{fontSize:11,fontWeight:800,color:"#ef4444",marginBottom:6}}>LEAD LOCKED - {lockInfo.open_task_count} OPEN TASK{lockInfo.open_task_count!==1?"S":""}</div>
+                                <div style={{fontSize:10,color:"#fca5a5"}}>This lead cannot be closed or abandoned until all tasks are completed.</div>
+                                {lockInfo.tasks&&lockInfo.tasks.map(t=>(
+                                    <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderTop:"1px solid #ef444420",marginTop:6}}>
+                                        <span style={{fontSize:11,color:"#fca5a5"}}>{t.title} ({t.status})</span>
+                                        {t.status!=="completed"&&<button className="btn btn-g" style={{fontSize:9,padding:"2px 6px"}} onClick={()=>completeTask(t.id)}>Complete</button>}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                         <div style={{marginBottom:16}}>
                             <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:8}}>Update Status</div>
                             <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
                                 {["new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up","no_show","rehash"].map(s=>(
-                                    <button key={s} className={`btn ${lead.deal_status===s?"btn-p":""}`} disabled={lead.deal_status===s} onClick={()=>updStatus(s)}>{sL(s)}</button>
+                                    <button key={s} className={`btn ${lead.deal_status===s?"btn-p":""}`} disabled={lead.deal_status===s||(lockInfo&&lockInfo.is_locked&&["closed_won","closed_lost"].includes(s))} onClick={()=>updStatus(s)}>{sL(s)}</button>
                                 ))}
                             </div>
                         </div>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                             <button className="btn btn-p" onClick={()=>{onClose();onCreateAppt(lead)}}>Create Appointment</button>
                             <button className="btn" onClick={()=>sTab("ownership")}>Reassign</button>
+                            {user?.role==="admin"&&<button className="btn" style={{background:"#ef444418",color:"#ef4444",border:"1px solid #ef444440"}} disabled={deleting} onClick={deleteLead}>{deleting?"Archiving...":"Archive Lead"}</button>}
                         </div>
+                        {user?.role==="admin"&&appts.length>0&&(
+                            <div style={{marginTop:16}}>
+                                <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:8}}>Admin: Cancel Appointments</div>
+                                {appts.filter(a=>!["completed","cancelled"].includes(a.appointment_status)).map(a=>(
+                                    <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 0",borderBottom:"1px solid #18181b"}}>
+                                        <span style={{fontSize:11}}>{$.date(a.appointment_date)} {a.appointment_time||""} - {sL(a.appointment_status)}</span>
+                                        <button className="btn" style={{fontSize:9,padding:"2px 8px",color:"#ef4444"}} onClick={()=>cancelAppt(a.id)}>Cancel</button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -781,30 +907,55 @@ function CreateApptModal({lead,reps,onClose,onDone}){
 // REPS PAGE
 // ========================================================================
 function RepsPage(){
-    const{af}=useA();const toast=useT();const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);const[showInvite,sSI]=useState(false);
+    const{af,user}=useA();const toast=useT();const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);const[showInvite,sSI]=useState(false);
+    const[sortBy,setSB]=useState("score");
 
-    useEffect(()=>{load()},[]);
-    const load=async()=>{sLd(true);try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}sLd(false)};
+    useEffect(()=>{load()},[sortBy]);
+    const load=async()=>{sLd(true);try{
+        const url=user?.role==="admin"?`/api/admin/rep-performance?sort_by=${sortBy}`:"/api/admin/reps";
+        const r=await af(url);if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
+    }catch{}sLd(false)};
 
     if(loading)return<Spin/>;
     return(
         <div>
-            <PH title="Sales Reps" sub={`${reps.length} reps`} right={<button className="btn btn-p" onClick={()=>sSI(true)}><Ic d={IC.send} s={12}/> Invite Rep</button>}/>
+            <PH title="Sales Reps" sub={`${reps.length} reps`} right={<div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {user?.role==="admin"&&<select className="inp" style={{width:140,fontSize:11}} value={sortBy} onChange={e=>setSB(e.target.value)}>
+                    <option value="score">Sort: Score</option><option value="close_rate">Sort: Close Rate</option><option value="held_rate">Sort: Held Rate</option><option value="violations">Sort: Violations</option><option value="overdue">Sort: Overdue</option>
+                </select>}
+                <button className="btn btn-p" onClick={()=>sSI(true)}><Ic d={IC.send} s={12}/> Invite Rep</button>
+            </div>}/>
             <div style={{padding:"16px 24px"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>
-                    {reps.map(r=>(
-                        <div key={r.id} className="cd" style={{padding:16}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:10}}>
+                    {reps.map((r,idx)=>{
+                        const hasViolations=r.active_violations>0;const hasOverdue=r.overdue_tasks>0;
+                        return(
+                        <div key={r.rep_id||r.id} className="cd" style={{padding:16,border:hasViolations?"1px solid #ef444440":hasOverdue?"1px solid #f59e0b40":"1px solid #1e1e21"}}>
                             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
-                                <div style={{width:36,height:36,borderRadius:"50%",background:"#f59e0b18",display:"flex",alignItems:"center",justifyContent:"center",color:"#f59e0b",fontWeight:900,fontSize:14}}>{(r.full_name||"?")[0]}</div>
-                                <div><div style={{fontWeight:700,fontSize:13}}>{r.full_name}</div><div style={{fontSize:10,color:"#52525b"}}>{r.email}</div></div>
+                                <div style={{position:"relative"}}>
+                                    <div style={{width:40,height:40,borderRadius:"50%",background:idx===0?"#f59e0b28":idx===1?"#a1a1aa18":idx===2?"#cd7f3218":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",color:idx===0?"#f59e0b":"#a1a1aa",fontWeight:900,fontSize:15}}>{(r.name||r.full_name||"?")[0]}</div>
+                                    {idx<3&&<div style={{position:"absolute",top:-4,right:-4,width:16,height:16,borderRadius:"50%",background:idx===0?"#f59e0b":idx===1?"#a1a1aa":"#cd7f32",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:900,color:"#000"}}>{idx+1}</div>}
+                                </div>
+                                <div style={{flex:1}}>
+                                    <div style={{fontWeight:700,fontSize:13}}>{r.name||r.full_name}</div>
+                                    <div style={{fontSize:10,color:"#52525b"}}>{r.email}</div>
+                                </div>
+                                {r.score!==undefined&&<div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:900,color:r.score>=200?"#22c55e":r.score>=100?"#f59e0b":"#ef4444"}}>{r.score}</div><div style={{fontSize:8,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>Score</div></div>}
                             </div>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,textAlign:"center"}}>
-                                <div><div style={{fontSize:16,fontWeight:900,color:"#22c55e"}}>{$.pct(r.close_rate)}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Close</div></div>
-                                <div><div style={{fontSize:16,fontWeight:900}}>{r.total_deals||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Deals</div></div>
-                                <div><div style={{fontSize:16,fontWeight:900,color:r.is_active?"#22c55e":"#ef4444"}}>{r.is_active?"On":"Off"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Active</div></div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,textAlign:"center",marginBottom:8}}>
+                                <div><div style={{fontSize:15,fontWeight:900,color:"#22c55e"}}>{r.close_rate!==undefined?r.close_rate+"%":"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Close</div></div>
+                                <div><div style={{fontSize:15,fontWeight:900,color:"#3b82f6"}}>{r.held_rate!==undefined?r.held_rate+"%":"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Held</div></div>
+                                <div><div style={{fontSize:15,fontWeight:900}}>{r.closed_count||r.total_deals||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Closed</div></div>
+                                <div><div style={{fontSize:15,fontWeight:900,color:"#f59e0b"}}>{r.total_revenue!==undefined?$.money(r.total_revenue):"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Rev</div></div>
+                            </div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,textAlign:"center",padding:"8px 0",borderTop:"1px solid #18181b"}}>
+                                <div><div style={{fontSize:13,fontWeight:800}}>{r.total_appointments||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Appts</div></div>
+                                <div><div style={{fontSize:13,fontWeight:800}}>{r.active_leads||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Leads</div></div>
+                                <div><div style={{fontSize:13,fontWeight:800,color:hasOverdue?"#ef4444":"inherit"}}>{r.overdue_tasks||0}</div><div style={{fontSize:8,color:hasOverdue?"#ef4444":"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Overdue</div></div>
+                                <div><div style={{fontSize:13,fontWeight:800,color:hasViolations?"#ef4444":"inherit"}}>{r.active_violations||0}</div><div style={{fontSize:8,color:hasViolations?"#ef4444":"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Violations</div></div>
                             </div>
                         </div>
-                    ))}
+                    )})}
                 </div>
             </div>
             {showInvite&&<InviteModal onClose={()=>sSI(false)} onDone={()=>{sSI(false);load()}}/>}

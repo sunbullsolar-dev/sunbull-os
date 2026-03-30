@@ -165,6 +165,11 @@ class Lead(Base):
     is_locked = Column(Boolean, default=False)
     locked_by_rep_id = Column(Integer, ForeignKey("users.id"))
 
+    # Soft delete
+    is_archived = Column(Boolean, default=False)
+    archived_at = Column(DateTime, nullable=True)
+    archived_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

@@ -47,29 +47,36 @@ def get_admin_dashboard(
     )
     leads_per_day = leads_last_30 / 30 if leads_last_30 else 0
 
-    # Close rate (closed_won / total)
-    total_leads = db.query(func.count(Lead.id)).scalar() or 1
+    # ACCURATE close rate: closed / held appointments (not all leads)
+    total_leads = db.query(func.count(Lead.id)).filter(Lead.is_archived == False).scalar() or 1
     closed_won_leads = (
         db.query(func.count(Lead.id))
         .filter(Lead.deal_status == "closed_won")
         .scalar() or 0
     )
-    close_rate = (closed_won_leads / total_leads * 100) if total_leads > 0 else 0
 
-    # Revenue per rep (total deal value / number of reps)
-    reps = db.query(User).filter(User.role == "rep").all()
+    # Close rate based on appointments with outcomes
+    held_outcomes = {"closed", "proposal_presented", "proposal_sent", "follow_up_required", "declined"}
+    completed_appts = db.query(Appointment).filter(Appointment.outcome.isnot(None)).all()
+    held_appts = [a for a in completed_appts if a.outcome in held_outcomes]
+    closed_appts = [a for a in completed_appts if a.outcome == "closed"]
+    not_held_appts = [a for a in completed_appts if a.outcome not in held_outcomes]
+
+    total_w_outcome = len(completed_appts)
+    close_rate = (len(closed_appts) / len(held_appts) * 100) if held_appts else 0
+    held_rate = (len(held_appts) / total_w_outcome * 100) if total_w_outcome > 0 else 0
+
+    # Revenue per rep (total deal value / number of active reps)
+    reps = db.query(User).filter(User.role == "rep", User.is_active == True).all()
     total_revenue = (
         db.query(func.sum(Deal.deal_value)).scalar() or 0
     )
     revenue_per_rep = (total_revenue / len(reps)) if reps else 0
 
-    # Held rate (leads with follow_up_required=True)
-    held_leads = (
-        db.query(func.count(Lead.id))
-        .filter(Lead.follow_up_required == True)
-        .scalar() or 0
-    )
-    held_rate = (held_leads / total_leads * 100) if total_leads > 0 else 0
+    # Enforcement stats
+    run_enforcement_check(db)
+    overdue_tasks = db.query(func.count(Task.id)).filter(Task.status == "overdue").scalar() or 0
+    active_violations = db.query(func.count(Violation.id)).filter(Violation.acknowledged == False).scalar() or 0
 
     return {
         "leads_per_day": round(leads_per_day, 2),
@@ -80,6 +87,11 @@ def get_admin_dashboard(
         "closed_won_leads": closed_won_leads,
         "total_revenue": round(total_revenue, 2),
         "total_reps": len(reps),
+        "held_appointments": len(held_appts),
+        "not_held_appointments": len(not_held_appts),
+        "total_appointments_completed": total_w_outcome,
+        "overdue_tasks": overdue_tasks,
+        "active_violations": active_violations,
     }
 
 
@@ -818,3 +830,256 @@ def admin_violations(
         })
 
     return {"total": total, "violations": result}
+
+
+# ============================================================================
+# ADMIN CONTROLS — PHASE 2
+# ============================================================================
+
+class SoftDeleteRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+@router.delete("/leads/{lead_id}")
+def admin_soft_delete_lead(
+    lead_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Soft-delete (archive) a lead. Does NOT permanently remove data."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if lead.is_archived:
+        raise HTTPException(status_code=400, detail="Lead already archived")
+
+    lead.is_archived = True
+    lead.archived_at = datetime.utcnow()
+    lead.archived_by = current_user.id
+
+    from services.audit import create_audit_log
+    create_audit_log(
+        db=db, user_id=current_user.id, action="archive",
+        entity_type="lead", entity_id=lead.id,
+        details=f"Lead archived: {lead.first_name} {lead.last_name}",
+    )
+
+    db.commit()
+    return {"ok": True, "message": f"Lead #{lead_id} archived"}
+
+
+@router.post("/leads/{lead_id}/restore")
+def admin_restore_lead(
+    lead_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Restore a soft-deleted lead."""
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    if not lead.is_archived:
+        raise HTTPException(status_code=400, detail="Lead is not archived")
+
+    lead.is_archived = False
+    lead.archived_at = None
+    lead.archived_by = None
+    db.commit()
+    return {"ok": True, "message": f"Lead #{lead_id} restored"}
+
+
+@router.delete("/appointments/{appt_id}")
+def admin_cancel_appointment(
+    appt_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin cancels an appointment."""
+    appt = db.query(Appointment).filter(Appointment.id == appt_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+    if appt.appointment_status in ("completed", "cancelled"):
+        raise HTTPException(status_code=400, detail=f"Cannot cancel: status is {appt.appointment_status}")
+
+    old_status = appt.appointment_status
+    appt.appointment_status = "cancelled"
+
+    from services.audit import create_audit_log
+    create_audit_log(
+        db=db, user_id=current_user.id, action="admin_cancel",
+        entity_type="appointment", entity_id=appt.id,
+        details=f"Admin cancelled appointment (was: {old_status})",
+    )
+
+    db.commit()
+    return {"ok": True, "message": f"Appointment #{appt_id} cancelled"}
+
+
+class ForceOutcomeRequest(BaseModel):
+    outcome: str
+    notes: str
+
+
+@router.post("/appointments/{appt_id}/force-outcome")
+def admin_force_outcome(
+    appt_id: int,
+    data: ForceOutcomeRequest,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin force-override an appointment outcome, bypassing normal flow."""
+    appt = db.query(Appointment).filter(Appointment.id == appt_id).first()
+    if not appt:
+        raise HTTPException(status_code=404, detail="Appointment not found")
+
+    valid_outcomes = {
+        "closed", "proposal_presented", "proposal_sent",
+        "follow_up_required", "declined",
+        "no_show", "not_home", "canceled", "reschedule_requested",
+    }
+    if data.outcome not in valid_outcomes:
+        raise HTTPException(status_code=400, detail=f"Invalid outcome: {data.outcome}")
+
+    old_outcome = appt.outcome
+    old_status = appt.appointment_status
+    appt.outcome = data.outcome
+    appt.appointment_status = "completed"
+    appt.notes = f"[ADMIN OVERRIDE] {data.notes}"
+
+    # Update lead
+    lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
+    if lead:
+        held_outcomes = {"closed", "proposal_presented", "proposal_sent", "follow_up_required", "declined"}
+        lead.is_held = data.outcome in held_outcomes
+        lead.last_outcome = data.outcome
+        if data.outcome == "closed":
+            lead.deal_status = "closed_won"
+        elif data.outcome == "declined":
+            lead.deal_status = "closed_lost"
+
+    from services.audit import create_audit_log
+    create_audit_log(
+        db=db, user_id=current_user.id, action="force_outcome",
+        entity_type="appointment", entity_id=appt.id,
+        details=f"Admin forced outcome: {old_outcome or old_status} -> {data.outcome}. Notes: {data.notes}",
+    )
+
+    db.commit()
+    return {"ok": True, "message": f"Outcome forced to {data.outcome}"}
+
+
+class ReassignRequest(BaseModel):
+    new_rep_id: int
+    entity_type: str  # "lead" or "appointment" or "task"
+    entity_id: int
+
+
+@router.post("/reassign")
+def admin_reassign(
+    data: ReassignRequest,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Admin instant-reassign any entity to a different rep."""
+    new_rep = db.query(User).filter(User.id == data.new_rep_id).first()
+    if not new_rep:
+        raise HTTPException(status_code=404, detail="Rep not found")
+
+    from services.audit import create_audit_log
+
+    if data.entity_type == "lead":
+        lead = db.query(Lead).filter(Lead.id == data.entity_id).first()
+        if not lead:
+            raise HTTPException(status_code=404, detail="Lead not found")
+        old_rep = lead.assigned_rep_id
+        lead.assigned_rep_id = data.new_rep_id
+        create_audit_log(db=db, user_id=current_user.id, action="reassign",
+                         entity_type="lead", entity_id=lead.id,
+                         details=f"Reassigned from rep {old_rep} to {data.new_rep_id}")
+
+    elif data.entity_type == "appointment":
+        appt = db.query(Appointment).filter(Appointment.id == data.entity_id).first()
+        if not appt:
+            raise HTTPException(status_code=404, detail="Appointment not found")
+        old_rep = appt.assigned_rep_id
+        appt.assigned_rep_id = data.new_rep_id
+        create_audit_log(db=db, user_id=current_user.id, action="reassign",
+                         entity_type="appointment", entity_id=appt.id,
+                         details=f"Reassigned from rep {old_rep} to {data.new_rep_id}")
+
+    elif data.entity_type == "task":
+        task = db.query(Task).filter(Task.id == data.entity_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        old_rep = task.assigned_to
+        task.assigned_to = data.new_rep_id
+        create_audit_log(db=db, user_id=current_user.id, action="reassign",
+                         entity_type="task", entity_id=task.id,
+                         details=f"Reassigned from rep {old_rep} to {data.new_rep_id}")
+    else:
+        raise HTTPException(status_code=400, detail="Invalid entity_type")
+
+    db.commit()
+    return {"ok": True, "message": f"{data.entity_type} #{data.entity_id} reassigned to {new_rep.full_name}"}
+
+
+@router.get("/rep-performance")
+def admin_rep_performance(
+    sort_by: str = Query("score", description="Sort by: score, close_rate, held_rate, violations, overdue"),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Full rep performance breakdown with sorting."""
+    from services.enforcement import calculate_rep_performance
+
+    reps = db.query(User).filter(User.role == "rep", User.is_active == True).all()
+    results = []
+    for rep in reps:
+        perf = calculate_rep_performance(db, rep.id)
+        perf["name"] = rep.full_name
+        perf["email"] = rep.email
+        perf["is_active"] = rep.is_active
+
+        # Composite score: higher is better
+        perf["score"] = round(
+            perf["close_rate"] * 3 + perf["held_rate"] * 2
+            - perf["overdue_tasks"] * 15 - perf["active_violations"] * 20,
+            1
+        )
+        results.append(perf)
+
+    # Sort
+    sort_map = {
+        "score": lambda r: r["score"],
+        "close_rate": lambda r: r["close_rate"],
+        "held_rate": lambda r: r["held_rate"],
+        "violations": lambda r: r["active_violations"],
+        "overdue": lambda r: r["overdue_tasks"],
+    }
+    sort_fn = sort_map.get(sort_by, sort_map["score"])
+    reverse = sort_by not in ("violations", "overdue")
+    results.sort(key=sort_fn, reverse=reverse)
+
+    return {"reps": results}
+
+
+@router.get("/recommend-rep/{lead_id}")
+def admin_recommend_rep(
+    lead_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get recommended reps for assignment based on workload + performance."""
+    from services.enforcement import recommend_rep
+    return {"recommendations": recommend_rep(db, lead_id)}
+
+
+@router.get("/lead-lock/{lead_id}")
+def admin_check_lead_lock(
+    lead_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check if a lead is locked due to pending tasks."""
+    from services.enforcement_engine import check_lead_locked
+    return check_lead_locked(db, lead_id)
