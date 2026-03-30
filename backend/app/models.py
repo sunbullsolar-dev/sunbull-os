@@ -786,4 +786,41 @@ class Invite(Base):
     invited_by = Column(Integer, ForeignKey("users.id"))
     used = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class Comment(Base):
+    """Comments on leads, appointments, and projects — universal update feed."""
+    __tablename__ = "comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id"), index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    body = Column(Text, nullable=False)
+    comment_type = Column(String(30), default="note")  # note, field_update, telemarketing, admin_note, system
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    user = relationship("User")
+    lead = relationship("Lead")
+    appointment = relationship("Appointment")
+    project = relationship("Project")
+
+
+class FileUpload(Base):
+    """File uploads (photos, voice memos, documents) for leads, appointments, and projects."""
+    __tablename__ = "file_uploads"
+
+    id = Column(Integer, primary_key=True, index=True)
+    lead_id = Column(Integer, ForeignKey("leads.id"), index=True)
+    appointment_id = Column(Integer, ForeignKey("appointments.id"), index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), index=True)
+    uploaded_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    file_name = Column(String(255), nullable=False)
+    file_type = Column(String(30), nullable=False)  # photo, voice_memo, document
+    file_url = Column(String(500), nullable=False)  # base64 data URI or path
+    file_size = Column(Integer)
+    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    uploader = relationship("User")
     used_at = Column(DateTime, nullable=True)

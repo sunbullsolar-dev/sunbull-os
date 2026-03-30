@@ -221,19 +221,29 @@ def create_lead(
 def list_leads(
     deal_status: Optional[str] = Query(None),
     source_type: Optional[str] = Query(None),
+    assigned_rep_id: Optional[int] = Query(None),
+    city: Optional[str] = Query(None),
+    date_from: Optional[str] = Query(None),
+    date_to: Optional[str] = Query(None),
+    search: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(25, ge=1, le=500),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    List leads filtered by role.
+    List leads filtered by role and criteria.
 
     Reps only see their assigned leads. Admins see all leads.
 
     Args:
         deal_status: Filter by deal status
         source_type: Filter by source type
+        assigned_rep_id: Filter by assigned rep ID
+        city: Filter by city
+        date_from: Filter created_at >= (YYYY-MM-DD)
+        date_to: Filter created_at <= (YYYY-MM-DD)
+        search: Search in first_name, last_name, phone, email
         skip: Number of records to skip
         limit: Number of records to return
         current_user: Current authenticated user
@@ -255,6 +265,34 @@ def list_leads(
     # Filter by source_type
     if source_type:
         query = query.filter(Lead.source_type == source_type)
+
+    # Filter by assigned_rep_id (admin only)
+    if assigned_rep_id and current_user.role == "admin":
+        query = query.filter(Lead.assigned_rep_id == assigned_rep_id)
+
+    # Filter by city
+    if city:
+        query = query.filter(Lead.city.ilike(f"%{city}%"))
+
+    # Filter by date range
+    if date_from:
+        from_date = datetime.strptime(date_from, "%Y-%m-%d")
+        query = query.filter(Lead.created_at >= from_date)
+
+    if date_to:
+        to_date = datetime.strptime(date_to, "%Y-%m-%d")
+        to_date = to_date.replace(hour=23, minute=59, second=59)
+        query = query.filter(Lead.created_at <= to_date)
+
+    # Search across multiple fields
+    if search:
+        search_term = f"%{search}%"
+        query = query.filter(
+            (Lead.first_name.ilike(search_term))
+            | (Lead.last_name.ilike(search_term))
+            | (Lead.phone.ilike(search_term))
+            | (Lead.email.ilike(search_term))
+        )
 
     return (
         query.order_by(Lead.created_at.desc()).offset(skip).limit(limit).all()

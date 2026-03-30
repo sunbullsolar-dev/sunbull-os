@@ -21,7 +21,7 @@ from app.models import (
     LeadOwnershipHistory, FollowUp, Deal, Commission,
     InstallerProfile, AutomationRule, Notification,
     AccountabilityFlag, RehashEntry, BillAnalysis, WebsitePage,
-    Action, Task, Project, Violation, Invite,
+    Action, Task, Project, Violation, Invite, Comment, FileUpload,
     UserRole, LeadStatus, LeadSource, AppointmentStatus,
     DealStage, CommissionStatus, SolarEstimate,
 )
@@ -38,6 +38,9 @@ from routes.dispatch import router as dispatch_router
 from routes.solar import router as solar_router
 from routes.solar_engine import router as solar_engine_router
 from routes.tasks import router as tasks_router
+from routes.comments import router as comments_router
+from routes.uploads import router as uploads_router
+from routes.projects import router as projects_router
 
 # Create FastAPI app
 app = FastAPI(
@@ -67,6 +70,9 @@ app.include_router(dispatch_router)
 app.include_router(solar_router)
 app.include_router(solar_engine_router)
 app.include_router(tasks_router)
+app.include_router(comments_router)
+app.include_router(uploads_router)
+app.include_router(projects_router)
 
 
 @app.on_event("startup")
@@ -84,6 +90,8 @@ def startup_event():
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS follow_up_note TEXT",
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS runner_id INTEGER",
             "ALTER TABLE leads ADD COLUMN IF NOT EXISTS rehash_rep_id INTEGER",
+            # New tables created by models, but ensure they exist
+            # (create_all will handle this, but documenting for clarity)
         ]
         for stmt in alter_statements:
             try:

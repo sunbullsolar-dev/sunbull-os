@@ -9,6 +9,8 @@
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:'Inter',sans-serif;background:#09090b;color:#e4e4e7;-webkit-font-smoothing:antialiased}
@@ -137,6 +139,12 @@ const IC={
     edit:"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
     trash:"M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
     arrow:"M5 12h14M12 5l7 7-7 7",
+    camera:"M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2zM12 13a4 4 0 1 0 0-.01",
+    mic:"M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3zM19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8",
+    paperclip:"M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48",
+    message:"M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z",
+    filter:"M22 3H2l8 9.46V19l4 2v-8.54L22 3",
+    building:"M3 21h18M3 7v14M21 7v14M6 11h.01M6 15h.01M6 19h.01M10 11h.01M10 15h.01M10 19h.01M14 11h.01M14 15h.01M14 19h.01M18 11h.01M18 15h.01M18 19h.01M9 7V3h6v4",
 };
 
 // ===== LOGIN =====
@@ -160,7 +168,7 @@ function Login(){
 
 // ===== SIDEBAR =====
 function Sidebar(){
-    const{user,logout}=useA();const h=useH();const isA=user?.role==="admin";
+    const{user,logout}=useA();const h=useH();const isA=user?.role==="admin";const isConf=user?.role==="confirmation";
     const lnk=[
         {p:"/dashboard",i:IC.grid,l:"Dashboard"},
         {p:"/dispatch",i:IC.zap,l:"Dispatch"},
@@ -169,6 +177,8 @@ function Sidebar(){
         {p:"/tasks",i:IC.check,l:"Tasks"},
         {p:"/pipeline",i:IC.pipe,l:"Pipeline"},
         ...(isA?[{p:"/projects",i:IC.flag,l:"Projects"}]:[]),
+        ...(isA?[{p:"/map",i:IC.map,l:"Map"}]:[]),
+        ...(isA||isConf?[{p:"/telemarketing",i:IC.phone,l:"Telemarketing"}]:[]),
     ];
     return(
         <div className="sb">
@@ -602,6 +612,201 @@ function RepApptCard({a,onDone}){
     );
 }
 
+// ===== APPOINTMENT DETAIL DRAWER =====
+function AppointmentDrawer({appt,leads,reps,onClose,onRefresh}){
+    const{af,user}=useA();const toast=useT();
+    const[tab,sTab]=useState("overview");const[comments,sComments]=useState([]);const[files,sFiles]=useState([]);const[timeline,sTL]=useState([]);
+    const[newComment,sNewComment]=useState("");const[busy,sBusy]=useState(false);const[changingStatus,sChangingStatus]=useState(false);
+    const[selectedStatus,setSelectedStatus]=useState(appt.appointment_status);
+
+    const lead=leads[appt.lead_id];const rep=reps[appt.assigned_rep_id];
+    const isAdmin=user?.role==="admin";
+
+    useEffect(()=>{loadExtra()},[appt.id]);
+    const loadExtra=async()=>{
+        try{
+            const[cr,fr,tr]=await Promise.all([
+                af(`/api/comments?appointment_id=${appt.id}`),
+                af(`/api/uploads?appointment_id=${appt.id}`),
+                af(`/api/leads/${appt.lead_id}/timeline`)
+            ]);
+            if(cr.ok)sComments(await cr.json());
+            if(fr.ok)sFiles(await fr.json());
+            if(tr.ok)sTL(await tr.json());
+        }catch{}
+    };
+
+    const postComment=async()=>{
+        if(!newComment.trim()){toast("err","Comment required");return}
+        sBusy(true);
+        try{
+            const r=await af("/api/comments",{method:"POST",body:JSON.stringify({appointment_id:appt.id,body:newComment})});
+            if(r.ok){toast("ok","Comment posted");sNewComment("");loadExtra()}else{toast("err","Failed")}
+        }catch{toast("err","Error")}
+        sBusy(false);
+    };
+
+    const uploadFile=async(e)=>{
+        const f=e.target.files?.[0];if(!f)return;
+        sBusy(true);
+        try{
+            const reader=new FileReader();
+            reader.onload=async(evt)=>{
+                const b64=evt.target?.result?.toString().split(",")[1];
+                const fileType=f.type.startsWith("audio")?("voice_memo"):("photo");
+                const r=await af("/api/uploads",{method:"POST",body:JSON.stringify({appointment_id:appt.id,file_name:f.name,file_type:fileType,file_data:b64})});
+                if(r.ok){toast("ok","File uploaded");loadExtra()}else{toast("err","Upload failed")}
+                sBusy(false);
+            };
+            reader.readAsDataURL(f);
+        }catch{toast("err","Error")}
+    };
+
+    const updateStatus=async(newStatus)=>{
+        sChangingStatus(true);
+        try{
+            const r=await af(`/api/appointments/${appt.id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:newStatus})});
+            if(r.ok){toast("ok",sL(newStatus));setSelectedStatus(newStatus);onRefresh()}else{toast("err","Failed")}
+        }catch{toast("err","Error")}
+        sChangingStatus(false);
+    };
+
+    const getValidNextStatuses=()=>{
+        const curr=appt.appointment_status;
+        if(curr==="scheduled")return["confirmed"];
+        if(curr==="confirmed")return["en_route"];
+        if(curr==="en_route")return["arrived"];
+        if(curr==="arrived")return[];
+        return[];
+    };
+
+    const nextStatuses=getValidNextStatuses();
+
+    return(
+        <><div className="dov" onClick={onClose}/><div className="drw">
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><h2 style={{fontSize:17,fontWeight:900}}>Appointment</h2><div style={{fontSize:11,color:"#52525b",marginTop:3}}>#{appt.id}</div></div>
+                <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
+            </div>
+            <div style={{display:"flex",borderBottom:"1px solid #18181b",overflowX:"auto"}}>
+                {["overview","comments","files","timeline"].map(t=><div key={t} className={`tab ${tab===t?"on":""}`} onClick={()=>sTab(t)}>{t}</div>)}
+            </div>
+            <div style={{padding:20}}>
+                {tab==="overview"&&(
+                    <div>
+                        <SH title="Lead Info"/>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                            <DF l="Name" v={lead?`${lead.first_name} ${lead.last_name}`:"--"}/>
+                            {lead?.phone&&<div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Phone</div><a href={`tel:${lead.phone}`} style={{fontSize:12,fontWeight:600,color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a></div>}
+                            <DF l="Address" v={lead?.property_address||appt.appointment_address||"--"}/>
+                            <DF l="Monthly Bill" v={lead?.average_monthly_bill?$.money(lead.average_monthly_bill):"--"} c="#f59e0b"/>
+                            <DF l="Status" v={sL(lead?.deal_status||"--")}/>
+                        </div>
+                        <SH title="Appointment Info"/>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                            <DF l="Date" v={$.date(appt.appointment_date)}/>
+                            <DF l="Time" v={appt.appointment_time||"TBD"}/>
+                            <div style={{gridColumn:"span 2"}}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Status</div><span className={`badge ${sB(appt.appointment_status)}`}>{sL(appt.appointment_status)}</span></div>
+                            {appt.outcome&&<div style={{gridColumn:"span 2"}}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Outcome</div><div style={{fontSize:12}}>{sL(appt.outcome)}</div></div>}
+                            <DF l="Assigned Rep" v={rep?.full_name||"Unassigned"}/>
+                        </div>
+                        {appt.notes&&<div style={{background:"#18181b",borderRadius:8,padding:12,marginBottom:16}}><div style={{fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:4}}>Notes</div><div style={{fontSize:12,color:"#a1a1aa"}}>{appt.notes}</div></div>}
+                        {isAdmin&&(
+                            <div style={{borderTop:"1px solid #18181b",paddingTop:16}}>
+                                <SH title="Admin Actions"/>
+                                {nextStatuses.length>0&&(
+                                    <div style={{marginBottom:12}}>
+                                        <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Update Status</div>
+                                        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                                            {nextStatuses.map(s=>(
+                                                <button key={s} className="btn btn-p" style={{fontSize:12,padding:"6px 12px"}} disabled={changingStatus} onClick={()=>updateStatus(s)}>{sL(s)}</button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                                <div style={{marginBottom:12}}>
+                                    <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Reassign Rep</div>
+                                    <select className="inp" onChange={e=>{if(e.target.value){af(`/api/admin/reassign`,{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:appt.id,new_rep_id:parseInt(e.target.value)})}).then(r=>{if(r.ok){toast("ok","Reassigned");onRefresh()}else{toast("err","Failed")}})}}}>
+                                        <option value="">Select rep...</option>
+                                        {Object.values(reps).map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}
+                                    </select>
+                                </div>
+                                <div style={{display:"flex",gap:4}}>
+                                    <button className="btn" onClick={()=>nav(`/dispatch?complete=${appt.id}`)}>Complete Appt</button>
+                                    <button className="btn" style={{color:"#ef4444"}}>Cancel</button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {tab==="comments"&&(
+                    <div>
+                        {(Array.isArray(comments)?comments:[]).map(c=>(
+                            <div key={c.id} className="cd" style={{padding:12,marginBottom:8}}>
+                                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                                    <div style={{fontSize:12,fontWeight:700}}>{c.user_name||"Unknown"}</div>
+                                    <div style={{fontSize:10,color:"#3f3f46"}}>{$.ago(c.created_at)}</div>
+                                </div>
+                                <div style={{fontSize:11,color:"#a1a1aa"}}>{c.body}</div>
+                                {c.comment_type&&<div style={{marginTop:4}}><span className="badge b-blue">{c.comment_type}</span></div>}
+                            </div>
+                        ))}
+                        {(Array.isArray(comments)?comments:[]).length===0&&<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No comments</div>}
+                        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #18181b"}}>
+                            <textarea className="inp" placeholder="Add a comment..." value={newComment} onChange={e=>sNewComment(e.target.value)} style={{marginBottom:8}}/>
+                            <button className="btn btn-p" style={{width:"100%",padding:8}} disabled={busy||!newComment.trim()} onClick={postComment}>{busy?"Posting...":"Post Comment"}</button>
+                        </div>
+                    </div>
+                )}
+                {tab==="files"&&(
+                    <div>
+                        {(Array.isArray(files)?files:[]).map(f=>(
+                            <div key={f.id} className="cd" style={{padding:12,marginBottom:8}}>
+                                <div style={{display:"flex",gap:8}}>
+                                    {f.file_type==="photo"&&f.file_url&&<img src={f.file_url} style={{width:60,height:60,borderRadius:4,objectFit:"cover"}}/>}
+                                    {f.file_type==="voice_memo"&&<div style={{width:60,height:60,borderRadius:4,background:"#18181b",display:"flex",alignItems:"center",justifyContent:"center"}}><Ic d={IC.mic} s={20} c="#f59e0b"/></div>}
+                                    <div style={{flex:1}}>
+                                        <div style={{fontSize:12,fontWeight:700}}>{f.file_name}</div>
+                                        <div style={{fontSize:10,color:"#52525b"}}><span className="badge" style={{background:f.file_type==="photo"?"#3b82f618":"#f59e0b18",color:f.file_type==="photo"?"#3b82f6":"#f59e0b"}}>{f.file_type}</span> &middot; {f.user_name||"Unknown"}</div>
+                                        <div style={{fontSize:9,color:"#3f3f46",marginTop:2}}>{$.ago(f.created_at)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ))}
+                        {(Array.isArray(files)?files:[]).length===0&&<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No files</div>}
+                        <div style={{marginTop:12,paddingTop:12,borderTop:"1px solid #18181b"}}>
+                            <label style={{display:"block"}}>
+                                <input type="file" accept="image/*,audio/*" onChange={uploadFile} style={{display:"none"}}/>
+                                <button className="btn btn-p" style={{width:"100%",padding:8}} disabled={busy}>{busy?"Uploading...":"Upload Photo/Voice Memo"}</button>
+                            </label>
+                        </div>
+                    </div>
+                )}
+                {tab==="timeline"&&(
+                    <div>{(Array.isArray(timeline)?timeline:[]).length>0?
+                        <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                            {(Array.isArray(timeline)?timeline:[]).map((e,i)=>(
+                                <div key={i} style={{display:"flex",gap:10}}>
+                                    <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                                        <div className="tl-dot" style={{background:e.entry_type==="action"?"#f59e0b":e.entry_type==="task"?"#3b82f6":"#22c55e"}}/>
+                                        {i<(Array.isArray(timeline)?timeline:[]).length-1&&<div className="tl-line" style={{flex:1}}/>}
+                                    </div>
+                                    <div style={{paddingBottom:14,flex:1}}>
+                                        <div style={{fontSize:12,fontWeight:700}}>{sL(e.action_type||e.task_type||e.entry_type)}</div>
+                                        <div style={{fontSize:11,color:"#52525b"}}>{e.note||e.description||e.title||""}</div>
+                                        <div style={{fontSize:10,color:"#3f3f46",marginTop:2}}>{e.rep_name||""} &middot; {$.dt(e.created_at)}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        :<div style={{color:"#3f3f46",fontSize:12,textAlign:"center",padding:20}}>No events</div>
+                    }</div>
+                )}
+            </div>
+        </div></>
+    );
+}
+
 // ========================================================================
 // DISPATCH CENTER
 // ========================================================================
@@ -668,6 +873,7 @@ function DispatchPage(){
                 {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
                 {todayA.length===0&&upcoming.length===0&&<div className="cd" style={{padding:48,textAlign:"center",color:"#3f3f46"}}>No appointments</div>}
             </div>
+            {selA&&<AppointmentDrawer appt={selA} leads={leads} reps={reps} onClose={()=>setSA(null)} onRefresh={loadAll}/>}
             {showComplete&&<CompleteModal appt={showComplete} lead={leads[showComplete.lead_id]} onClose={()=>{setSC(null);nav("/dispatch")}} onDone={()=>{setSC(null);nav("/dispatch");loadAll()}}/>}
             {assignAppt&&(
                 <div className="modal-ov" onClick={()=>sAssign(null)}><div className="modal" onClick={e=>e.stopPropagation()}>
@@ -808,7 +1014,7 @@ function CompleteModal({appt,lead,onClose,onDone}){
 function LeadsPage(){
     const{af,user}=useA();const toast=useT();
     const[leads,sLeads]=useState([]);const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);
-    const[search,sSrch]=useState("");const[sf,sSF]=useState("");const[sel,sSel]=useState(null);
+    const[search,sSrch]=useState("");const[sf,sSF]=useState("");const[repFilter,setRepFilter]=useState("");const[cityFilter,setCityFilter]=useState("");const[sel,sSel]=useState(null);
     const[showCreate,setSC]=useState(false);const[showCreateAppt,setSCA]=useState(null);
 
     useEffect(()=>{loadLeads();if(user?.role==="admin")loadReps()},[]);
@@ -820,8 +1026,11 @@ function LeadsPage(){
 
     const filtered=useMemo(()=>leads.filter(l=>{
         const ms=!search||`${l.first_name||""} ${l.last_name||""} ${l.city||""} ${l.phone||""} ${l.email||""}`.toLowerCase().includes(search.toLowerCase());
-        const mf=!sf||l.deal_status===sf;return ms&&mf;
-    }),[leads,search,sf]);
+        const mf=!sf||l.deal_status===sf;
+        const rf=!repFilter||l.assigned_rep_id===parseInt(repFilter);
+        const cf=!cityFilter||l.city?.toLowerCase().includes(cityFilter.toLowerCase());
+        return ms&&mf&&rf&&cf;
+    }),[leads,search,sf,repFilter,cityFilter]);
     const statuses=[...new Set(leads.map(l=>l.deal_status).filter(Boolean))].sort();
 
     if(loading)return<Spin/>;
@@ -830,9 +1039,11 @@ function LeadsPage(){
         <div>
             <PH title="Leads" sub={`${leads.length} total`} right={user?.role==="admin"&&<button className="btn btn-p" onClick={()=>setSC(true)}><Ic d={IC.plus} s={12}/> New Lead</button>}/>
             <div style={{padding:"14px 24px"}}>
-                <div style={{display:"flex",gap:8,marginBottom:12}}>
-                    <div style={{position:"relative",flex:1,maxWidth:280}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search..." value={search} onChange={e=>sSrch(e.target.value)}/></div>
-                    <select className="inp" style={{maxWidth:150,minWidth:100}} value={sf} onChange={e=>sSF(e.target.value)}><option value="">All</option>{statuses.map(s=><option key={s} value={s}>{sL(s)}</option>)}</select>
+                <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                    <div style={{position:"relative",flex:1,minWidth:200,maxWidth:280}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search..." value={search} onChange={e=>sSrch(e.target.value)}/></div>
+                    <select className="inp" style={{minWidth:100}} value={sf} onChange={e=>sSF(e.target.value)}><option value="">Status: All</option>{statuses.map(s=><option key={s} value={s}>{sL(s)}</option>)}</select>
+                    {user?.role==="admin"&&reps.length>0&&<select className="inp" style={{minWidth:100}} value={repFilter} onChange={e=>setRepFilter(e.target.value)}><option value="">Rep: All</option>{reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}</select>}
+                    <input className="inp" style={{minWidth:100}} placeholder="City..." value={cityFilter} onChange={e=>setCityFilter(e.target.value)}/>
                     <button className="btn" onClick={loadLeads}><Ic d={IC.refresh} s={12}/></button>
                 </div>
                 <div className="cd" style={{overflow:"hidden"}}>
@@ -1190,15 +1401,26 @@ function InviteModal({onClose,onDone}){
 // TASKS PAGE
 // ========================================================================
 function TasksPage(){
-    const{af}=useA();const toast=useT();const[tasks,sTasks]=useState([]);const[loading,sLd]=useState(true);const[filter,sF]=useState("pending");
-    useEffect(()=>{load()},[filter]);
-    const load=async()=>{sLd(true);try{const url=filter?`/api/tasks?status=${filter}`:"/api/tasks";const r=await af(url);if(r.ok){const d=await r.json();sTasks(Array.isArray(d)?d:(d.items||d.tasks||[]))}}catch{}sLd(false)};
+    const{af,user}=useA();const toast=useT();const[tasks,sTasks]=useState([]);const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);const[statusFilter,sF]=useState("pending");const[typeFilter,setTF]=useState("");const[repFilter,setRepFilter]=useState("");
+    useEffect(()=>{load()},[statusFilter,typeFilter,repFilter]);
+    useEffect(()=>{if(user?.role==="admin")loadReps()},[]);
+    const load=async()=>{sLd(true);try{let url="/api/tasks";const params=[];if(statusFilter)params.push(`status=${statusFilter}`);if(typeFilter)params.push(`task_type=${typeFilter}`);if(repFilter)params.push(`assigned_to=${repFilter}`);if(params.length)url+="?"+params.join("&");const r=await af(url);if(r.ok){const d=await r.json();sTasks(Array.isArray(d)?d:(d.items||d.tasks||[]))}}catch{}sLd(false)};
+    const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}};
     const complete=async id=>{try{const r=await af(`/api/tasks/${id}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Done"})});if(r.ok){toast("ok","Completed");load()}}catch{toast("err","Failed")}};
+    const taskTypes=[...new Set(tasks.map(t=>t.task_type).filter(Boolean))].sort();
     if(loading)return<Spin/>;
     return(
         <div>
-            <PH title="Tasks" sub={`${tasks.length}`} right={<div style={{display:"flex",gap:4}}>{["pending","overdue","completed",""].map(f=><button key={f} className={`btn ${filter===f?"btn-p":""}`} onClick={()=>sF(f)}>{f||"All"}</button>)}</div>}/>
+            <PH title="Tasks" sub={`${tasks.length}`}/>
             <div style={{padding:"14px 24px"}}>
+                <div style={{display:"flex",gap:4,marginBottom:12,flexWrap:"wrap"}}>
+                    {["pending","overdue","completed",""].map(f=><button key={f} className={`btn ${statusFilter===f?"btn-p":""}`} onClick={()=>sF(f)}>{f||"All"}</button>)}
+                </div>
+                <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                    {typeFilter&&<select className="inp" style={{minWidth:100}} value={typeFilter} onChange={e=>setTF(e.target.value)}><option value="">Task Type: All</option>{taskTypes.map(t=><option key={t} value={t}>{sL(t)}</option>)}</select>}
+                    {!typeFilter&&<select className="inp" style={{minWidth:100}} value={typeFilter} onChange={e=>setTF(e.target.value)}><option value="">Task Type: All</option>{taskTypes.map(t=><option key={t} value={t}>{sL(t)}</option>)}</select>}
+                    {user?.role==="admin"&&reps.length>0&&<select className="inp" style={{minWidth:100}} value={repFilter} onChange={e=>setRepFilter(e.target.value)}><option value="">Assigned To: All</option>{reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}</select>}
+                </div>
                 {tasks.length===0?<div className="cd" style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No tasks</div>:
                 <div className="cd" style={{overflow:"hidden"}}>
                     <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr .8fr .8fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}><div>Task</div><div>Lead</div><div>Due</div><div>Status</div><div/></div>
@@ -1255,44 +1477,308 @@ function PipelinePage(){
 // PROJECTS PAGE (POST-SALE PIPELINE)
 // ========================================================================
 function ProjectsPage(){
-    const{af}=useA();const[data,sData]=useState(null);const[deals,sDeals]=useState([]);const[loading,sLd]=useState(true);
-    useEffect(()=>{load()},[]);
-    const load=async()=>{sLd(true);try{
-        const[pr,dr]=await Promise.all([af("/api/deals/pipeline"),af("/api/deals")]);
-        if(pr.ok)sData(await pr.json());
-        if(dr.ok)sDeals(await dr.json());
-    }catch{}sLd(false)};
+    const{af,user}=useA();const toast=useT();
+    const[projects,setProjects]=useState([]);const[kpis,setKpis]=useState(null);const[loading,sLd]=useState(true);
+    const[installFilter,setInstallFilter]=useState("");const[fundingFilter,setFundingFilter]=useState("");const[search,setSearch]=useState("");
+    const[selProject,setSelProject]=useState(null);
 
-    const stages=[{k:"sold",l:"Sold",c:"#f59e0b"},{k:"installed",l:"Installed",c:"#3b82f6"},{k:"submitted_for_funding",l:"Submitted",c:"#a855f7"},{k:"funded",l:"Funded",c:"#22c55e"},{k:"paid",l:"Paid",c:"#22c55e"}];
+    useEffect(()=>{load()},[]);
+    const load=async()=>{
+        sLd(true);
+        try{
+            const[kr,pr]=await Promise.all([af("/api/projects/dashboard/summary"),af("/api/projects")]);
+            if(kr.ok)setKpis(await kr.json());
+            if(pr.ok)setProjects(Array.isArray(pr)?pr:(pr.projects||[]));
+        }catch{}
+        sLd(false);
+    };
+
+    const filtered=useMemo(()=>{
+        let f=Array.isArray(projects)?projects:[];
+        if(installFilter)f=f.filter(p=>p.install_status===installFilter);
+        if(fundingFilter)f=f.filter(p=>p.funding_status===fundingFilter);
+        if(search)f=f.filter(p=>`${p.lead_name||""}`.toLowerCase().includes(search.toLowerCase()));
+        return f;
+    },[projects,installFilter,fundingFilter,search]);
+
+    const now=new Date();
+    const getDaysInStage=(p)=>{if(!p.sold_date)return 0;return Math.floor((now-new Date(p.sold_date))/(1000*60*60*24))};
+    const isDelayed=(p)=>getDaysInStage(p)>30;
 
     if(loading)return<Spin/>;
-    const pipeline=data?.pipeline||{};
+
+    const kData=kpis||{};
 
     return(
         <div>
-            <PH title="Projects" sub="Post-sale pipeline"/>
+            <PH title="Projects" sub="Post-sale pipeline" right={<button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>}/>
             <div style={{padding:"16px 24px"}}>
                 <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-                    {stages.map(s=>{const d=pipeline[s.k]||{count:0,total_value:0};return<KPI key={s.k} l={s.l} v={`${d.count} (${$.money(d.total_value)})`} t={s.k==="paid"?"ok":null}/>})}
+                    <KPI l="Total Projects" v={kData.total_projects||0}/>
+                    <KPI l="Sold" v={kData.sold_count||0}/>
+                    <KPI l="Installed" v={kData.installed_count||0}/>
+                    <KPI l="Submitted" v={kData.submitted_count||0}/>
+                    <KPI l="Funded" v={kData.funded_count||0}/>
+                    <KPI l="Paid" v={kData.paid_count||0} t="ok"/>
+                    <KPI l="Delayed" v={kData.delayed_count||0} t={kData.delayed_count>0?"hot":null}/>
                 </div>
-                <div style={{display:"flex",gap:10,overflowX:"auto"}}>
-                    {stages.map(s=>{
-                        const sd=(Array.isArray(deals)?deals:[]).filter(d=>d.pipeline_stage===s.k);
-                        return(
-                            <div key={s.k} style={{flex:1,minWidth:180}}>
-                                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:6,borderBottom:`2px solid ${s.c}30`}}><div style={{width:7,height:7,borderRadius:"50%",background:s.c}}/><span style={{fontSize:11,fontWeight:800,color:"#71717a"}}>{s.l}</span><span style={{fontSize:10,color:"#3f3f46",marginLeft:"auto"}}>{sd.length}</span></div>
-                                <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                                    {sd.map(d=>(
-                                        <div key={d.id} className="cd" style={{padding:10,borderLeft:`3px solid ${s.c}`}}>
-                                            <div style={{fontWeight:700,fontSize:11}}>Deal #{d.id}</div>
-                                            <div style={{fontSize:11,fontWeight:700,marginTop:4,color:s.c}}>{$.money(d.deal_value)}</div>
-                                        </div>
-                                    ))}
-                                    {sd.length===0&&<div style={{padding:16,textAlign:"center",color:"#27272a",fontSize:10,border:"1px dashed #1e1e21",borderRadius:6}}>Empty</div>}
+
+                <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+                    <div style={{position:"relative",flex:1,minWidth:200}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search by lead..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
+                    <select className="inp" style={{minWidth:120}} value={installFilter} onChange={e=>setInstallFilter(e.target.value)}><option value="">Install: All</option><option value="pending">Pending</option><option value="installed">Installed</option><option value="cancelled">Cancelled</option></select>
+                    <select className="inp" style={{minWidth:120}} value={fundingFilter} onChange={e=>setFundingFilter(e.target.value)}><option value="">Funding: All</option><option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="declined">Declined</option></select>
+                </div>
+
+                <div className="cd" style={{overflow:"hidden"}}>
+                    {filtered.length===0?<div style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No projects</div>:
+                    <div>
+                        <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr .8fr .8fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}>
+                            <div>Lead</div><div>Deal Value</div><div>Closer</div><div>Install</div><div>Funding</div><div/>
+                        </div>
+                        {filtered.map(p=>{
+                            const daysInStage=getDaysInStage(p);
+                            const delayed=isDelayed(p);
+                            return(
+                                <div key={p.id} className="tr" style={{gridTemplateColumns:"2fr 1fr 1fr .8fr .8fr .5fr",cursor:"pointer"}} onClick={()=>setSelProject(p)}>
+                                    <div><div style={{fontWeight:700,fontSize:12}}>{p.lead_name||`Project #${p.id}`}</div><div style={{fontSize:10,color:"#52525b"}}>{p.sold_date?`${daysInStage} days in stage`:"Not sold"}</div></div>
+                                    <div style={{fontWeight:700,color:"#f59e0b",fontSize:12}}>{$.money(p.deal_value)}</div>
+                                    <div style={{fontSize:11,color:"#71717a"}}>{p.closer_name||"--"}</div>
+                                    <div><span className={`badge ${sB(p.install_status||"pending")}`}>{sL(p.install_status||"pending")}</span></div>
+                                    <div style={{display:"flex",gap:2,alignItems:"center"}}>
+                                        <span className={`badge ${sB(p.funding_status||"pending")}`}>{sL(p.funding_status||"pending")}</span>
+                                        {delayed&&<span className="badge b-red">DELAYED</span>}
+                                    </div>
+                                    <div>{user?.role==="admin"&&<button className="btn" style={{fontSize:9,padding:"2px 6px"}} onClick={e=>{e.stopPropagation();setSelProject(p)}}>Edit</button>}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                    }
+                </div>
+            </div>
+            {selProject&&user?.role==="admin"&&(
+                <div className="modal-ov" onClick={()=>setSelProject(null)}>
+                    <div className="modal" onClick={e=>e.stopPropagation()}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                            <h3 style={{fontSize:16,fontWeight:800}}>Edit Project</h3>
+                            <div style={{cursor:"pointer"}} onClick={()=>setSelProject(null)}><Ic d={IC.x}/></div>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
+                            <div>
+                                <label className="lbl">Install Status</label>
+                                <select className="inp" defaultValue={selProject.install_status||"pending"} onChange={e=>{
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({install_status:e.target.value})}).then(r=>{
+                                        if(r.ok){toast("ok","Updated");load();setSelProject(null)}else{toast("err","Failed")}
+                                    })
+                                }}>
+                                    <option value="pending">Pending</option>
+                                    <option value="installed">Installed</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="lbl">Funding Status</label>
+                                <select className="inp" defaultValue={selProject.funding_status||"pending"} onChange={e=>{
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({funding_status:e.target.value})}).then(r=>{
+                                        if(r.ok){toast("ok","Updated");load();setSelProject(null)}else{toast("err","Failed")}
+                                    })
+                                }}>
+                                    <option value="pending">Pending</option>
+                                    <option value="submitted">Submitted</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="declined">Declined</option>
+                                </select>
+                            </div>
+                        </div>
+                        <button className="btn" style={{width:"100%"}} onClick={()=>setSelProject(null)}>Done</button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// ========================================================================
+// MAP PAGE (FIELD DISPATCH VISUALIZATION)
+// ========================================================================
+function MapPage(){
+    const{af}=useA();const toast=useT();
+    const[appts,sAppts]=useState([]);const[leads,sLeads]=useState({});const[loading,sLd]=useState(true);
+    const[mapFilter,setFilter]=useState("all");const[selAppt,setSelAppt]=useState(null);
+    const mapRef=useRef(null);const mapInstance=useRef(null);
+
+    useEffect(()=>{loadData()},[]);
+    const loadData=async()=>{
+        sLd(true);
+        try{
+            const[ar,lr]=await Promise.all([af("/api/appointments"),af("/api/leads?limit=500")]);
+            if(ar.ok){const d=await ar.json();sAppts(Array.isArray(d)?d:[])}
+            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sLeads(m)}
+        }catch{}
+        sLd(false);
+    };
+
+    useEffect(()=>{
+        if(!mapInstance.current&&mapRef.current&&typeof L!=="undefined"){
+            mapInstance.current=L.map(mapRef.current).setView([33.5,-112],10);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapInstance.current);
+        }
+        return()=>{if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null}}
+    },[]);
+
+    useEffect(()=>{
+        if(!mapInstance.current)return;
+        mapInstance.current.eachLayer(l=>{if(l instanceof L.Marker)mapInstance.current.removeLayer(l)});
+        const today=new Date().toISOString().split("T")[0];
+        const todayAppts=appts.filter(a=>a.appointment_date===today&&(mapFilter==="all"||a.appointment_status===mapFilter));
+        todayAppts.forEach(a=>{
+            const lead=leads[a.lead_id];
+            if(lead?.geo_lat&&lead?.geo_lng){
+                const colors={confirmed:"#22c55e",scheduled:"#eab308",en_route:"#3b82f6",arrived:"#f59e0b",no_show:"#ef4444",completed:"#52525b"};
+                const color=colors[a.appointment_status]||"#999";
+                const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{radius:8,fillColor:color,color:color,weight:2,opacity:1,fillOpacity:0.8});
+                marker.bindPopup(`<div style="font-size:12px"><b>${lead.first_name} ${lead.last_name}</b><br/>${lead.property_address}<br/>${a.appointment_time||"TBD"}</div>`);
+                marker.on("click",()=>setSelAppt(a));
+                marker.addTo(mapInstance.current);
+            }
+        });
+    },[appts,leads,mapFilter]);
+
+    if(loading)return<Spin/>;
+    const statuses=["all","scheduled","confirmed","en_route","arrived","completed"];
+
+    return(
+        <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
+            <PH title="Field Dispatch Map" right={<button className="btn" onClick={loadData}><Ic d={IC.refresh} s={12}/></button>}/>
+            <div style={{padding:"12px 24px",display:"flex",gap:8}}>
+                {statuses.map(s=><button key={s} className={`btn ${mapFilter===s?"btn-p":""}`} onClick={()=>setFilter(s)}>{sL(s)}</button>)}
+            </div>
+            <div ref={mapRef} style={{flex:1,background:"#09090b"}}/>
+            {selAppt&&<AppointmentDrawer appt={selAppt} leads={leads} reps={{}} onClose={()=>setSelAppt(null)} onRefresh={loadData}/>}
+        </div>
+    );
+}
+
+// ========================================================================
+// TELEMARKETING PAGE (CONFIRMATION QUEUE)
+// ========================================================================
+function TelemarketingPage(){
+    const{af,user}=useA();const toast=useT();
+    const[queue,setQueue]=useState([]);const[leads,setLeads]=useState([]);const[appts,setAppts]=useState([]);const[loading,sLd]=useState(true);
+    const[showNewLead,setSNL]=useState(false);const[showNewAppt,setSNA]=useState(false);
+    const[leadForm,setLF]=useState({first_name:"",last_name:"",phone:"",email:"",property_address:"",city:"",state:"CA",zip_code:"",average_monthly_bill:"",notes:""});
+    const[apptForm,setAF]=useState({lead_id:"",assigned_rep_id:"",appointment_date:"",appointment_time:"",notes:""});
+    const[reps,setReps]=useState([]);
+
+    useEffect(()=>{loadQueue()},[]);
+    const loadQueue=async()=>{
+        sLd(true);
+        try{
+            const[qr,lr,ar,rr]=await Promise.all([af("/api/confirmation/my-queue"),af("/api/confirmation/leads"),af("/api/appointments"),af("/api/admin/reps")]);
+            if(qr.ok)setQueue(await qr.json());
+            if(lr.ok){const d=await lr.json();setLeads(Array.isArray(d)?d:(d.items||[]))}
+            if(ar.ok)setAppts(await ar.json());
+            if(rr&&rr.ok){const d=await rr.json();setReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
+        }catch{}
+        sLd(false);
+    };
+
+    const logAttempt=async(apptId,outcome)=>{
+        try{
+            const r=await af(`/api/confirmation/${apptId}/attempt`,{method:"POST",body:JSON.stringify({outcome})});
+            if(r.ok){toast("ok","Logged");loadQueue()}else{toast("err","Failed")}
+        }catch{toast("err","Error")}
+    };
+
+    const createLead=async()=>{
+        if(!leadForm.first_name||!leadForm.phone){toast("err","Fill required");return}
+        try{
+            const r=await af("/api/confirmation/leads",{method:"POST",body:JSON.stringify({...leadForm,average_monthly_bill:parseFloat(leadForm.average_monthly_bill)||0})});
+            if(r.ok){toast("ok","Lead created");setLF({first_name:"",last_name:"",phone:"",email:"",property_address:"",city:"",state:"CA",zip_code:"",average_monthly_bill:"",notes:""});setSNL(false);loadQueue()}else{toast("err","Failed")}
+        }catch{toast("err","Error")}
+    };
+
+    const createAppt=async()=>{
+        if(!apptForm.lead_id||!apptForm.assigned_rep_id||!apptForm.appointment_date){toast("err","Fill required");return}
+        try{
+            const r=await af("/api/confirmation/appointments",{method:"POST",body:JSON.stringify(apptForm)});
+            if(r.ok){toast("ok","Appt created");setAF({lead_id:"",assigned_rep_id:"",appointment_date:"",appointment_time:"",notes:""});setSNA(false);loadQueue()}else{toast("err","Failed")}
+        }catch{toast("err","Error")}
+    };
+
+    if(loading)return<Spin/>;
+
+    return(
+        <div>
+            <PH title="Telemarketing Queue" sub={`${queue.length} to confirm`}/>
+            <div style={{padding:"16px 24px"}}>
+                <div style={{marginBottom:20}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:12}}>
+                        <h3 style={{fontSize:13,fontWeight:800}}>My Queue</h3>
+                        <button className="btn" onClick={loadQueue}><Ic d={IC.refresh} s={12}/></button>
+                    </div>
+                    {queue.length===0?<div className="cd" style={{padding:20,textAlign:"center",color:"#3f3f46"}}>Queue empty</div>:
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:8}}>
+                        {queue.map(q=>(
+                            <div key={q.id} className="cd" style={{padding:12}}>
+                                <div style={{fontWeight:700,fontSize:13,marginBottom:4}}>{q.lead_name||"Lead"}</div>
+                                {q.phone&&<a href={`tel:${q.phone}`} style={{fontSize:11,color:"#3b82f6",textDecoration:"none",display:"block",marginBottom:4}}>{q.phone}</a>}
+                                <div style={{fontSize:10,color:"#52525b",marginBottom:8}}>{q.appointment_date} at {q.appointment_time||"TBD"}</div>
+                                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginBottom:8}}>
+                                    <button className="btn btn-g" onClick={()=>logAttempt(q.id,"confirmed")} style={{flex:1,fontSize:10,padding:"6px"}}>Confirmed</button>
+                                    <button className="btn" onClick={()=>logAttempt(q.id,"no_answer")} style={{flex:1,fontSize:10,padding:"6px"}}>No Answer</button>
+                                </div>
+                                <div style={{display:"flex",gap:4}}>
+                                    <button className="btn" style={{flex:1,fontSize:10,padding:"6px"}}>Reschedule</button>
+                                    <button className="btn" style={{flex:1,fontSize:10,padding:"6px"}}>Not Interested</button>
                                 </div>
                             </div>
-                        );
-                    })}
+                        ))}
+                    </div>
+                    }
+                </div>
+
+                <div style={{marginBottom:20}}>
+                    <button className="btn btn-p" style={{marginBottom:12}} onClick={()=>setSNL(!showNewLead)}><Ic d={IC.plus} s={12}/> New Lead</button>
+                    {showNewLead&&(
+                        <div className="cd" style={{padding:14}}>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                                <input className="inp" placeholder="First Name" value={leadForm.first_name} onChange={e=>setLF(o=>({...o,first_name:e.target.value}))}/>
+                                <input className="inp" placeholder="Last Name" value={leadForm.last_name} onChange={e=>setLF(o=>({...o,last_name:e.target.value}))}/>
+                                <input className="inp" placeholder="Phone" value={leadForm.phone} onChange={e=>setLF(o=>({...o,phone:e.target.value}))}/>
+                                <input className="inp" placeholder="Email" value={leadForm.email} onChange={e=>setLF(o=>({...o,email:e.target.value}))}/>
+                                <input className="inp" style={{gridColumn:"span 2"}} placeholder="Address" value={leadForm.property_address} onChange={e=>setLF(o=>({...o,property_address:e.target.value}))}/>
+                                <input className="inp" placeholder="City" value={leadForm.city} onChange={e=>setLF(o=>({...o,city:e.target.value}))}/>
+                                <select className="inp" value={leadForm.state} onChange={e=>setLF(o=>({...o,state:e.target.value}))}><option>CA</option><option>TX</option><option>AZ</option><option>FL</option></select>
+                                <input className="inp" placeholder="ZIP" value={leadForm.zip_code} onChange={e=>setLF(o=>({...o,zip_code:e.target.value}))}/>
+                                <input className="inp" placeholder="Monthly Bill" value={leadForm.average_monthly_bill} onChange={e=>setLF(o=>({...o,average_monthly_bill:e.target.value}))}/>
+                            </div>
+                            <textarea className="inp" placeholder="Notes" value={leadForm.notes} onChange={e=>setLF(o=>({...o,notes:e.target.value}))} style={{marginBottom:8}}/>
+                            <button className="btn btn-p" style={{width:"100%"}} onClick={createLead}>Create Lead</button>
+                        </div>
+                    )}
+                </div>
+
+                <div>
+                    <button className="btn btn-p" style={{marginBottom:12}} onClick={()=>setSNA(!showNewAppt)}><Ic d={IC.plus} s={12}/> New Appointment</button>
+                    {showNewAppt&&(
+                        <div className="cd" style={{padding:14}}>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+                                <select className="inp" value={apptForm.lead_id} onChange={e=>setAF(o=>({...o,lead_id:e.target.value}))}>
+                                    <option value="">Select Lead...</option>
+                                    {leads.map(l=><option key={l.id} value={l.id}>{l.first_name} {l.last_name}</option>)}
+                                </select>
+                                <select className="inp" value={apptForm.assigned_rep_id} onChange={e=>setAF(o=>({...o,assigned_rep_id:e.target.value}))}>
+                                    <option value="">Select Rep...</option>
+                                    {reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}
+                                </select>
+                                <input className="inp" type="date" value={apptForm.appointment_date} onChange={e=>setAF(o=>({...o,appointment_date:e.target.value}))}/>
+                                <input className="inp" type="time" value={apptForm.appointment_time} onChange={e=>setAF(o=>({...o,appointment_time:e.target.value}))}/>
+                            </div>
+                            <textarea className="inp" placeholder="Notes" value={apptForm.notes} onChange={e=>setAF(o=>({...o,notes:e.target.value}))} style={{marginBottom:8}}/>
+                            <button className="btn btn-p" style={{width:"100%"}} onClick={createAppt}>Create Appointment</button>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
@@ -1314,7 +1800,7 @@ function Spin(){return<div style={{display:"flex",justifyContent:"center",paddin
 // ========================================================================
 function Shell(){
     const h=useH();const p=h.split("?")[0];
-    const routes={"/dashboard":DashboardPage,"/dispatch":DispatchPage,"/leads":LeadsPage,"/reps":RepsPage,"/tasks":TasksPage,"/pipeline":PipelinePage,"/projects":ProjectsPage};
+    const routes={"/dashboard":DashboardPage,"/dispatch":DispatchPage,"/leads":LeadsPage,"/reps":RepsPage,"/tasks":TasksPage,"/pipeline":PipelinePage,"/projects":ProjectsPage,"/map":MapPage,"/telemarketing":TelemarketingPage};
     const P=routes[p]||DashboardPage;
     return<div><Sidebar/><div className="mc"><P/></div></div>;
 }
