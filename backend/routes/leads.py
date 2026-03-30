@@ -97,7 +97,7 @@ class LeadResponse(BaseModel):
     is_held: Optional[bool] = None
     is_archived: Optional[bool] = None
     last_outcome: Optional[str] = None
-    next_follow_up_date: Optional[str] = None
+    next_follow_up_date: Optional[datetime] = None
     deal_value: Optional[float] = None
     notes: Optional[str] = None
     created_at: Optional[datetime] = None
