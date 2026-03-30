@@ -1514,19 +1514,18 @@ function ProjectsPage(){
             <PH title="Projects" sub="Post-sale pipeline" right={<button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>}/>
             <div style={{padding:"16px 24px"}}>
                 <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
-                    <KPI l="Total Projects" v={kData.total_projects||0}/>
-                    <KPI l="Sold" v={kData.sold_count||0}/>
-                    <KPI l="Installed" v={kData.installed_count||0}/>
-                    <KPI l="Submitted" v={kData.submitted_count||0}/>
-                    <KPI l="Funded" v={kData.funded_count||0}/>
-                    <KPI l="Paid" v={kData.paid_count||0} t="ok"/>
-                    <KPI l="Delayed" v={kData.delayed_count||0} t={kData.delayed_count>0?"hot":null}/>
+                    {(kData.install_stages||[]).map(s=><KPI key={s.stage} l={sL(s.stage)} v={s.count} t={s.stage==="completed"?"ok":null}/>)}
+                    <KPI l="Delayed" v={(kData.delayed_projects||[]).length} t={(kData.delayed_projects||[]).length>0?"hot":null}/>
+                    <KPI l="Total Value" v={$.money((kData.install_stages||[]).reduce((a,s)=>a+s.total_value,0))} t="ok"/>
                 </div>
+                {(kData.aging_stats)&&<div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+                    <KPI l="0-30 days" v={kData.aging_stats.by_age?.["0_30_days"]||0}/><KPI l="31-90 days" v={kData.aging_stats.by_age?.["31_90_days"]||0}/><KPI l="91-180 days" v={kData.aging_stats.by_age?.["91_180_days"]||0}/><KPI l="180+ days" v={kData.aging_stats.by_age?.["180_plus_days"]||0} t={(kData.aging_stats.by_age?.["180_plus_days"]||0)>0?"hot":null}/>
+                </div>}
 
                 <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap"}}>
                     <div style={{position:"relative",flex:1,minWidth:200}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search by lead..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
-                    <select className="inp" style={{minWidth:120}} value={installFilter} onChange={e=>setInstallFilter(e.target.value)}><option value="">Install: All</option><option value="pending">Pending</option><option value="installed">Installed</option><option value="cancelled">Cancelled</option></select>
-                    <select className="inp" style={{minWidth:120}} value={fundingFilter} onChange={e=>setFundingFilter(e.target.value)}><option value="">Funding: All</option><option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="declined">Declined</option></select>
+                    <select className="inp" style={{minWidth:140}} value={installFilter} onChange={e=>setInstallFilter(e.target.value)}><option value="">Install: All</option><option value="pending_survey">Pending Survey</option><option value="pending_permit">Pending Permit</option><option value="pending_install">Pending Install</option><option value="installed">Installed</option><option value="inspection">Inspection</option><option value="pto">PTO</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select>
+                    <select className="inp" style={{minWidth:140}} value={fundingFilter} onChange={e=>setFundingFilter(e.target.value)}><option value="">Funding: All</option><option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="funded">Funded</option><option value="declined">Declined</option></select>
                 </div>
 
                 <div className="cd" style={{overflow:"hidden"}}>
@@ -1558,37 +1557,49 @@ function ProjectsPage(){
             </div>
             {selProject&&user?.role==="admin"&&(
                 <div className="modal-ov" onClick={()=>setSelProject(null)}>
-                    <div className="modal" onClick={e=>e.stopPropagation()}>
+                    <div className="modal" style={{width:560}} onClick={e=>e.stopPropagation()}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                            <h3 style={{fontSize:16,fontWeight:800}}>Edit Project</h3>
+                            <div><h3 style={{fontSize:16,fontWeight:800}}>Edit Project #{selProject.id}</h3><div style={{fontSize:11,color:"#52525b",marginTop:2}}>{selProject.lead_name} &middot; {$.money(selProject.deal_value)}</div></div>
                             <div style={{cursor:"pointer"}} onClick={()=>setSelProject(null)}><Ic d={IC.x}/></div>
                         </div>
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                             <div>
-                                <label className="lbl">Install Status</label>
-                                <select className="inp" defaultValue={selProject.install_status||"pending"} onChange={e=>{
-                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({install_status:e.target.value})}).then(r=>{
-                                        if(r.ok){toast("ok","Updated");load();setSelProject(null)}else{toast("err","Failed")}
-                                    })
+                                <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Install Status</label>
+                                <select className="inp" defaultValue={selProject.install_status||"pending_survey"} onChange={e=>{
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({install_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}})
                                 }}>
-                                    <option value="pending">Pending</option>
-                                    <option value="installed">Installed</option>
-                                    <option value="cancelled">Cancelled</option>
+                                    <option value="pending_survey">Pending Survey</option><option value="pending_permit">Pending Permit</option><option value="pending_install">Pending Install</option><option value="installed">Installed</option><option value="inspection">Inspection</option><option value="pto">PTO</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
                                 </select>
                             </div>
                             <div>
-                                <label className="lbl">Funding Status</label>
+                                <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Funding Status</label>
                                 <select className="inp" defaultValue={selProject.funding_status||"pending"} onChange={e=>{
-                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({funding_status:e.target.value})}).then(r=>{
-                                        if(r.ok){toast("ok","Updated");load();setSelProject(null)}else{toast("err","Failed")}
-                                    })
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({funding_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}})
                                 }}>
-                                    <option value="pending">Pending</option>
-                                    <option value="submitted">Submitted</option>
-                                    <option value="approved">Approved</option>
-                                    <option value="declined">Declined</option>
+                                    <option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="funded">Funded</option><option value="declined">Declined</option>
                                 </select>
                             </div>
+                            <div>
+                                <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Payment Status</label>
+                                <select className="inp" defaultValue={selProject.payment_status||"pending"} onChange={e=>{
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({payment_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}})
+                                }}>
+                                    <option value="pending">Pending</option><option value="invoiced">Invoiced</option><option value="paid">Paid</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Key Dates</div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                            {[["survey_date","Survey"],["permit_date","Permit"],["install_date","Install"],["inspection_date","Inspection"],["pto_date","PTO"],["funded_date","Funded"],["paid_date","Paid"]].map(([k,l])=>(
+                                <div key={k}><label style={{fontSize:9,color:"#3f3f46",display:"block",marginBottom:2}}>{l}</label><input type="date" className="inp" defaultValue={selProject[k]?selProject[k].split("T")[0]:""} onChange={e=>{if(e.target.value){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({[k]:e.target.value})}).then(r=>{if(r.ok)toast("ok",`${l} updated`);else toast("err","Failed")})}}}/></div>
+                            ))}
+                        </div>
+                        <div style={{marginBottom:16}}>
+                            <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Notes</label>
+                            <textarea className="inp" defaultValue={selProject.notes||""} placeholder="Project notes..." onBlur={e=>{if(e.target.value!==selProject.notes){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({notes:e.target.value})}).then(r=>{if(r.ok)toast("ok","Notes saved");else toast("err","Failed")})}}}/>
+                        </div>
+                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:16}}>
+                            <DF l="System Size" v={selProject.system_size_kw?`${selProject.system_size_kw} kW`:"--"}/><DF l="Panel Count" v={selProject.panel_count||"--"}/><DF l="Sold Date" v={selProject.sold_date?$.date(selProject.sold_date):"--"}/><DF l="Created" v={$.dt(selProject.created_at)}/>
                         </div>
                         <button className="btn" style={{width:"100%"}} onClick={()=>setSelProject(null)}>Done</button>
                     </div>

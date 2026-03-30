@@ -127,7 +127,7 @@ def get_project_dashboard(
 
 # ---- LIST / CRUD ----
 
-@router.get("", response_model=List[ProjectResponse])
+@router.get("")
 def list_projects(
     install_status: Optional[str] = Query(None),
     funding_status: Optional[str] = Query(None),
@@ -136,7 +136,7 @@ def list_projects(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db),
 ):
-    """List all projects with optional filtering."""
+    """List all projects with optional filtering. Returns enriched data with lead/closer names."""
     query = db.query(Project)
     if install_status:
         query = query.filter(Project.install_status == install_status)
@@ -146,7 +146,20 @@ def list_projects(
         query = query.filter(Project.payment_status == payment_status)
     if installer_id:
         query = query.filter(Project.installer_id == installer_id)
-    return query.order_by(Project.created_at.desc()).all()
+    projects = query.order_by(Project.created_at.desc()).all()
+
+    # Enrich with lead and closer names
+    result = []
+    for p in projects:
+        data = {c.name: getattr(p, c.name) for c in p.__table__.columns}
+        lead = db.query(Lead).filter(Lead.id == p.lead_id).first() if p.lead_id else None
+        closer = db.query(User).filter(User.id == p.closer_id).first() if p.closer_id else None
+        data["lead_name"] = f"{lead.first_name} {lead.last_name}" if lead else "Unknown"
+        data["lead_address"] = lead.property_address if lead else ""
+        data["lead_city"] = f"{lead.city}, {lead.state}" if lead else ""
+        data["closer_name"] = closer.full_name if closer else "Unknown"
+        result.append(data)
+    return result
 
 
 @router.get("/{project_id}", response_model=ProjectResponse)
