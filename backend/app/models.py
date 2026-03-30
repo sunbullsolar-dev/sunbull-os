@@ -116,6 +116,8 @@ class Lead(Base):
     property_type = Column(String(30))
     roof_type = Column(String(30))
     utility_company = Column(String(100))
+    geo_lat = Column(Float)
+    geo_lng = Column(Float)
 
     # Energy Information
     average_monthly_bill = Column(Float)
