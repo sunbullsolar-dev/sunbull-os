@@ -1688,7 +1688,7 @@ function TelemarketingPage(){
             const[qr,lr,ar,rr]=await Promise.all([af("/api/confirmation/my-queue"),af("/api/confirmation/leads"),af("/api/appointments"),af("/api/admin/reps")]);
             if(qr.ok)setQueue(await qr.json());
             if(lr.ok){const d=await lr.json();setLeads(Array.isArray(d)?d:(d.items||[]))}
-            if(ar.ok)setAppts(await ar.json());
+            if(ar.ok){const ad=await ar.json();setAppts(Array.isArray(ad)?ad:[])}
             if(rr&&rr.ok){const d=await rr.json();setReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
         }catch{}
         sLd(false);

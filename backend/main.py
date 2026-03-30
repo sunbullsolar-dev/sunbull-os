@@ -259,6 +259,7 @@ def startup_event():
                         "Mesa": (33.4152, -111.8315), "Orlando": (28.5383, -81.3792),
                         "Dallas": (32.7767, -96.7970), "San Antonio": (29.4241, -98.4936),
                         "Tarzana": (34.1725, -118.5353), "Encino": (34.1592, -118.5013),
+                        "Burbank": (34.1808, -118.3090), "Granada Hills": (34.2764, -118.5015),
                     }
                     updated_geo = 0
                     with engine.connect() as conn:
