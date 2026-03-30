@@ -110,6 +110,20 @@ def startup_event():
                 db.commit()
                 print(f"Fixed {len(zero_reps)} reps with close_rate=0.")
 
+            # Explicit geo column migration (auto-migration sometimes misses these)
+            try:
+                from sqlalchemy import text as _geo_text
+                with engine.connect() as gc:
+                    for col_name in ['geo_lat', 'geo_lng']:
+                        try:
+                            gc.execute(_geo_text(f'ALTER TABLE "leads" ADD COLUMN "{col_name}" DOUBLE PRECISION'))
+                            print(f"  + leads.{col_name} (explicit)")
+                        except Exception:
+                            pass  # Already exists
+                    gc.commit()
+            except Exception as ge:
+                print(f"  Geo column note: {ge}")
+
             # Universal auto-migration: compare ALL model columns to DB and add missing ones
             try:
                 from sqlalchemy import inspect, text as _sql_text, String, Integer, Float, Boolean, Text, DateTime, Date, Time, JSON
