@@ -112,7 +112,7 @@ def startup_event():
 
             # For existing databases: add missing columns safely
             try:
-                from sqlalchemy import inspect
+                from sqlalchemy import inspect, text as _sql_text
                 inspector = inspect(engine)
                 lead_columns = [col['name'] for col in inspector.get_columns('leads')]
 

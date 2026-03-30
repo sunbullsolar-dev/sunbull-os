@@ -785,6 +785,7 @@ class Invite(Base):
     role = Column(String(20), default="rep")
     invited_by = Column(Integer, ForeignKey("users.id"))
     used = Column(Boolean, default=False)
+    used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -821,6 +822,5 @@ class FileUpload(Base):
     file_url = Column(String(500), nullable=False)  # base64 data URI or path
     file_size = Column(Integer)
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
-    used_at = Column(DateTime, nullable=True)
 
     uploader = relationship("User")
