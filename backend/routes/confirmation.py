@@ -331,6 +331,26 @@ def update_confirmation_status(
     }
 
 
+@router.get("/leads", response_model=List[LeadResponse])
+def list_leads_for_confirmation(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List recent leads for confirmation team view."""
+    if current_user.role not in ["confirmation", "admin"]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only confirmation and admin users can access this resource",
+        )
+    leads = (
+        db.query(Lead)
+        .order_by(Lead.created_at.desc())
+        .limit(200)
+        .all()
+    )
+    return leads
+
+
 @router.post("/leads", response_model=LeadResponse)
 def create_lead_for_confirmation(
     lead_data: LeadCreateForConfirmation,

@@ -1488,7 +1488,7 @@ function ProjectsPage(){
         try{
             const[kr,pr]=await Promise.all([af("/api/projects/dashboard/summary"),af("/api/projects")]);
             if(kr.ok)setKpis(await kr.json());
-            if(pr.ok)setProjects(Array.isArray(pr)?pr:(pr.projects||[]));
+            if(pr.ok){const pd=await pr.json();setProjects(Array.isArray(pd)?pd:(pd.projects||[]))}
         }catch{}
         sLd(false);
     };

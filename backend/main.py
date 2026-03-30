@@ -176,6 +176,38 @@ def startup_event():
             # Check if seed data actually exists (admin might exist but data was lost)
             rep_count = db.query(User).filter(User.role == "rep").count()
             if rep_count > 0:
+                # Backfill geo coords on leads that are missing them
+                from sqlalchemy import text as _bt
+                try:
+                    geo_map = {
+                        "Phoenix": (33.4484, -112.0740), "Los Angeles": (34.0522, -118.2437),
+                        "Houston": (29.7604, -95.3698), "San Diego": (32.7157, -117.1611),
+                        "Austin": (30.2672, -97.7431), "Miami": (25.7617, -80.1918),
+                        "Tampa": (27.9506, -82.4572), "Sacramento": (38.5816, -121.4944),
+                        "Mesa": (33.4152, -111.8315), "Orlando": (28.5383, -81.3792),
+                        "Dallas": (32.7767, -96.7970), "San Antonio": (29.4241, -98.4936),
+                    }
+                    leads_needing_geo = db.query(Lead).filter(Lead.geo_lat == None).all()
+                    updated_geo = 0
+                    for lead in leads_needing_geo:
+                        coords = geo_map.get(lead.city)
+                        if coords:
+                            lead.geo_lat, lead.geo_lng = coords
+                            updated_geo += 1
+                    # Also ensure some appointments are dated today
+                    from datetime import date as _date
+                    today = _date.today()
+                    appts = db.query(Appointment).all()
+                    today_count = sum(1 for a in appts if a.appointment_date == today)
+                    if today_count == 0 and len(appts) >= 3:
+                        for a in appts[:3]:
+                            a.appointment_date = today
+                        print(f"  Set 3 appointments to today ({today})")
+                    if updated_geo > 0 or today_count == 0:
+                        db.commit()
+                        print(f"  Backfill: {updated_geo} leads got geo coords, {3 if today_count==0 else 0} appts moved to today")
+                except Exception as e:
+                    print(f"  Backfill note: {e}")
                 print("Seed data already exists.")
                 return
 
@@ -286,19 +318,20 @@ def startup_event():
         # ---- LEADS ----
         # (first_name, last_name, property_address, city, state, zip_code, phone, email,
         #  average_monthly_bill, estimated_annual_kwh, source_type, deal_status)
+        # (first_name, last_name, address, city, state, zip, phone, email, bill, kwh, source, status, lat, lng)
         leads_data = [
-            ("Robert", "Garcia", "123 Oak St", "Phoenix", "AZ", "85001", "555-1001", "robert@email.com", 285.0, 14400, "door_to_door", "confirmed"),
-            ("Emily", "Davis", "456 Pine Ave", "Los Angeles", "CA", "90001", "555-1002", "emily@email.com", 320.0, 16800, "call_center", "confirmed"),
-            ("David", "Wilson", "789 Maple Dr", "Houston", "TX", "77001", "555-1003", "david@email.com", 195.0, 10800, "web", "new"),
-            ("Sarah", "Anderson", "321 Elm St", "San Diego", "CA", "92101", "555-1004", "sarah@email.com", 410.0, 21600, "door_to_door", "appointed"),
-            ("Michael", "Brown", "654 Cedar Ln", "Austin", "TX", "78701", "555-1005", "michael@email.com", 175.0, 9600, "web", "confirming"),
-            ("Jessica", "Taylor", "987 Birch Rd", "Miami", "FL", "33101", "555-1006", "jessica@email.com", 350.0, 18000, "call_center", "new"),
-            ("James", "Thomas", "111 Spruce Way", "Tampa", "FL", "33601", "555-1007", "james@email.com", 265.0, 13200, "door_to_door", "confirmed"),
-            ("Amanda", "Jackson", "222 Willow Ct", "Sacramento", "CA", "95801", "555-1008", "amanda@email.com", 290.0, 15000, "web", "new"),
-            ("Christopher", "White", "333 Ash Blvd", "Mesa", "AZ", "85201", "555-1009", "chris@email.com", 225.0, 12000, "call_center", "unconfirmed"),
-            ("Ashley", "Harris", "444 Redwood St", "Orlando", "FL", "32801", "555-1010", "ashley@email.com", 380.0, 19800, "door_to_door", "appointed"),
-            ("Daniel", "Martin", "555 Sequoia Dr", "Dallas", "TX", "75201", "555-1011", "daniel@email.com", 155.0, 8400, "web", "follow_up"),
-            ("Nicole", "Lopez", "666 Cypress Ave", "San Antonio", "TX", "78201", "555-1012", "nicole@email.com", 340.0, 17400, "call_center", "confirmed"),
+            ("Robert", "Garcia", "123 Oak St", "Phoenix", "AZ", "85001", "555-1001", "robert@email.com", 285.0, 14400, "door_to_door", "confirmed", 33.4484, -112.0740),
+            ("Emily", "Davis", "456 Pine Ave", "Los Angeles", "CA", "90001", "555-1002", "emily@email.com", 320.0, 16800, "call_center", "confirmed", 34.0522, -118.2437),
+            ("David", "Wilson", "789 Maple Dr", "Houston", "TX", "77001", "555-1003", "david@email.com", 195.0, 10800, "web", "new", 29.7604, -95.3698),
+            ("Sarah", "Anderson", "321 Elm St", "San Diego", "CA", "92101", "555-1004", "sarah@email.com", 410.0, 21600, "door_to_door", "appointed", 32.7157, -117.1611),
+            ("Michael", "Brown", "654 Cedar Ln", "Austin", "TX", "78701", "555-1005", "michael@email.com", 175.0, 9600, "web", "confirming", 30.2672, -97.7431),
+            ("Jessica", "Taylor", "987 Birch Rd", "Miami", "FL", "33101", "555-1006", "jessica@email.com", 350.0, 18000, "call_center", "new", 25.7617, -80.1918),
+            ("James", "Thomas", "111 Spruce Way", "Tampa", "FL", "33601", "555-1007", "james@email.com", 265.0, 13200, "door_to_door", "confirmed", 27.9506, -82.4572),
+            ("Amanda", "Jackson", "222 Willow Ct", "Sacramento", "CA", "95801", "555-1008", "amanda@email.com", 290.0, 15000, "web", "new", 38.5816, -121.4944),
+            ("Christopher", "White", "333 Ash Blvd", "Mesa", "AZ", "85201", "555-1009", "chris@email.com", 225.0, 12000, "call_center", "unconfirmed", 33.4152, -111.8315),
+            ("Ashley", "Harris", "444 Redwood St", "Orlando", "FL", "32801", "555-1010", "ashley@email.com", 380.0, 19800, "door_to_door", "appointed", 28.5383, -81.3792),
+            ("Daniel", "Martin", "555 Sequoia Dr", "Dallas", "TX", "75201", "555-1011", "daniel@email.com", 155.0, 8400, "web", "follow_up", 32.7767, -96.7970),
+            ("Nicole", "Lopez", "666 Cypress Ave", "San Antonio", "TX", "78201", "555-1012", "nicole@email.com", 340.0, 17400, "call_center", "confirmed", 29.4241, -98.4936),
         ]
 
         from services.scoring import calculate_lead_score
@@ -306,7 +339,7 @@ def startup_event():
         lead_objects = []
         now = datetime.utcnow()
 
-        for i, (fn, ln, addr, city, st, zc, ph, em, bill, kwh, src, stat) in enumerate(leads_data):
+        for i, (fn, ln, addr, city, st, zc, ph, em, bill, kwh, src, stat, lat, lng) in enumerate(leads_data):
             score = calculate_lead_score(
                 average_monthly_bill=bill,
                 city=city,
@@ -334,6 +367,8 @@ def startup_event():
                 property_type="single_family",
                 assigned_rep_id=reps[i % 3].id if stat != "new" else None,
                 setter_id=reps[i % 3].id,
+                geo_lat=lat,
+                geo_lng=lng,
                 created_at=now - timedelta(days=random.randint(1, 30)),
             )
             db.add(lead)
@@ -343,7 +378,7 @@ def startup_event():
         # ---- APPOINTMENTS ----
         for i, lead in enumerate(lead_objects[:6]):
             if lead.assigned_rep_id:
-                appt_date = (now + timedelta(days=random.randint(1, 7))).date()
+                appt_date = (now + timedelta(days=random.choice([0, 0, 0, 1, 2, 3]))).date()
                 appt_time = time(hour=random.choice([9, 10, 11, 13, 14, 15, 16]))
                 appt = Appointment(
                     lead_id=lead.id,
