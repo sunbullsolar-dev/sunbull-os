@@ -100,12 +100,26 @@ function useH(){const[h,sH]=useState(window.location.hash.slice(1)||"/dashboard"
 function nav(p){window.location.hash=p}
 
 // ===== HELPERS =====
+const LA_TZ="America/Los_Angeles";
+const toLA=(v)=>{if(!v)return null;try{return new Date(typeof v==="string"&&!v.includes("T")&&v.includes(":")?"1970-01-01T"+v:v)}catch{return null}};
+const fmtTime12=(v)=>{
+    if(!v)return"--";
+    // Handle "HH:MM:SS" or "HH:MM" string directly
+    if(typeof v==="string"&&/^\d{1,2}:\d{2}/.test(v)){
+        const[h,m]=v.split(":").map(Number);
+        const ampm=h>=12?"PM":"AM";const h12=h%12||12;
+        return`${h12}:${String(m).padStart(2,"0")} ${ampm}`;
+    }
+    const d=toLA(v);if(!d)return"--";
+    return d.toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit",hour12:true,timeZone:LA_TZ});
+};
 const $={
     money:v=>v!=null?`$${Number(v).toLocaleString("en-US",{maximumFractionDigits:0})}`:"--",
     pct:v=>v!=null?`${(Number(v)*100).toFixed(1)}%`:"--",
-    date:v=>v?new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"--",
-    dt:v=>v?new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"--",
-    time:v=>v||"--",
+    date:v=>v?new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric",timeZone:LA_TZ}):"--",
+    dt:v=>v?new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit",hour12:true,timeZone:LA_TZ}):"--",
+    time:v=>fmtTime12(v),
+    t12:v=>fmtTime12(v),
     ago:v=>{if(!v)return"--";const m=Math.floor((Date.now()-new Date(v).getTime())/60000);if(m<1)return"now";if(m<60)return m+"m";if(m<1440)return Math.floor(m/60)+"h";return Math.floor(m/1440)+"d"},
 };
 function sB(s){const m={new:"b-blue",confirmed:"b-green",appointed:"b-green",scheduled:"b-blue",en_route:"b-purple",arrived:"b-orange",completed:"b-green",held:"b-yellow",closed_won:"b-green",closed_lost:"b-red",no_show:"b-red",cancelled:"b-red",rescheduled:"b-yellow",follow_up:"b-yellow",dispatched:"b-blue",unconfirmed:"b-yellow",overdue:"b-red",pending:"b-yellow",proposal_sent:"b-blue",declined:"b-red",reschedule:"b-yellow",canceled:"b-red"};return m[s]||"b-gray"}
@@ -467,12 +481,15 @@ function DashboardPage(){
                         <SH title="TOP LEADS TO CLOSE" count={topLeads.length}/>
                         <div className="cd" style={{padding:0,border:"1px solid #f59e0b30"}}>
                             {topLeads.map((l,i)=>(
-                                <div key={l.lead_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
-                                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                <div key={l.lead_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
                                         <div style={{width:26,height:26,borderRadius:"50%",background:i===0?"#f59e0b":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i===0?"#000":"#a1a1aa"}}>{i+1}</div>
-                                        <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)} &middot; {l.days_since_update}d ago</div></div>
+                                        <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)} &middot; {l.days_since_update}d ago &middot; {l.rep_name||""}</div></div>
                                     </div>
-                                    <div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div>
+                                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                        <div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div>
+                                        {l.phone&&<a href={`tel:${l.phone}`} onClick={e=>e.stopPropagation()} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"4px 8px",fontSize:10}}>Call</button></a>}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -489,9 +506,10 @@ function DashboardPage(){
                                 <div key={a.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav("/dispatch")}>
                                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                                         <div style={{fontSize:13,fontWeight:700}}>{a.lead_name||`Lead #${a.lead_id}`}</div>
-                                        <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
+                                        <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{fontSize:12,fontWeight:800,color:"#f59e0b"}}>{$.t12(a.appointment_time)}</span><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
                                     </div>
-                                    <div style={{fontSize:11,color:"#52525b",marginTop:2}}>{a.appointment_time||"TBD"} &middot; {a.appointment_address||""}</div>
+                                    <div style={{fontSize:11,color:"#52525b",marginTop:2}}>{a.appointment_address||""}{a.rep_name?` · ${a.rep_name}`:""}</div>
+                                    {a.lead_phone&&<a href={`tel:${a.lead_phone}`} style={{fontSize:11,color:"#3b82f6",textDecoration:"none",display:"inline-flex",alignItems:"center",gap:3,marginTop:2}} onClick={e=>e.stopPropagation()}><Ic d={IC.phone} s={10} c="#3b82f6"/>{a.lead_phone}</a>}
                                 </div>
                             ))}
                         </div>
@@ -502,8 +520,11 @@ function DashboardPage(){
                                     {reassignSuggestions.map(s=>(
                                         <div key={s.lead_id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${s.lead_id}`)}>
                                             <div style={{display:"flex",justifyContent:"space-between"}}>
-                                                <div><div style={{fontSize:12,fontWeight:700}}>{s.lead_name}</div><div style={{fontSize:10,color:"#52525b"}}>{s.current_rep_name} &middot; {$.money(s.deal_value)}</div></div>
-                                                <span className={`badge ${s.urgency==="critical"?"b-red":"b-yellow"}`}>{s.urgency}</span>
+                                                <div><div style={{fontSize:12,fontWeight:700}}>{s.lead_name}</div><div style={{fontSize:10,color:"#52525b"}}>{s.current_rep_name} → ? &middot; {$.money(s.deal_value)}</div></div>
+                                                <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                                    <span className={`badge ${s.urgency==="critical"?"b-red":"b-yellow"}`}>{s.urgency}</span>
+                                                    {s.phone&&<a href={`tel:${s.phone}`} onClick={e=>e.stopPropagation()} style={{textDecoration:"none"}}><Ic d={IC.phone} s={12} c="#3b82f6"/></a>}
+                                                </div>
                                             </div>
                                             <div style={{fontSize:10,color:"#ef4444",marginTop:2}}>{s.reason}</div>
                                         </div>
@@ -532,9 +553,12 @@ function DashboardPage(){
                                 <SH title="Violations" count={violations.length}/>
                                 <div className="cd" style={{padding:0,borderColor:"#ef444430",maxHeight:180,overflowY:"auto"}}>
                                     {violations.map(v=>(
-                                        <div key={v.id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                            <div><div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div><div style={{fontSize:10,color:"#52525b"}}>{v.rep_name}</div></div>
-                                            <span className={`badge ${v.severity==="critical"?"b-red":"b-yellow"}`}>{v.severity}</span>
+                                        <div key={v.id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>v.lead_id?nav(`/leads?id=${v.lead_id}`):nav("/reps")}>
+                                            <div><div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div><div style={{fontSize:10,color:"#52525b"}}>{v.rep_name}{v.lead_name?` · ${v.lead_name}`:""}</div></div>
+                                            <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                                <span className={`badge ${v.severity==="critical"?"b-red":"b-yellow"}`}>{v.severity}</span>
+                                                <Ic d={IC.arrow} s={10} c="#3f3f46"/>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>
@@ -597,11 +621,14 @@ function RepApptCard({a,onDone}){
     const go=async(id,st)=>{try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",sL(st));if(onDone)onDone()}else toast("err","Failed")}catch{toast("err","Error")}};
     return(
         <div className={`appt-card ${a.appointment_status==="en_route"||a.appointment_status==="arrived"?"live":a.appointment_status==="confirmed"?"next":"wrn"}`} style={{marginBottom:8}}>
-            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                <div><div style={{fontSize:14,fontWeight:700}}>{a.lead_name||`Lead #${a.lead_id}`}</div><div style={{fontSize:11,color:"#52525b"}}>{a.appointment_address||"No addr"}</div></div>
-                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{a.appointment_time||"TBD"}</div></div>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                <div>
+                    <div style={{fontSize:15,fontWeight:800}}>{a.lead_name||`Lead #${a.lead_id}`}</div>
+                    <div style={{fontSize:11,color:"#71717a"}}>{a.appointment_address||"No addr"}</div>
+                    {a.lead_phone&&<a href={`tel:${a.lead_phone}`} style={{fontSize:12,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:3,marginTop:2}} onClick={e=>e.stopPropagation()}><Ic d={IC.phone} s={11} c="#3b82f6"/>{a.lead_phone}</a>}
+                </div>
+                <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:900,color:"#f59e0b"}}>{$.t12(a.appointment_time)}</div><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
             </div>
-            <div style={{display:"flex",gap:4,marginBottom:8}}><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
             <div style={{display:"flex",gap:6}}>
                 {a.appointment_status==="scheduled"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"confirmed")}>CONFIRM</button>}
                 {a.appointment_status==="confirmed"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"en_route")}>START EN ROUTE</button>}
@@ -705,7 +732,7 @@ function AppointmentDrawer({appt,leads,reps,onClose,onRefresh}){
                         <SH title="Appointment Info"/>
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                             <DF l="Date" v={$.date(appt.appointment_date)}/>
-                            <DF l="Time" v={appt.appointment_time||"TBD"}/>
+                            <DF l="Time" v={$.t12(appt.appointment_time)}/>
                             <div style={{gridColumn:"span 2"}}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Status</div><span className={`badge ${sB(appt.appointment_status)}`}>{sL(appt.appointment_status)}</span></div>
                             {appt.outcome&&<div style={{gridColumn:"span 2"}}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Outcome</div><div style={{fontSize:12}}>{sL(appt.outcome)}</div></div>}
                             <DF l="Assigned Rep" v={rep?.full_name||"Unassigned"}/>
@@ -914,28 +941,49 @@ function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete,onAss
     return(
         <div style={{marginBottom:20}}>
             <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><div style={{width:7,height:7,borderRadius:"50%",background:color}}/><span style={{fontSize:11,fontWeight:800,color,textTransform:"uppercase",letterSpacing:".05em"}}>{title}</span><span style={{fontSize:10,color:"#3f3f46"}}>{items.length}</span></div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:8}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:8}}>
                 {items.map(a=>{
                     const l=leads[a.lead_id];const r=reps[a.assigned_rep_id];const bill=l?.average_monthly_bill;
+                    const fullAddr=a.appointment_address||l?.property_address||"";
+                    const cityLine=l?`${l.city||""}, ${l.state||""} ${l.zip_code||""}`:"";
+                    const dealVal=l?.deal_value||((bill||200)*12*20*0.6);
                     return(
                         <div key={a.id} className={`appt-card ${cls}`} onClick={()=>onSel(a)}>
-                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
-                                <div><div style={{fontSize:14,fontWeight:700}}>{l?`${l.first_name} ${l.last_name}`:`#${a.lead_id}`}</div><div style={{fontSize:11,color:"#52525b"}}>{a.appointment_address||l?.property_address||""}</div></div>
-                                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{a.appointment_time||"TBD"}</div><div style={{fontSize:10,color:"#3f3f46"}}>{$.date(a.appointment_date)}</div></div>
+                            {/* Row 1: Name + Time */}
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
+                                <div style={{flex:1}}>
+                                    <div style={{fontSize:15,fontWeight:800}}>{l?`${l.first_name} ${l.last_name}`:`Lead #${a.lead_id}`}</div>
+                                    <div style={{fontSize:11,color:"#71717a"}}>{fullAddr}</div>
+                                    {cityLine&&<div style={{fontSize:10,color:"#52525b"}}>{cityLine}</div>}
+                                </div>
+                                <div style={{textAlign:"right",flexShrink:0}}>
+                                    <div style={{fontSize:16,fontWeight:900,color:"#f59e0b"}}>{$.t12(a.appointment_time)}</div>
+                                    <div style={{fontSize:10,color:"#3f3f46"}}>{$.date(a.appointment_date)}</div>
+                                </div>
                             </div>
-                            <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
+                            {/* Row 2: Phone + Rep */}
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                                <div style={{display:"flex",gap:10,alignItems:"center"}}>
+                                    {l?.phone&&<a href={`tel:${l.phone}`} style={{fontSize:12,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:3}} onClick={e=>e.stopPropagation()}><Ic d={IC.phone} s={11} c="#3b82f6"/>{l.phone}</a>}
+                                </div>
+                                <div style={{fontSize:11,color:r?"#a1a1aa":"#ef4444",cursor:onAssign?"pointer":"default",textDecoration:onAssign?"underline":"none",display:"flex",alignItems:"center",gap:3}} onClick={e=>{e.stopPropagation();if(onAssign)onAssign(a)}}><Ic d={IC.user} s={10} c={r?"#52525b":"#ef4444"}/>{r?.full_name||"UNASSIGNED"}</div>
+                            </div>
+                            {/* Row 3: Badges */}
+                            <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
                                 <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
                                 {bill&&<span className="badge b-gray">{$.money(bill)}/mo</span>}
+                                {dealVal>0&&<span className="badge b-orange">{$.money(dealVal)}</span>}
                                 {l?.lead_quality_score>0&&<span className="badge" style={{background:sC(l.lead_quality_score)+"18",color:sC(l.lead_quality_score)}}>{l.lead_quality_score}pt</span>}
                             </div>
-                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                <div style={{fontSize:11,color:r?"#52525b":"#ef4444",cursor:onAssign?"pointer":"default",textDecoration:onAssign?"underline":"none"}} onClick={e=>{e.stopPropagation();if(onAssign)onAssign(a)}}>{r?.full_name||"Unassigned"}</div>
-                                <div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
-                                    {a.appointment_status==="scheduled"&&<button className="btn btn-g" onClick={()=>onAct(a.id,"confirmed")}>Confirm</button>}
-                                    {a.appointment_status==="confirmed"&&<button className="btn btn-p" onClick={()=>onAct(a.id,"en_route")}>Dispatch</button>}
-                                    {a.appointment_status==="en_route"&&<button className="btn btn-g" onClick={()=>onAct(a.id,"arrived")}>Arrived</button>}
-                                    {a.appointment_status==="arrived"&&<button className="btn btn-p" onClick={()=>onComplete(a)}>Complete</button>}
-                                </div>
+                            {/* Row 4: Last note preview */}
+                            {(a.notes||l?.notes)&&<div style={{fontSize:10,color:"#52525b",marginBottom:6,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",maxWidth:"100%"}}>{a.notes||l?.notes}</div>}
+                            {/* Row 5: Actions */}
+                            <div style={{display:"flex",gap:4,justifyContent:"flex-end"}} onClick={e=>e.stopPropagation()}>
+                                {l?.phone&&<a href={`tel:${l.phone}`} style={{textDecoration:"none"}}><button className="btn" style={{padding:"8px 12px",fontSize:12,fontWeight:700}}>Call</button></a>}
+                                {a.appointment_status==="scheduled"&&<button className="btn btn-g" style={{padding:"8px 14px",fontSize:12,fontWeight:800}} onClick={()=>onAct(a.id,"confirmed")}>CONFIRM</button>}
+                                {a.appointment_status==="confirmed"&&<button className="btn btn-p" style={{padding:"8px 14px",fontSize:12,fontWeight:800}} onClick={()=>onAct(a.id,"en_route")}>DISPATCH</button>}
+                                {a.appointment_status==="en_route"&&<button className="btn btn-g" style={{padding:"8px 14px",fontSize:12,fontWeight:800}} onClick={()=>onAct(a.id,"arrived")}>ARRIVED</button>}
+                                {a.appointment_status==="arrived"&&<button className="btn btn-p" style={{padding:"8px 14px",fontSize:12,fontWeight:800}} onClick={()=>onComplete(a)}>COMPLETE</button>}
                             </div>
                         </div>
                     );
@@ -1318,7 +1366,7 @@ function CreateApptModal({lead,reps,onClose,onDone}){
 // ========================================================================
 function RepsPage(){
     const{af,user}=useA();const toast=useT();const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);const[showInvite,sSI]=useState(false);
-    const[sortBy,setSB]=useState("score");
+    const[sortBy,setSB]=useState("score");const[repFilter,setRepFilter]=useState("all");
 
     useEffect(()=>{load()},[sortBy]);
     const load=async()=>{sLd(true);try{
@@ -1326,18 +1374,36 @@ function RepsPage(){
         const r=await af(url);if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
     }catch{}sLd(false)};
 
+    const filteredReps=useMemo(()=>{
+        let f=reps;
+        if(repFilter==="active")f=f.filter(r=>(r.total_appointments||0)>0||(r.active_leads||0)>0||(r.score||0)>0);
+        if(repFilter==="has_appts")f=f.filter(r=>(r.total_appointments||0)>0);
+        if(repFilter==="has_revenue")f=f.filter(r=>(r.total_revenue||0)>0);
+        if(repFilter==="attention")f=f.filter(r=>(r.active_violations||0)>0||(r.overdue_tasks||0)>0);
+        return f;
+    },[reps,repFilter]);
+
     if(loading)return<Spin/>;
+    const attentionCount=reps.filter(r=>(r.active_violations||0)>0||(r.overdue_tasks||0)>0).length;
     return(
         <div>
-            <PH title="Sales Reps" sub={`${reps.length} reps`} right={<div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <PH title="Sales Reps" sub={`${filteredReps.length} of ${reps.length} reps`} right={<div style={{display:"flex",gap:6,alignItems:"center"}}>
                 {user?.role==="admin"&&<select className="inp" style={{width:140,fontSize:11}} value={sortBy} onChange={e=>setSB(e.target.value)}>
                     <option value="score">Sort: Score</option><option value="close_rate">Sort: Close Rate</option><option value="held_rate">Sort: Held Rate</option><option value="violations">Sort: Violations</option><option value="overdue">Sort: Overdue</option>
                 </select>}
                 <button className="btn btn-p" onClick={()=>sSI(true)}><Ic d={IC.send} s={12}/> Invite Rep</button>
             </div>}/>
-            <div style={{padding:"16px 24px"}}>
+            <div style={{padding:"8px 24px 0",display:"flex",gap:4,flexWrap:"wrap"}}>
+                {[["all","All Reps",reps.length],["active","Active",reps.filter(r=>(r.total_appointments||0)>0||(r.active_leads||0)>0||(r.score||0)>0).length],["has_appts","Has Appts",reps.filter(r=>(r.total_appointments||0)>0).length],["has_revenue","Has Revenue",reps.filter(r=>(r.total_revenue||0)>0).length],["attention","Needs Attention",attentionCount]].map(([k,l,c])=>
+                    <button key={k} className={`btn ${repFilter===k?"btn-p":""}`} style={{fontSize:11,padding:"6px 10px",position:"relative"}} onClick={()=>setRepFilter(k)}>
+                        {l} <span style={{fontSize:9,opacity:.7,marginLeft:2}}>{c}</span>
+                        {k==="attention"&&attentionCount>0&&<span style={{position:"absolute",top:-4,right:-4,width:8,height:8,borderRadius:"50%",background:"#ef4444"}}/>}
+                    </button>
+                )}
+            </div>
+            <div style={{padding:"12px 24px 16px"}}>
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:10}}>
-                    {reps.map((r,idx)=>{
+                    {filteredReps.map((r,idx)=>{
                         const hasViolations=r.active_violations>0;const hasOverdue=r.overdue_tasks>0;
                         return(
                         <div key={r.rep_id||r.id} className="cd" style={{padding:16,border:hasViolations?"1px solid #ef444440":hasOverdue?"1px solid #f59e0b40":"1px solid #1e1e21"}}>
@@ -1480,6 +1546,7 @@ function ProjectsPage(){
     const{af,user}=useA();const toast=useT();
     const[projects,setProjects]=useState([]);const[kpis,setKpis]=useState(null);const[loading,sLd]=useState(true);
     const[installFilter,setInstallFilter]=useState("");const[fundingFilter,setFundingFilter]=useState("");const[search,setSearch]=useState("");
+    const[repFilter,setRepFilter]=useState("");const[dateFrom,setDateFrom]=useState("");const[dateTo,setDateTo]=useState("");
     const[selProject,setSelProject]=useState(null);const[viewMode,setViewMode]=useState("table");const[selLead,setSelLead]=useState(null);const[reps,setReps]=useState([]);
 
     useEffect(()=>{load()},[]);
@@ -1498,9 +1565,12 @@ function ProjectsPage(){
         let f=Array.isArray(projects)?projects:[];
         if(installFilter)f=f.filter(p=>p.install_status===installFilter);
         if(fundingFilter)f=f.filter(p=>p.funding_status===fundingFilter);
+        if(repFilter)f=f.filter(p=>String(p.closer_id||p.assigned_rep_id)===repFilter||`${p.closer_name||""}`.toLowerCase().includes(reps.find(r=>String(r.id)===repFilter)?.full_name?.toLowerCase()||"___"));
+        if(dateFrom)f=f.filter(p=>(p.sold_date||"")>=dateFrom);
+        if(dateTo)f=f.filter(p=>(p.sold_date||"")<=dateTo);
         if(search)f=f.filter(p=>`${p.lead_name||""}`.toLowerCase().includes(search.toLowerCase()));
         return f;
-    },[projects,installFilter,fundingFilter,search]);
+    },[projects,installFilter,fundingFilter,repFilter,dateFrom,dateTo,search]);
 
     const now=new Date();
     const getDaysInStage=(p)=>{if(!p.sold_date)return 0;return Math.floor((now-new Date(p.sold_date))/(1000*60*60*24))};
@@ -1535,6 +1605,10 @@ function ProjectsPage(){
                     <div style={{position:"relative",flex:1,minWidth:200}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search by lead..." value={search} onChange={e=>setSearch(e.target.value)}/></div>
                     <select className="inp" style={{minWidth:140}} value={installFilter} onChange={e=>setInstallFilter(e.target.value)}><option value="">Install: All</option><option value="pending_survey">Pending Survey</option><option value="pending_permit">Pending Permit</option><option value="pending_install">Pending Install</option><option value="installed">Installed</option><option value="inspection">Inspection</option><option value="pto">PTO</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option></select>
                     <select className="inp" style={{minWidth:140}} value={fundingFilter} onChange={e=>setFundingFilter(e.target.value)}><option value="">Funding: All</option><option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="funded">Funded</option><option value="declined">Declined</option></select>
+                    {reps.length>0&&<select className="inp" style={{minWidth:140}} value={repFilter} onChange={e=>setRepFilter(e.target.value)}><option value="">Closer: All</option>{reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}</select>}
+                    <input className="inp" type="date" style={{minWidth:120}} value={dateFrom} onChange={e=>setDateFrom(e.target.value)} title="Sold from"/>
+                    <input className="inp" type="date" style={{minWidth:120}} value={dateTo} onChange={e=>setDateTo(e.target.value)} title="Sold to"/>
+                    {(repFilter||dateFrom||dateTo)&&<button className="btn" style={{fontSize:10,padding:"4px 8px"}} onClick={()=>{setRepFilter("");setDateFrom("");setDateTo("")}}>Clear</button>}
                 </div>
 
                 {viewMode==="table"&&<div className="cd" style={{overflow:"hidden"}}>
@@ -1684,6 +1758,67 @@ function ProjectsPage(){
 }
 
 // ========================================================================
+// MAP PIN ACTION DRAWER (opens from map click)
+// ========================================================================
+function MapPinDrawer({appt,lead,reps,repsMap,onClose,onRefresh,af,toast,user}){
+    const[changingStatus,sCS]=useState(false);const[selRepId,sSelRep]=useState("");
+    const isAdmin=user?.role==="admin";
+    const rep=repsMap[appt?.assigned_rep_id];
+    const updSt=async(st)=>{sCS(true);try{const r=await af(`/api/appointments/${appt.id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",sL(st));onRefresh()}else{toast("err","Failed")}}catch{toast("err","Error")}sCS(false)};
+    const reassign=async(rid)=>{try{const r=await af("/api/admin/reassign",{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:appt.id,new_rep_id:parseInt(rid)})});if(r.ok){toast("ok","Reassigned");onRefresh()}else{toast("err","Failed")}}catch{toast("err","Error")}};
+    return(
+        <><div className="dov" onClick={onClose}/><div className="drw" style={{width:420}}>
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <h2 style={{fontSize:17,fontWeight:900}}>{lead?`${lead.first_name} ${lead.last_name}`:"Appointment"}</h2>
+                <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
+            </div>
+            <div style={{padding:20}}>
+                {/* Quick Info */}
+                {lead?.phone&&<div style={{marginBottom:12}}><a href={`tel:${lead.phone}`} style={{fontSize:16,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:6,fontWeight:700}}><Ic d={IC.phone} s={16} c="#3b82f6"/>{lead.phone}</a></div>}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+                    <DF l="Address" v={lead?.property_address||appt?.appointment_address||"--"}/>
+                    <DF l="City" v={lead?`${lead.city}, ${lead.state} ${lead.zip_code}`:"--"}/>
+                    <DF l="Time" v={$.t12(appt?.appointment_time)}/>
+                    <DF l="Date" v={$.date(appt?.appointment_date)}/>
+                    <DF l="Rep" v={rep?.full_name||"Unassigned"}/>
+                    <div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>Status</div><span className={`badge ${sB(appt?.appointment_status)}`}>{sL(appt?.appointment_status)}</span></div>
+                    <DF l="Monthly Bill" v={$.money(lead?.average_monthly_bill)} c="#f59e0b"/>
+                    <DF l="Score" v={lead?.lead_quality_score||"--"}/>
+                </div>
+                {/* Notes */}
+                {(appt?.notes||lead?.notes)&&<div style={{background:"#18181b",borderRadius:8,padding:10,marginBottom:14}}><div style={{fontSize:9,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:3}}>Notes</div><div style={{fontSize:11,color:"#a1a1aa"}}>{appt?.notes||lead?.notes}</div></div>}
+                {/* Status Actions */}
+                <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Quick Actions</div>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                        {appt?.appointment_status==="scheduled"&&<button className="btn btn-g" style={{flex:1,padding:"10px",fontSize:13,fontWeight:800}} disabled={changingStatus} onClick={()=>updSt("confirmed")}>CONFIRM</button>}
+                        {appt?.appointment_status==="confirmed"&&<button className="btn btn-p" style={{flex:1,padding:"10px",fontSize:13,fontWeight:800}} disabled={changingStatus} onClick={()=>updSt("en_route")}>DISPATCH</button>}
+                        {appt?.appointment_status==="en_route"&&<button className="btn btn-g" style={{flex:1,padding:"10px",fontSize:13,fontWeight:800}} disabled={changingStatus} onClick={()=>updSt("arrived")}>ARRIVED</button>}
+                        {appt?.appointment_status==="arrived"&&<button className="btn btn-p" style={{flex:1,padding:"10px",fontSize:13,fontWeight:800}} disabled={changingStatus} onClick={()=>nav(`/dispatch?complete=${appt.id}`)}>COMPLETE</button>}
+                        {lead?.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none",flex:1}}><button className="btn" style={{width:"100%",padding:"10px",fontSize:13,fontWeight:700}}>CALL</button></a>}
+                    </div>
+                </div>
+                {/* Reassign */}
+                {isAdmin&&reps.length>0&&(
+                    <div style={{marginBottom:14}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Reassign Rep</div>
+                        <div style={{display:"flex",gap:4}}>
+                            <select className="inp" style={{flex:1}} value={selRepId} onChange={e=>sSelRep(e.target.value)}><option value="">Select rep...</option>{reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}</select>
+                            <button className="btn btn-p" disabled={!selRepId} onClick={()=>{reassign(selRepId);sSelRep("")}}>Assign</button>
+                        </div>
+                    </div>
+                )}
+                {/* Navigation */}
+                <div style={{display:"flex",gap:6}}>
+                    <button className="btn btn-p" style={{flex:1,padding:10}} onClick={()=>{onClose();nav(`/leads?id=${lead?.id||appt?.lead_id}`)}}>Full Lead View</button>
+                    <button className="btn" style={{flex:1,padding:10}} onClick={()=>{onClose();nav("/dispatch")}}>Dispatch Center</button>
+                </div>
+            </div>
+        </div></>
+    );
+}
+
+// ========================================================================
 // MAP PAGE (FIELD DISPATCH + ALL LEADS VISUALIZATION)
 // ========================================================================
 function MapPage(){
@@ -1691,11 +1826,12 @@ function MapPage(){
     const[appts,sAppts]=useState([]);const[leads,sLeads]=useState({});const[leadsArr,sLeadsArr]=useState([]);const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);
     const[mapMode,setMode]=useState("appointments");const[mapFilter,setFilter]=useState("all");const[selAppt,setSelAppt]=useState(null);const[selLead,setSelLead]=useState(null);
     const[stats,setStats]=useState({total:0,withGeo:0,todayAppts:0});
-    const mapRef=useRef(null);const mapInstance=useRef(null);
+    const mapRef=useRef(null);const mapInstance=useRef(null);const refreshRef=useRef(null);
 
-    useEffect(()=>{loadData()},[]);
-    const loadData=async()=>{
-        sLd(true);
+    useEffect(()=>{loadData();refreshRef.current=setInterval(()=>silentLoad(),30000);return()=>clearInterval(refreshRef.current)},[]);
+    const silentLoad=async()=>{try{await loadData(false)}catch{}};
+    const loadData=async(showSpin=true)=>{
+        if(showSpin)sLd(true);
         try{
             const calls=[af("/api/appointments"),af("/api/leads?limit=500")];
             if(user?.role==="admin")calls.push(af("/api/admin/reps"));
@@ -1706,7 +1842,7 @@ function MapPage(){
                 setStats(s=>({...s,total:arr.length,withGeo}))}
             if(rr&&rr.ok){const d=await rr.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}
         }catch{}
-        sLd(false);
+        if(showSpin)sLd(false);
     };
 
     useEffect(()=>{
@@ -1723,32 +1859,31 @@ function MapPage(){
         const today=new Date().toISOString().split("T")[0];
 
         if(mapMode==="appointments"){
-            const todayAppts=appts.filter(a=>a.appointment_date===today&&(mapFilter==="all"||a.appointment_status===mapFilter));
-            setStats(s=>({...s,todayAppts:todayAppts.length}));
+            // Show ALL appointments with leads that have geo, not just today
+            const allWithGeo=appts.filter(a=>{const l=leads[a.lead_id];return l?.geo_lat&&l?.geo_lng&&(mapFilter==="all"||a.appointment_status===mapFilter)});
+            const todayOnly=allWithGeo.filter(a=>a.appointment_date===today);
+            const show=todayOnly.length>0?todayOnly:allWithGeo.slice(0,50);
+            setStats(s=>({...s,todayAppts:todayOnly.length}));
             const bounds=[];
-            todayAppts.forEach(a=>{
+            show.forEach(a=>{
                 const lead=leads[a.lead_id];
-                if(lead?.geo_lat&&lead?.geo_lng){
-                    const colors={confirmed:"#22c55e",scheduled:"#eab308",en_route:"#3b82f6",arrived:"#f59e0b",no_show:"#ef4444",completed:"#52525b"};
-                    const color=colors[a.appointment_status]||"#999";
-                    const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{radius:10,fillColor:color,color:"#fff",weight:2,opacity:1,fillOpacity:0.9});
-                    marker.bindPopup(`<div style="font-size:12px;min-width:140px"><b>${lead.first_name} ${lead.last_name}</b><br/>${lead.property_address}<br/><span style="color:${color};font-weight:700">${(a.appointment_status||"").replace(/_/g," ")}</span><br/>${a.appointment_time||"TBD"}</div>`);
-                    marker.on("click",()=>setSelAppt(a));
-                    marker.addTo(mapInstance.current);
-                    bounds.push([lead.geo_lat,lead.geo_lng]);
-                }
+                const colors={confirmed:"#22c55e",scheduled:"#eab308",en_route:"#3b82f6",arrived:"#f59e0b",no_show:"#ef4444",completed:"#52525b"};
+                const color=colors[a.appointment_status]||"#999";
+                const isToday=a.appointment_date===today;
+                const marker=L.circleMarker([lead.geo_lat,lead.geo_lng],{radius:isToday?12:7,fillColor:color,color:"#fff",weight:isToday?2.5:1.5,opacity:1,fillOpacity:isToday?0.95:0.6});
+                marker.on("click",()=>setSelAppt(a));
+                marker.addTo(mapInstance.current);
+                bounds.push([lead.geo_lat,lead.geo_lng]);
             });
             if(bounds.length>1)mapInstance.current.fitBounds(bounds,{padding:[40,40]});
             else if(bounds.length===1)mapInstance.current.setView(bounds[0],12);
         } else {
-            // All leads mode
             const statusColors={new:"#3b82f6",confirmed:"#22c55e",appointed:"#f59e0b",dispatched:"#a855f7",closed_won:"#22c55e",closed_lost:"#ef4444",follow_up:"#eab308",no_show:"#ef4444",rehash:"#f59e0b"};
             const filteredLeads=leadsArr.filter(l=>l.geo_lat&&l.geo_lng&&(mapFilter==="all"||l.deal_status===mapFilter));
             const bounds=[];
             filteredLeads.forEach(l=>{
                 const color=statusColors[l.deal_status]||"#71717a";
-                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{radius:7,fillColor:color,color:"#fff",weight:1.5,opacity:0.9,fillOpacity:0.85});
-                marker.bindPopup(`<div style="font-size:12px;min-width:140px"><b>${l.first_name} ${l.last_name}</b><br/>${l.property_address}<br/>${l.city}, ${l.state}<br/><span style="color:${color};font-weight:700">${(l.deal_status||"").replace(/_/g," ")}</span><br/>${$.money(l.average_monthly_bill)}/mo</div>`);
+                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{radius:8,fillColor:color,color:"#fff",weight:1.5,opacity:0.9,fillOpacity:0.85});
                 marker.on("click",()=>setSelLead(l));
                 marker.addTo(mapInstance.current);
                 bounds.push([l.geo_lat,l.geo_lng]);
@@ -1761,15 +1896,16 @@ function MapPage(){
     if(loading)return<Spin/>;
     const apptStatuses=["all","scheduled","confirmed","en_route","arrived","completed"];
     const leadStatuses=["all","new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up"];
+    const repsMap=reps.reduce((m,r)=>{m[r.id]=r;return m},{});
 
     return(
         <div style={{display:"flex",flexDirection:"column",height:"100vh"}}>
             <div style={{padding:"12px 24px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-                <div><h1 style={{fontSize:18,fontWeight:900}}>Field Map</h1><div style={{fontSize:10,color:"#3f3f46"}}>{stats.withGeo} of {stats.total} leads mapped</div></div>
+                <div><h1 style={{fontSize:18,fontWeight:900}}>Field Map</h1><div style={{fontSize:10,color:"#3f3f46"}}>{stats.withGeo} mapped &middot; {stats.todayAppts} appts today &middot; auto-refresh 30s</div></div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
-                    <button className={`btn ${mapMode==="appointments"?"btn-p":""}`} onClick={()=>{setMode("appointments");setFilter("all")}}>Today's Appts</button>
+                    <button className={`btn ${mapMode==="appointments"?"btn-p":""}`} onClick={()=>{setMode("appointments");setFilter("all")}}>Appointments</button>
                     <button className={`btn ${mapMode==="leads"?"btn-p":""}`} onClick={()=>{setMode("leads");setFilter("all")}}>All Leads</button>
-                    <button className="btn" onClick={loadData}><Ic d={IC.refresh} s={12}/></button>
+                    <button className="btn" onClick={()=>loadData(true)}><Ic d={IC.refresh} s={12}/></button>
                 </div>
             </div>
             <div style={{padding:"8px 24px",display:"flex",gap:6,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
@@ -1777,7 +1913,6 @@ function MapPage(){
             </div>
             <div style={{flex:1,position:"relative"}}>
                 <div ref={mapRef} style={{position:"absolute",inset:0,background:"#09090b"}}/>
-                {/* Legend */}
                 <div style={{position:"absolute",bottom:16,left:16,background:"#0c0c0fdd",border:"1px solid #27272a",borderRadius:8,padding:"8px 12px",zIndex:1000,fontSize:10}}>
                     {mapMode==="appointments"?
                         [{c:"#eab308",l:"Scheduled"},{c:"#22c55e",l:"Confirmed"},{c:"#3b82f6",l:"En Route"},{c:"#f59e0b",l:"Arrived"},{c:"#52525b",l:"Completed"}].map(x=>
@@ -1789,8 +1924,8 @@ function MapPage(){
                     }
                 </div>
             </div>
-            {selAppt&&<AppointmentDrawer appt={selAppt} leads={leads} reps={reps.reduce((m,r)=>{m[r.id]=r;return m},{})} onClose={()=>setSelAppt(null)} onRefresh={loadData}/>}
-            {selLead&&<LeadDrawer lead={selLead} reps={reps} onClose={()=>setSelLead(null)} onRefresh={loadData} onCreateAppt={()=>{}}/>}
+            {selAppt&&<MapPinDrawer appt={selAppt} lead={leads[selAppt.lead_id]} reps={reps} repsMap={repsMap} onClose={()=>setSelAppt(null)} onRefresh={()=>{setSelAppt(null);loadData(false)}} af={af} toast={toast} user={user}/>}
+            {selLead&&<LeadDrawer lead={selLead} reps={reps} onClose={()=>setSelLead(null)} onRefresh={()=>loadData(false)} onCreateAppt={()=>{}}/>}
         </div>
     );
 }
@@ -1823,7 +1958,20 @@ function TelemarketingPage(){
     const logAttempt=async(apptId,outcome)=>{
         try{
             const r=await af(`/api/confirmation/${apptId}/attempt`,{method:"POST",body:JSON.stringify({outcome})});
-            if(r.ok){toast("ok","Logged");loadQueue()}else{toast("err","Failed")}
+            if(r.ok){
+                toast("ok","Logged: "+sL(outcome));
+                // Auto-create follow-up task for outcomes that need it
+                if(["no_answer","voicemail","reschedule"].includes(outcome)){
+                    const appt=queue.find(q=>q.id===apptId);
+                    const followUpTitle=outcome==="reschedule"?`Reschedule appt for ${appt?.lead_name||"lead"}`:`Follow up: ${sL(outcome)} - ${appt?.lead_name||"lead"}`;
+                    const dueDate=new Date();dueDate.setDate(dueDate.getDate()+(outcome==="reschedule"?1:outcome==="no_answer"?0:1));
+                    try{
+                        await af("/api/tasks",{method:"POST",body:JSON.stringify({title:followUpTitle,task_type:"follow_up",lead_id:appt?.lead_id,due_date:dueDate.toISOString().split("T")[0],priority:outcome==="reschedule"?"high":"medium"})});
+                        toast("ok","Follow-up task created");
+                    }catch{}
+                }
+                loadQueue();
+            }else{toast("err","Failed")}
         }catch{toast("err","Error")}
     };
 
@@ -1904,7 +2052,8 @@ function TelemarketingPage(){
                                 <div style={{display:"flex",gap:4}}>
                                     <button className="btn" onClick={()=>logAttempt(q.id,"voicemail")} style={{flex:1,fontSize:10,padding:"6px"}}>Voicemail</button>
                                     <button className="btn" onClick={()=>logAttempt(q.id,"reschedule")} style={{flex:1,fontSize:10,padding:"6px"}}>Reschedule</button>
-                                    <button className="btn btn-r" onClick={()=>logAttempt(q.id,"not_interested")} style={{flex:1,fontSize:10,padding:"6px"}}>Not Interested</button>
+                                    <button className="btn" onClick={()=>logAttempt(q.id,"follow_up")} style={{flex:1,fontSize:10,padding:"6px",color:"#3b82f6"}}>Follow Up</button>
+                                    <button className="btn btn-r" onClick={()=>logAttempt(q.id,"not_interested")} style={{flex:1,fontSize:10,padding:"6px"}}>Not Int.</button>
                                 </div>
                             </div>
                         )})}
