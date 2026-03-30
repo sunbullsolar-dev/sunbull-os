@@ -63,11 +63,21 @@
             .tr{font-size:11px}
             .ph-title{font-size:16px}
             .cd{overflow-x:auto}
+            .kpi{min-width:80px;padding:10px 12px}
         }
         @media(max-width:480px){
             .sb{width:0;display:none}.mc{margin-left:0}
             .btn{padding:10px 16px;font-size:13px;min-height:44px}
             .appt-card{padding:14px}
+            .kpi{min-width:70px;padding:8px 10px}
+            .modal{width:100%;max-width:100%;border-radius:12px 12px 0 0;position:fixed;bottom:0;max-height:92vh}
+        }
+        /* Touch target enforcement */
+        @media(pointer:coarse){
+            .btn{min-height:44px;min-width:44px}
+            a[href^="tel:"]{min-height:44px;display:inline-flex;align-items:center}
+            .sb-link{min-height:44px}
+            .tab{min-height:44px;display:flex;align-items:center}
         }
     </style>
 </head>
@@ -252,6 +262,7 @@ function DashboardPage(){
                 sAppts(Array.isArray(a)?a:[]);sTasks(ta);
                 try{const lb=await af("/api/admin/leaderboard");if(lb.ok)setLB(await lb.json())}catch{}
                 try{const rl=await af(`/api/admin/rep-priority-leads/${user?.id}?limit=5`);if(rl.ok){const rd=await rl.json();setRL(rd.leads||[])}}catch{}
+                try{const vr=await af("/api/admin/violations?rep_id="+user?.id+"&acknowledged=false&limit=5");if(vr.ok){const vd=await vr.json();setViol(vd.violations||[])}}catch{}
                 // Show guide on first visit
                 if(!localStorage.getItem("sb_guide_seen"))setGuide(true);
             }
@@ -305,6 +316,25 @@ function DashboardPage(){
                         <button className="btn" style={{background:"#fff",color:"#ef4444",borderColor:"#fff",fontWeight:900,minHeight:44,fontSize:14}} onClick={()=>nav("/tasks")}>FIX NOW</button>
                     </div>
                 )}
+                {/* VIOLATIONS BAR */}
+                {violations.length > 0 && (
+                    <div style={{background:"#ef4444",padding:"16px 24px",borderBottom:"2px solid #dc2626"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:6}}>
+                            <Ic d={IC.alert} s={22} c="#fff"/>
+                            <span style={{color:"#fff",fontSize:16,fontWeight:900,textTransform:"uppercase"}}>
+                                {violations.length} ACTIVE VIOLATION{violations.length>1?"S":""}
+                            </span>
+                        </div>
+                        {violations.map(v => (
+                            <div key={v.id} style={{color:"#fca5a5",fontSize:12,marginBottom:2}}>
+                                {sL(v.violation_type)} — {v.description || "Resolve immediately"}
+                            </div>
+                        ))}
+                        <div style={{color:"#fecaca",fontSize:11,marginTop:6,fontWeight:700}}>
+                            Your actions may be restricted until violations are resolved.
+                        </div>
+                    </div>
+                )}
                 {/* Notification alerts */}
                 {notifs.length>0&&(
                     <div style={{background:"#3b82f610",padding:"6px 24px",borderBottom:"1px solid #3b82f620"}}>
@@ -320,7 +350,10 @@ function DashboardPage(){
                 <div style={{padding:"14px 24px 10px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div><h1 style={{fontSize:18,fontWeight:900}}>My Day</h1><p style={{color:"#3f3f46",fontSize:11,marginTop:1}}>Auto-refreshes every 30s</p></div>
                     <div style={{display:"flex",alignItems:"center",gap:12}}>
-                        {myRank&&<div style={{textAlign:"center",padding:"4px 12px",borderRadius:8,background:myRank.rank<=2?"#f59e0b10":"#18181b"}}><div style={{fontSize:22,fontWeight:900,color:myRank.rank<=2?"#f59e0b":myRank.rank<=5?"#22c55e":"#a1a1aa"}}>#{myRank.rank}</div><div style={{fontSize:8,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>of {leaderboard?.total_reps||"?"}</div></div>}
+                        {myRank&&<div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{textAlign:"center",padding:"4px 12px",borderRadius:8,background:myRank.rank<=2?"#f59e0b10":"#18181b"}}><div style={{fontSize:22,fontWeight:900,color:myRank.rank<=2?"#f59e0b":myRank.rank<=5?"#22c55e":"#a1a1aa"}}>#{myRank.rank}</div><div style={{fontSize:8,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>of {leaderboard?.total_reps||"?"}</div></div>
+                        <div style={{textAlign:"center",padding:"4px 10px",borderRadius:8,background:myRank.daily_score>=200?"#22c55e10":myRank.daily_score>=100?"#f59e0b10":"#ef444410"}}><div style={{fontSize:18,fontWeight:900,color:myRank.daily_score>=200?"#22c55e":myRank.daily_score>=100?"#f59e0b":"#ef4444"}}>{myRank.daily_score||0}</div><div style={{fontSize:8,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>Score</div></div>
+                    </div>}
                         <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>
                     </div>
                 </div>
@@ -342,6 +375,64 @@ function DashboardPage(){
                         <KPI l="My Leads" v={d?.total_leads||0}/><KPI l="Appts Today" v={d?.appts_today||0} t={d?.appts_today>0?"warn":null}/><KPI l="Open Tasks" v={d?.open_tasks||0} t={d?.open_tasks>3?"hot":"ok"}/><KPI l="Overdue" v={overdue.length} t={overdue.length>0?"hot":null}/>
                         {myRank&&<KPI l="Score" v={myRank.daily_score} t={myRank.daily_score>=200?"ok":myRank.daily_score>=100?"warn":"hot"}/>}
                     </div>
+                    {/* NEXT ACTION ENGINE — tells rep exactly what to do RIGHT NOW */}
+                    {(()=>{
+                        const now=new Date();
+                        const nowMs=now.getTime();
+                        // Priority 1: Appointment within 60 min
+                        const soonAppt=todayAppts.filter(a=>!["completed","no_show","cancelled"].includes(a.appointment_status)).find(a=>{
+                            if(!a.appointment_time)return false;
+                            const[hh,mm]=(a.appointment_time||"").split(":").map(Number);
+                            const apptMs=new Date(now.getFullYear(),now.getMonth(),now.getDate(),hh||0,mm||0).getTime();
+                            return apptMs-nowMs>0&&apptMs-nowMs<3600000;
+                        });
+                        // Priority 2: Active live appt
+                        const liveAppt=todayAppts.find(a=>["en_route","arrived"].includes(a.appointment_status));
+                        // Priority 3: Overdue follow-up
+                        const overdueFU=fuTasks.length>0?fuTasks[0]:null;
+                        // Priority 4: High-value lead
+                        const hvLead=repLeads.length>0?repLeads[0]:null;
+
+                        let action=null;
+                        if(liveAppt){
+                            const isArr=liveAppt.appointment_status==="arrived";
+                            action={label:"LIVE APPOINTMENT",sub:`${liveAppt.lead_name||"Lead"} — ${isArr?"Complete Now":"Mark Arrived"}`,color:"#22c55e",icon:IC.zap,btn:isArr?"COMPLETE":"ARRIVED",act:()=>isArr?nav(`/dispatch?complete=${liveAppt.id}`):null};
+                        }else if(soonAppt){
+                            const minsAway=Math.max(0,Math.round(((()=>{const[h,m]=(soonAppt.appointment_time||"").split(":").map(Number);return new Date(now.getFullYear(),now.getMonth(),now.getDate(),h||0,m||0).getTime()})()-nowMs)/60000));
+                            action={label:`APPOINTMENT IN ${minsAway} MIN`,sub:`${soonAppt.lead_name||"Lead"} — ${$.t12(soonAppt.appointment_time)}`,color:"#f59e0b",icon:IC.clock,btn:"GO TO DISPATCH",act:()=>nav("/dispatch")};
+                        }else if(overdue.length>0){
+                            action={label:"OVERDUE TASK",sub:overdue[0].title,color:"#ef4444",icon:IC.alert,btn:"FIX NOW",act:()=>nav("/tasks")};
+                        }else if(overdueFU){
+                            action={label:"FOLLOW-UP DUE",sub:`${overdueFU.lead_name||overdueFU.title} — due ${$.date(overdueFU.due_date)}`,color:"#3b82f6",icon:IC.phone,btn:"DO IT",act:()=>nav(`/leads?id=${overdueFU.lead_id}`)};
+                        }else if(hvLead){
+                            action={label:"TOP LEAD TO WORK",sub:`${hvLead.name} — ${$.money(hvLead.deal_value)}`,color:"#f59e0b",icon:IC.zap,btn:"OPEN LEAD",act:()=>nav(`/leads?id=${hvLead.lead_id}`)};
+                        }
+                        if(!action)return null;
+                        return(
+                            <div style={{background:`${action.color}12`,border:`2px solid ${action.color}`,borderRadius:12,padding:18,marginBottom:20,cursor:"pointer"}} onClick={action.act}>
+                                <div style={{fontSize:9,fontWeight:900,color:action.color,textTransform:"uppercase",letterSpacing:".1em",marginBottom:6,display:"flex",alignItems:"center",gap:6}}><Ic d={action.icon} s={14} c={action.color}/> NEXT ACTION</div>
+                                <div style={{fontSize:18,fontWeight:900,color:"#e4e4e7",marginBottom:4}}>{action.label}</div>
+                                <div style={{fontSize:13,color:"#a1a1aa",marginBottom:10}}>{action.sub}</div>
+                                <button className="btn btn-p" style={{padding:"12px 24px",fontSize:14,fontWeight:900}}>{action.btn}</button>
+                            </div>
+                        );
+                    })()}
+                    {/* ACTIVE APPOINTMENT BANNER */}
+                    {(() => {
+                        const activeAppt = todayAppts.find(a => ["en_route", "arrived"].includes(a.appointment_status));
+                        if (!activeAppt) return null;
+                        const isArrived = activeAppt.appointment_status === "arrived";
+                        const nextAction = isArrived ? "COMPLETE" : "MARK ARRIVED";
+                        return (
+                            <div style={{background: isArrived ? "#22c55e" : "#f59e0b", padding: "20px 24px", borderRadius: 12, marginBottom: 20, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16}}>
+                                <div>
+                                    <div style={{fontSize: 12, fontWeight: 900, textTransform: "uppercase", color: isArrived ? "#15803d" : "#78350f", marginBottom: 4}}>YOU ARE LIVE ON AN APPOINTMENT</div>
+                                    <div style={{fontSize: 16, fontWeight: 900, color: isArrived ? "#16a34a" : "#ca8a04"}}>{activeAppt.lead_name || `Lead #${activeAppt.lead_id}`}</div>
+                                </div>
+                                <button className="btn" style={{background: isArrived ? "#16a34a" : "#ca8a04", color: "#fff", fontWeight: 900, padding: "12px 20px", fontSize: 13}} onClick={() => nav(`/dispatch?complete=${activeAppt.id}`)}>{nextAction}</button>
+                            </div>
+                        );
+                    })()}
                     {/* SECTION 2: TODAY'S APPOINTMENTS — big action cards */}
                     {todayAppts.length>0&&(
                         <div style={{marginBottom:20}}>
@@ -996,7 +1087,7 @@ function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete,onAss
 // ===== COMPLETION MODAL (OUTCOME ENGINE UI) =====
 function CompleteModal({appt,lead,onClose,onDone}){
     const{af}=useA();const toast=useT();
-    const[outcome,setOC]=useState("");const[notes,setN]=useState("");const[fuDate,setFD]=useState("");const[fuNote,setFN]=useState("");const[busy,setBsy]=useState(false);
+    const[outcome,setOC]=useState("");const[notes,setN]=useState("");const[fuDate,setFD]=useState("");const[fuNote,setFN]=useState("");const[busy,setBsy]=useState(false);const[showPressure,setSP]=useState(false);
 
     const HELD=["closed","proposal_presented","proposal_sent","follow_up_required","declined"];
     const NOT_HELD=["no_show","not_home","canceled","reschedule_requested"];
@@ -1010,48 +1101,75 @@ function CompleteModal({appt,lead,onClose,onDone}){
         setBsy(true);
         try{
             const r=await af(`/api/appointments/${appt.id}/complete`,{method:"POST",body:JSON.stringify({outcome,notes,follow_up_date:fuDate||null,follow_up_note:fuNote||null})});
-            if(r.ok){toast("ok","Outcome recorded!");onDone()}
+            if(r.ok){toast("ok","Outcome recorded!");setSP(true)}
             else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}
         }catch{toast("err","Error")}
         setBsy(false);
     };
 
+    const requiredCount = (outcome ? 1 : 0) + (notes.trim() ? 1 : 0) + (NEEDS_FU.includes(outcome) && fuDate && fuNote.trim() ? 1 : 0);
+    const totalRequired = 3;
+
     return(
-        <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-                <div><h3 style={{fontSize:16,fontWeight:800}}>Complete Appointment</h3>{lead&&<div style={{fontSize:12,color:"#52525b"}}>{lead.first_name} {lead.last_name}{lead.phone&&<> &middot; <a href={`tel:${lead.phone}`} style={{color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a></>}</div>}</div>
-                <div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div>
-            </div>
-            {/* HELD Outcomes */}
-            <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,fontWeight:800,color:"#22c55e",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Held (Rep spoke to homeowner)</div>
-                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {HELD.map(o=><button key={o} className={`btn ${outcome===o?"btn-p":""}`} onClick={()=>setOC(o)}>{sL(o)}</button>)}
+        <div className="modal-ov" onClick={e=>!showPressure&&e.stopPropagation()}><div className="modal" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:600,minHeight:'60vh'}}>
+            {showPressure ? (
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",height:"100%",padding:32,textAlign:"center"}}>
+                    {outcome === "closed" && <div style={{fontSize:48,fontWeight:900,color:"#22c55e",marginBottom:16}}>DEAL CLOSED! 🔥</div>}
+                    <div style={{fontSize:16,fontWeight:700,color:"#52525b",marginBottom:8}}>Deal Value</div>
+                    <div style={{fontSize:36,fontWeight:900,color:"#f59e0b",marginBottom:24}}>{$.money((lead?.average_monthly_bill||200)*12*20*0.6)}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#52525b",marginBottom:4}}>Estimated Commission</div>
+                    <div style={{fontSize:28,fontWeight:900,color:"#22c55e",marginBottom:32}}>{$.money(((lead?.average_monthly_bill||200)*12*20*0.6)*0.08)}</div>
+                    <div style={{fontSize:15,fontWeight:700,color:"#71717a",marginBottom:24,fontStyle:"italic"}}>Keep pushing — every appointment counts!</div>
+                    <button className="btn btn-p" style={{padding:"14px 28px",fontSize:14,fontWeight:800}} onClick={onDone}>Back to Dashboard</button>
                 </div>
-            </div>
-            {/* NOT HELD Outcomes */}
-            <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,fontWeight:800,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Not Held</div>
-                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                    {NOT_HELD.map(o=><button key={o} className={`btn ${outcome===o?"btn-r btn-p":""}`} onClick={()=>setOC(o)}>{sL(o)}</button>)}
-                </div>
-            </div>
-            {/* Notes */}
-            <div style={{marginBottom:14}}>
-                <label style={{display:"block",fontSize:10,fontWeight:800,color:"#52525b",marginBottom:4,textTransform:"uppercase"}}>Notes (required)</label>
-                <textarea className="inp" value={notes} onChange={e=>setN(e.target.value)} placeholder="What happened at this appointment..."/>
-            </div>
-            {/* Follow-up fields */}
-            {NEEDS_FU.includes(outcome)&&(
-                <div style={{background:"#f59e0b08",border:"1px solid #f59e0b30",borderRadius:8,padding:12,marginBottom:14}}>
-                    <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",marginBottom:8,textTransform:"uppercase"}}>Follow-up Required</div>
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                        <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Date</label><input className="inp" type="date" min={new Date().toISOString().split("T")[0]} value={fuDate} onChange={e=>setFD(e.target.value)}/></div>
-                        <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Note</label><input className="inp" value={fuNote} onChange={e=>setFN(e.target.value)} placeholder="Follow-up details"/></div>
+            ) : (
+                <>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                        <div><h3 style={{fontSize:16,fontWeight:800}}>Complete Appointment</h3>{lead&&<div style={{fontSize:12,color:"#52525b"}}>{lead.first_name} {lead.last_name}{lead.phone&&<> &middot; <a href={`tel:${lead.phone}`} style={{color:"#3b82f6",textDecoration:"none"}}>{lead.phone}</a></>}</div>}</div>
+                        <div style={{cursor:"pointer",opacity:(outcome&&notes.trim())?1:0.3}} onClick={()=>{if(outcome&&notes.trim()&&(!NEEDS_FU.includes(outcome)||(fuDate&&fuNote.trim())))onClose()}}><Ic d={IC.x}/></div>
                     </div>
-                </div>
+                    {/* PROGRESS INDICATOR */}
+                    <div style={{marginBottom:16,padding:12,background:"#18181b",borderRadius:8}}>
+                        <div style={{fontSize:10,fontWeight:700,color:"#52525b",marginBottom:6}}>Required Fields</div>
+                        <div style={{display:"flex",gap:2}}>
+                            {Array(totalRequired).fill(0).map((_, i) => (
+                                <div key={i} style={{flex:1,height:6,background:i<requiredCount?"#f59e0b":"#27272a",borderRadius:3}}/>
+                            ))}
+                        </div>
+                        <div style={{fontSize:11,color:"#71717a",marginTop:6}}>{requiredCount} of {totalRequired} required fields complete</div>
+                    </div>
+                    {/* HELD Outcomes */}
+                    <div style={{marginBottom:16}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"#22c55e",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Held (Rep spoke to homeowner)</div>
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            {HELD.map(o=><button key={o} className={`btn ${outcome===o?"btn-p":""}`} onClick={()=>setOC(o)}>{sL(o)}</button>)}
+                        </div>
+                    </div>
+                    {/* NOT HELD Outcomes */}
+                    <div style={{marginBottom:16}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Not Held</div>
+                        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                            {NOT_HELD.map(o=><button key={o} className={`btn ${outcome===o?"btn-r btn-p":""}`} onClick={()=>setOC(o)}>{sL(o)}</button>)}
+                        </div>
+                    </div>
+                    {/* Notes */}
+                    <div style={{marginBottom:14}}>
+                        <label style={{display:"block",fontSize:10,fontWeight:800,color:"#52525b",marginBottom:4,textTransform:"uppercase"}}>Notes (required)</label>
+                        <textarea className="inp" value={notes} onChange={e=>setN(e.target.value)} placeholder="What happened at this appointment..."/>
+                    </div>
+                    {/* Follow-up fields */}
+                    {NEEDS_FU.includes(outcome)&&(
+                        <div style={{background:"#f59e0b08",border:"1px solid #f59e0b30",borderRadius:8,padding:12,marginBottom:14}}>
+                            <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",marginBottom:8,textTransform:"uppercase"}}>Follow-up Required</div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                                <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Date</label><input className="inp" type="date" min={new Date().toISOString().split("T")[0]} value={fuDate} onChange={e=>setFD(e.target.value)}/></div>
+                                <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Note</label><input className="inp" value={fuNote} onChange={e=>setFN(e.target.value)} placeholder="Follow-up details"/></div>
+                            </div>
+                        </div>
+                    )}
+                    <button className="btn btn-p" style={{width:"100%",padding:12}} disabled={busy||!outcome||!notes.trim()||(NEEDS_FU.includes(outcome)&&(!fuDate||!fuNote.trim()))} onClick={submit}>{busy?"Processing...":"Submit Outcome"}</button>
+                </>
             )}
-            <button className="btn btn-p" style={{width:"100%",padding:12}} disabled={busy||!outcome} onClick={submit}>{busy?"Processing...":"Submit Outcome"}</button>
         </div></div>
     );
 }
@@ -1158,7 +1276,10 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
                         {lockInfo&&lockInfo.is_locked&&<span className="badge b-red">LOCKED ({lockInfo.open_task_count} tasks)</span>}
                     </div>
                 </div>
-                <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"10px 16px",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:5}}><Ic d={IC.phone} s={14} c="#22c55e"/>CALL</button></a>}
+                    <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
+                </div>
             </div>
             {/* Tabs */}
             <div style={{display:"flex",borderBottom:"1px solid #18181b",overflowX:"auto"}}>{tabs.map(t=><div key={t} className={`tab ${tab===t?"on":""}`} onClick={()=>sTab(t)}>{t}</div>)}</div>
@@ -1416,7 +1537,7 @@ function RepsPage(){
                                     <div style={{fontWeight:700,fontSize:13}}>{r.name||r.full_name}</div>
                                     <div style={{fontSize:10,color:"#52525b"}}>{r.email}</div>
                                 </div>
-                                {r.score!==undefined&&<div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:900,color:r.score>=200?"#22c55e":r.score>=100?"#f59e0b":"#ef4444"}}>{r.score}</div><div style={{fontSize:8,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>Score</div></div>}
+                                {r.score!==undefined&&<div style={{textAlign:"right"}}><div style={{fontSize:20,fontWeight:900,color:r.score>=200?"#22c55e":r.score>=100?"#f59e0b":"#ef4444"}}>{r.score}</div><div style={{fontSize:8,fontWeight:800,color:r.score>=200?"#22c55e":r.score>=100?"#f59e0b":"#ef4444",textTransform:"uppercase"}}>{r.score>=200?"ELITE":r.score>=150?"STRONG":r.score>=100?"OKAY":"AT RISK"}</div></div>}
                             </div>
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,textAlign:"center",marginBottom:8}}>
                                 <div><div style={{fontSize:15,fontWeight:900,color:"#22c55e"}}>{r.close_rate!==undefined?r.close_rate+"%":"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Close</div></div>
@@ -1808,6 +1929,11 @@ function MapPinDrawer({appt,lead,reps,repsMap,onClose,onRefresh,af,toast,user}){
                         </div>
                     </div>
                 )}
+                {/* Deal Value + Run This Lead */}
+                {lead&&<div style={{background:"#f59e0b12",border:"1px solid #f59e0b30",borderRadius:8,padding:12,marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div><div style={{fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase"}}>Deal Value</div><div style={{fontSize:20,fontWeight:900,color:"#f59e0b"}}>{$.money(lead.deal_value||((lead.average_monthly_bill||200)*12*20*0.6))}</div></div>
+                    <button className="btn btn-p" style={{padding:"12px 20px",fontSize:14,fontWeight:900}} onClick={()=>{onClose();nav(`/leads?id=${lead.id}`)}}>RUN THIS LEAD</button>
+                </div>}
                 {/* Navigation */}
                 <div style={{display:"flex",gap:6}}>
                     <button className="btn btn-p" style={{flex:1,padding:10}} onClick={()=>{onClose();nav(`/leads?id=${lead?.id||appt?.lead_id}`)}}>Full Lead View</button>
@@ -1879,11 +2005,15 @@ function MapPage(){
             else if(bounds.length===1)mapInstance.current.setView(bounds[0],12);
         } else {
             const statusColors={new:"#3b82f6",confirmed:"#22c55e",appointed:"#f59e0b",dispatched:"#a855f7",closed_won:"#22c55e",closed_lost:"#ef4444",follow_up:"#eab308",no_show:"#ef4444",rehash:"#f59e0b"};
-            const filteredLeads=leadsArr.filter(l=>l.geo_lat&&l.geo_lng&&(mapFilter==="all"||l.deal_status===mapFilter));
+            let filteredLeads=leadsArr.filter(l=>l.geo_lat&&l.geo_lng&&(mapFilter==="all"||mapFilter==="high_value"||l.deal_status===mapFilter));
+            if(mapFilter==="high_value")filteredLeads=filteredLeads.filter(l=>(l.average_monthly_bill||0)>=250||l.deal_status==="follow_up"||l.deal_status==="appointed");
             const bounds=[];
             filteredLeads.forEach(l=>{
                 const color=statusColors[l.deal_status]||"#71717a";
-                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{radius:8,fillColor:color,color:"#fff",weight:1.5,opacity:0.9,fillOpacity:0.85});
+                const bill=l.average_monthly_bill||0;
+                const isHighVal=bill>=250;
+                const radius=isHighVal?14:bill>=150?10:7;
+                const marker=L.circleMarker([l.geo_lat,l.geo_lng],{radius,fillColor:isHighVal?"#f59e0b":color,color:isHighVal?"#fbbf24":"#fff",weight:isHighVal?3:1.5,opacity:1,fillOpacity:isHighVal?0.95:0.85});
                 marker.on("click",()=>setSelLead(l));
                 marker.addTo(mapInstance.current);
                 bounds.push([l.geo_lat,l.geo_lng]);
@@ -1895,7 +2025,7 @@ function MapPage(){
 
     if(loading)return<Spin/>;
     const apptStatuses=["all","scheduled","confirmed","en_route","arrived","completed"];
-    const leadStatuses=["all","new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up"];
+    const leadStatuses=["all","high_value","new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up"];
     const repsMap=reps.reduce((m,r)=>{m[r.id]=r;return m},{});
 
     return(
