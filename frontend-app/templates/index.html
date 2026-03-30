@@ -1356,15 +1356,15 @@ function LeadsPage(){
                 </div>}
             </div>
 
-            {sel&&<LeadDrawer lead={sel} reps={reps} onClose={()=>sSel(null)} onRefresh={loadLeads} onCreateAppt={setSCA}/>}
+            {sel&&<LeadDrawer lead={sel} reps={reps} allLeads={filtered} onClose={()=>sSel(null)} onRefresh={loadLeads} onCreateAppt={setSCA} onNextLead={(nextL)=>{sSel(nextL)}}/>}
             {showCreate&&<CreateLeadModal onClose={()=>setSC(false)} onDone={()=>{setSC(false);loadLeads()}}/>}
             {showCreateAppt&&<CreateApptModal lead={showCreateAppt} reps={reps} onClose={()=>setSCA(null)} onDone={()=>{setSCA(null);loadLeads()}}/>}
         </div>
     );
 }
 
-// ===== LEAD COMMAND PANEL — SINGLE-SCREEN SALES EXECUTION ENGINE =====
-function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
+// ===== LEAD COMMAND PANEL — HIGH-PERFORMANCE SALES EXECUTION ENGINE =====
+function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLead}){
     const{af,user}=useA();const toast=useT();
     const[timeline,sTL]=useState([]);const[tasks,sTasks]=useState([]);const[appts,sAppts]=useState([]);
     const[lockInfo,sLock]=useState(null);const[deleting,sDel]=useState(false);
@@ -1372,12 +1372,17 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
     const[statusDD,setStatusDD]=useState(false);const[outcomeDD,setOutcomeDD]=useState(false);
     const[assignDD,setAssignDD]=useState(false);const[showAdmin,setShowAdmin]=useState(false);
     const[leaderboard,setLB]=useState(null);
+    // FORCE ACTION LOG: after status change or call, require note before closing
+    const[pendingAction,setPendingAction]=useState(null);// {type:"status_change"|"call"|"outcome_change",label:string}
+    const[actionLogged,setActionLogged]=useState(false);
+    // NEXT LEAD suggestion
+    const[showNextLead,setShowNextLead]=useState(false);
     const sc=lead.lead_quality_score||0;const isAdmin=user?.role==="admin";
     const dealVal=lead.deal_value||((lead.average_monthly_bill||200)*12*20*0.6);
     const commission=Math.round(dealVal*0.08);
-    const noteRef=useRef(null);
+    const noteRef=useRef(null);const panelRef=useRef(null);
 
-    useEffect(()=>{loadExtra()},[lead.id]);
+    useEffect(()=>{loadExtra();setActionLogged(false);setPendingAction(null);setShowNextLead(false)},[lead.id]);
     const loadExtra=async()=>{
         try{
             const calls=[af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af("/api/appointments")];
@@ -1391,14 +1396,60 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
         try{const lb=await af("/api/admin/leaderboard");if(lb.ok)setLB(await lb.json())}catch{}
     };
 
-    // --- ACTIONS ---
-    const updStatus=async(s)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({deal_status:s})});if(r.ok){toast("ok",sL(s));setStatusDD(false);onRefresh();loadExtra()}}catch{toast("err","Failed")}};
-    const updOutcome=async(o)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({last_outcome:o})});if(r.ok){toast("ok",sL(o));setOutcomeDD(false);onRefresh();loadExtra()}}catch{toast("err","Failed")}};
+    // --- KEYBOARD SHORTCUTS ---
+    useEffect(()=>{
+        const handler=(e)=>{
+            if(e.target.tagName==="INPUT"||e.target.tagName==="TEXTAREA"||e.target.tagName==="SELECT")return;
+            if(e.key==="c"||e.key==="C"){if(lead.phone)window.open(`tel:${lead.phone}`)}
+            if(e.key==="n"||e.key==="N"){setNoteType("general");setTimeout(()=>noteRef.current?.focus(),50)}
+            if(e.key==="l"||e.key==="L"){setNoteType("call_log");setTimeout(()=>noteRef.current?.focus(),50)}
+            if(e.key==="s"||e.key==="S"){setStatusDD(p=>!p);setOutcomeDD(false)}
+            if(e.key==="o"||e.key==="O"){setOutcomeDD(p=>!p);setStatusDD(false)}
+            if(e.key==="Escape"){if(statusDD){setStatusDD(false)}else if(outcomeDD){setOutcomeDD(false)}else if(assignDD){setAssignDD(false)}else{tryClose()}}
+            if(e.key==="ArrowRight"||e.key==="]"){goNextLead(1)}
+            if(e.key==="ArrowLeft"||e.key==="["){goNextLead(-1)}
+        };
+        window.addEventListener("keydown",handler);
+        return()=>window.removeEventListener("keydown",handler);
+    },[lead.id,statusDD,outcomeDD,assignDD,pendingAction]);
+
+    // Navigate between leads
+    const goNextLead=(dir)=>{
+        if(!allLeads||allLeads.length<2)return;
+        const idx=allLeads.findIndex(l=>l.id===lead.id);
+        if(idx<0)return;
+        const next=allLeads[(idx+dir+allLeads.length)%allLeads.length];
+        if(next&&onNextLead)onNextLead(next);
+    };
+
+    // Suggest best next lead
+    const suggestedNext=useMemo(()=>{
+        if(!allLeads)return null;
+        const candidates=allLeads.filter(l=>l.id!==lead.id&&!["closed_won","closed_lost"].includes(l.deal_status));
+        // Priority: follow_up > appointed > confirmed > new
+        const priority={follow_up:4,appointed:3,dispatched:3,confirmed:2,new:1};
+        candidates.sort((a,b)=>(priority[b.deal_status]||0)-(priority[a.deal_status]||0)||(b.average_monthly_bill||0)-(a.average_monthly_bill||0));
+        return candidates[0]||null;
+    },[allLeads,lead.id]);
+
+    // FORCE CLOSE GUARD: if pending action and note not logged, block close
+    const tryClose=()=>{
+        if(pendingAction&&!actionLogged){
+            toast("err",`Log a note about: ${pendingAction.label}`);
+            setTimeout(()=>noteRef.current?.focus(),100);
+            return;
+        }
+        onClose();
+    };
+
+    // --- ACTIONS WITH FORCE LOG ---
+    const updStatus=async(s)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({deal_status:s})});if(r.ok){toast("ok",sL(s));setStatusDD(false);setPendingAction({type:"status_change",label:`Status → ${sL(s)}`});setActionLogged(false);setNoteType("general");setTimeout(()=>noteRef.current?.focus(),200);onRefresh();loadExtra()}}catch{toast("err","Failed")}};
+    const updOutcome=async(o)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({last_outcome:o})});if(r.ok){toast("ok",sL(o));setOutcomeDD(false);setPendingAction({type:"outcome_change",label:`Outcome → ${sL(o)}`});setActionLogged(false);setNoteType("general");setTimeout(()=>noteRef.current?.focus(),200);onRefresh();loadExtra()}}catch{toast("err","Failed")}};
     const assignRep=async(rid)=>{try{const r=await af(`/api/leads/${lead.id}/assign`,{method:"POST",body:JSON.stringify({rep_id:rid})});if(r.ok){toast("ok","Assigned");setAssignDD(false);onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}};
     const completeTask=async(tid)=>{try{const r=await af(`/api/tasks/${tid}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from lead panel"})});if(r.ok){toast("ok","Done");loadExtra()}}catch{toast("err","Failed")}};
     const deleteLead=async()=>{if(!confirm("Archive this lead?"))return;sDel(true);try{const r=await af(`/api/admin/leads/${lead.id}`,{method:"DELETE"});if(r.ok){toast("ok","Archived");onClose();onRefresh()}else{toast("err","Failed")}}catch{toast("err","Failed")}sDel(false)};
     const cancelAppt=async(aid)=>{if(!confirm("Cancel this appointment?"))return;try{const r=await af(`/api/admin/appointments/${aid}`,{method:"DELETE"});if(r.ok){toast("ok","Cancelled");loadExtra()}else{toast("err","Failed")}}catch{toast("err","Failed")}};
-    const addNote=async()=>{if(!noteText.trim()){toast("err","Enter a note");return}setNB(true);try{const r=await af(`/api/leads/${lead.id}/notes`,{method:"POST",body:JSON.stringify({note:noteText,note_type:noteType})});if(r.ok){toast("ok",noteType==="call_log"?"Call logged":"Note added");setNote("");loadExtra()}else{toast("err","Failed")}}catch{toast("err","Failed")}setNB(false)};
+    const addNote=async()=>{if(!noteText.trim()){toast("err","Enter a note");return}setNB(true);try{const r=await af(`/api/leads/${lead.id}/notes`,{method:"POST",body:JSON.stringify({note:noteText,note_type:noteType})});if(r.ok){toast("ok",noteType==="call_log"?"Call logged":"Note added");setNote("");setActionLogged(true);setPendingAction(null);setShowNextLead(true);loadExtra()}else{toast("err","Failed")}}catch{toast("err","Failed")}setNB(false)};
 
     const rn=id=>{if(!id)return"--";const r=reps.find(x=>x.id===id);return r?r.full_name:`Rep #${id}`};
     const today=new Date().toISOString().split("T")[0];
@@ -1415,15 +1466,14 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
     const lastActivity=tlArr.length>0?tlArr[0]:null;
     const hoursSinceActivity=lastActivity?.created_at?Math.round((now-new Date(lastActivity.created_at).getTime())/3600000):999;
     if(hoursSinceActivity>=18&&!["closed_won","closed_lost"].includes(lead.deal_status))risks.push({msg:`No activity in ${hoursSinceActivity}h`,color:"#ef4444",icon:IC.alert});
-    if(dealVal>=15000&&hoursSinceActivity>=12&&!["closed_won","closed_lost","appointed"].includes(lead.deal_status))risks.push({msg:"High-value lead not contacted",color:"#f59e0b",icon:IC.zap});
+    if(dealVal>=15000&&hoursSinceActivity>=12&&!["closed_won","closed_lost","appointed"].includes(lead.deal_status))risks.push({msg:"High-value lead — act now",color:"#f59e0b",icon:IC.zap});
     if(fuTask&&fuTask.due_date&&fuTask.due_date<today)risks.push({msg:"Missed follow-up",color:"#ef4444",icon:IC.clock});
-    if(overdueTasks.length>0)risks.push({msg:`${overdueTasks.length} overdue task${overdueTasks.length>1?"s":""}`,color:"#ef4444",icon:IC.alert});
-    if(!nextAppt&&!["closed_won","closed_lost","new"].includes(lead.deal_status))risks.push({msg:"No upcoming appointment",color:"#f59e0b",icon:IC.cal});
+    if(overdueTasks.length>0)risks.push({msg:`${overdueTasks.length} overdue`,color:"#ef4444",icon:IC.alert});
 
     // ---- NEXT ACTION ENGINE ----
     let nextAction=null;
     if(!nextAppt&&!["closed_won","closed_lost"].includes(lead.deal_status)){
-        nextAction={label:"NO APPOINTMENT SET",sub:"This lead has no upcoming appointment. Set one now.",color:"#ef4444",icon:IC.cal,btn:"SET APPOINTMENT",act:()=>{onClose();onCreateAppt(lead)}};
+        nextAction={label:"NO APPOINTMENT SET",sub:"Set one now to keep this deal moving.",color:"#ef4444",icon:IC.cal,btn:"SET APPOINTMENT",act:()=>{onClose();onCreateAppt(lead)}};
     }else if(nextAppt){
         const[hh,mm]=(nextAppt.appointment_time||"00:00").split(":").map(Number);
         const apptMs=new Date(new Date(nextAppt.appointment_date).getFullYear(),new Date(nextAppt.appointment_date).getMonth(),new Date(nextAppt.appointment_date).getDate(),hh,mm).getTime();
@@ -1431,25 +1481,22 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
         if(minsAway>0&&minsAway<=60){
             nextAction={label:`APPOINTMENT IN ${minsAway} MIN`,sub:`${$.t12(nextAppt.appointment_time)} — Prepare now`,color:"#f59e0b",icon:IC.clock,btn:"GO TO DISPATCH",act:()=>{onClose();nav("/dispatch")}};
         }else if(minsAway>60&&minsAway<=480){
-            nextAction={label:`APPOINTMENT TODAY`,sub:`${$.t12(nextAppt.appointment_time)} — ${Math.round(minsAway/60)}h away`,color:"#3b82f6",icon:IC.cal,btn:"VIEW DISPATCH",act:()=>{onClose();nav("/dispatch")}};
+            nextAction={label:`APPOINTMENT TODAY`,sub:`${$.t12(nextAppt.appointment_time)} — ${Math.round(minsAway/60)}h away`,color:"#3b82f6",icon:IC.cal,btn:"DISPATCH",act:()=>{onClose();nav("/dispatch")}};
         }
     }
-    if(!nextAction&&overdueTasks.length>0){
-        nextAction={label:"OVERDUE TASK",sub:overdueTasks[0].title,color:"#ef4444",icon:IC.alert,btn:"COMPLETE",act:()=>completeTask(overdueTasks[0].id)};
-    }
+    if(!nextAction&&overdueTasks.length>0){nextAction={label:"OVERDUE TASK",sub:overdueTasks[0].title,color:"#ef4444",icon:IC.alert,btn:"COMPLETE",act:()=>completeTask(overdueTasks[0].id)}}
     if(!nextAction&&fuTask){
         const fuHours=fuTask.due_date?Math.round((new Date(fuTask.due_date).getTime()-now)/3600000):0;
-        const timeMsg=fuHours<0?"OVERDUE":fuHours<4?`Due in ${fuHours}h`:`Due ${$.date(fuTask.due_date)}`;
-        nextAction={label:"FOLLOW-UP DUE",sub:`${fuTask.title} — ${timeMsg}`,color:"#3b82f6",icon:IC.phone,btn:"LOG CALL",act:()=>{setNoteType("call_log");setTimeout(()=>noteRef.current?.focus(),100)}};
+        nextAction={label:"FOLLOW-UP DUE",sub:`${fuTask.title} — ${fuHours<0?"OVERDUE":`Due ${$.date(fuTask.due_date)}`}`,color:"#3b82f6",icon:IC.phone,btn:"LOG CALL",act:()=>{setNoteType("call_log");setTimeout(()=>noteRef.current?.focus(),100)}};
     }
     if(!nextAction&&hoursSinceActivity>=8&&!["closed_won","closed_lost"].includes(lead.deal_status)){
-        nextAction={label:`CALL BACK NOW`,sub:`No contact in ${hoursSinceActivity}h — keep the deal alive`,color:"#f59e0b",icon:IC.phone,btn:"CALL",act:()=>{if(lead.phone)window.open(`tel:${lead.phone}`)}};
+        nextAction={label:"CALL BACK NOW",sub:`No contact in ${hoursSinceActivity}h`,color:"#f59e0b",icon:IC.phone,btn:"CALL",act:()=>{if(lead.phone)window.open(`tel:${lead.phone}`)}};
     }
     if(!nextAction&&["follow_up","appointed","dispatched"].includes(lead.deal_status)&&dealVal>15000){
-        nextAction={label:"READY TO CLOSE",sub:`${$.money(dealVal)} deal — push for commitment`,color:"#22c55e",icon:IC.zap,btn:"UPDATE STATUS",act:()=>setStatusDD(true)};
+        nextAction={label:"READY TO CLOSE",sub:`${$.money(dealVal)} — push for commitment`,color:"#22c55e",icon:IC.zap,btn:"UPDATE STATUS",act:()=>setStatusDD(true)};
     }
     if(!nextAction&&!["closed_won","closed_lost"].includes(lead.deal_status)){
-        nextAction={label:"ADD ACTIVITY",sub:"Keep this lead moving forward",color:"#52525b",icon:IC.edit,btn:"ADD NOTE",act:()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),100)}};
+        nextAction={label:"ADD ACTIVITY",sub:"Keep this lead moving",color:"#52525b",icon:IC.edit,btn:"ADD NOTE",act:()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),100)}};
     }
 
     // ---- UNIFIED FEED ----
@@ -1457,46 +1504,50 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
         const f=[];
         tlArr.forEach(e=>{
             const aType=e.action_type||e.task_type||e.entry_type||"";
+            const isNote=aType==="note"||aType==="call_log";
             const colorMap={note:"#3b82f6",call_log:"#22c55e",assigned:"#a855f7",status_change:"#f59e0b",created:"#3b82f6",completed:"#22c55e",en_route:"#a855f7",arrived:"#f59e0b",closed:"#22c55e",not_closed:"#ef4444",rescheduled:"#eab308",no_show:"#ef4444"};
-            f.push({type:"timeline",ts:e.created_at,title:sL(aType),sub:e.note||e.description||e.title||"",who:e.rep_name,color:colorMap[aType]||(e.entry_type==="action"?"#f59e0b":e.entry_type==="task"?"#3b82f6":"#22c55e")});
+            f.push({type:"timeline",ts:e.created_at,title:sL(aType),sub:e.note||e.description||e.title||"",who:e.rep_name,color:colorMap[aType]||(e.entry_type==="action"?"#f59e0b":"#3b82f6"),isNote});
         });
-        appts.forEach(a=>f.push({type:"appt",ts:a.created_at||a.appointment_date,title:`Appt: ${sL(a.appointment_status)}`,sub:`${$.date(a.appointment_date)} ${$.t12(a.appointment_time)}${a.outcome?" — "+sL(a.outcome):""}`,color:"#a855f7"}));
-        pendingTasks.forEach(t=>f.push({type:"task",ts:t.created_at||t.due_date,title:t.title,sub:`${sL(t.task_type)} — due ${$.date(t.due_date)}`,color:"#3b82f6",taskId:t.id,status:t.status}));
+        appts.forEach(a=>f.push({type:"appt",ts:a.created_at||a.appointment_date,title:`Appt: ${sL(a.appointment_status)}`,sub:`${$.date(a.appointment_date)} ${$.t12(a.appointment_time)}${a.outcome?" — "+sL(a.outcome):""}`,color:"#a855f7",isNote:false}));
+        pendingTasks.forEach(t=>f.push({type:"task",ts:t.created_at||t.due_date,title:t.title,sub:`${sL(t.task_type)} — due ${$.date(t.due_date)}`,color:"#3b82f6",taskId:t.id,status:t.status,isNote:false}));
         f.sort((a,b)=>(b.ts||"").localeCompare(a.ts||""));
         return f;
     },[tlArr,appts,pendingTasks]);
 
     // ---- LEADERBOARD RANK ----
-    const myRank=leaderboard?.leaderboard?.find(r=>r.rep_id===user?.id);
     const rankPos=leaderboard?.leaderboard?.findIndex(r=>r.rep_id===user?.id);
 
     // Statuses and outcomes
     const statuses=["new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up","no_show","rehash"];
-    const outcomes=["no_answer","lvm","follow_up","needs_reschedule","sold","cancelled","not_home","not_interested"];
+    const outcomes=["no_answer","lvm","follow_up","needs_reschedule","call_back","not_interested","not_home","sold","cancelled","just_show_up","same_day","disconnected","wrong_number"];
+    const outcomeColors={no_answer:"#f59e0b",lvm:"#eab308",follow_up:"#3b82f6",needs_reschedule:"#a855f7",call_back:"#22c55e",not_interested:"#ef4444",not_home:"#f59e0b",sold:"#22c55e",cancelled:"#ef4444",just_show_up:"#22c55e",same_day:"#3b82f6",disconnected:"#ef4444",wrong_number:"#ef4444"};
 
     return(
-        <><div className="dov" onClick={onClose}/><div className="drw" style={{width:"min(100vw,900px)"}}>
-            {/* ===== HEADER BAR ===== */}
-            <div style={{padding:"12px 20px",borderBottom:"1px solid #18181b",background:"#0a0a0c",position:"sticky",top:0,zIndex:2}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+        <><div className="dov" onClick={tryClose}/><div ref={panelRef} className="drw" style={{width:"min(100vw,900px)"}}>
+            {/* ===== ACTIVE LEAD INDICATOR + HEADER ===== */}
+            <div style={{background:"#f59e0b",height:3,width:"100%"}}/>
+            <div style={{padding:"10px 20px",borderBottom:"1px solid #18181b",background:"#0a0a0c",position:"sticky",top:0,zIndex:2}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
                     <div style={{flex:1,minWidth:0}}>
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <div style={{width:8,height:8,borderRadius:"50%",background:"#f59e0b",animation:"sp 1.5s ease-in-out infinite",flexShrink:0}} title="Active Lead"/>
                             <h2 style={{fontSize:18,fontWeight:900,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{lead.first_name} {lead.last_name}</h2>
-                            <span className={`badge ${sB(lead.deal_status)}`} style={{fontSize:11,padding:"3px 10px",cursor:"pointer",flexShrink:0}} onClick={()=>setStatusDD(!statusDD)}>{sL(lead.deal_status)} &#x25BE;</span>
-                            {lead.last_outcome&&<span className="badge b-gray" style={{fontSize:10,cursor:"pointer",flexShrink:0}} onClick={()=>setOutcomeDD(!outcomeDD)}>{sL(lead.last_outcome)} &#x25BE;</span>}
+                            <span className={`badge ${sB(lead.deal_status)}`} style={{fontSize:11,padding:"3px 10px",cursor:"pointer",flexShrink:0}} onClick={()=>{setStatusDD(!statusDD);setOutcomeDD(false)}}>{sL(lead.deal_status)} &#x25BE;</span>
+                            <span className="badge" style={{fontSize:10,cursor:"pointer",flexShrink:0,background:(outcomeColors[lead.last_outcome]||"#52525b")+"18",color:outcomeColors[lead.last_outcome]||"#52525b"}} onClick={()=>{setOutcomeDD(!outcomeDD);setStatusDD(false)}}>{lead.last_outcome?sL(lead.last_outcome):"Outcome"} &#x25BE;</span>
                         </div>
-                        <div style={{fontSize:11,color:"#52525b",marginTop:2,display:"flex",gap:12,flexWrap:"wrap"}}>
-                            <span>{lead.property_address||"No address"}{lead.city?`, ${lead.city}`:""}</span>
-                            {lead.average_monthly_bill>0&&<span style={{color:"#f59e0b",fontWeight:700}}>{$.money(lead.average_monthly_bill)}/mo</span>}
-                            {nextAppt&&<span style={{color:"#3b82f6"}}>{$.date(nextAppt.appointment_date)} {$.t12(nextAppt.appointment_time)}</span>}
+                        <div style={{fontSize:10,color:"#3f3f46",marginTop:2,display:"flex",gap:10,flexWrap:"wrap"}}>
+                            <span>{lead.property_address||"--"}{lead.city?`, ${lead.city}`:""}</span>
+                            <span style={{color:"#f59e0b",fontWeight:700}}>{$.money(lead.average_monthly_bill)}/mo</span>
+                            <span style={{color:"#22c55e",fontWeight:700}}>{$.money(dealVal)} deal</span>
+                            <span style={{color:"#3f3f46",fontSize:9}}>C: call &middot; N: note &middot; S: status &middot; O: outcome &middot; []: nav</span>
                         </div>
                     </div>
-                    <div style={{display:"flex",gap:6,alignItems:"center",flexShrink:0}}>
-                        {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"10px 20px",fontSize:15,fontWeight:900,display:"flex",alignItems:"center",gap:6,minHeight:48}}><Ic d={IC.phone} s={18} c="#22c55e"/>CALL</button></a>}
-                        <button className="btn" onClick={()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),100)}} style={{padding:"10px 14px",minHeight:48}}><Ic d={IC.edit} s={16}/></button>
-                        <button className="btn" onClick={()=>{onClose();onCreateAppt(lead)}} style={{padding:"10px 14px",minHeight:48}}><Ic d={IC.cal} s={16}/></button>
-                        {isAdmin&&<button className="btn" onClick={()=>setAssignDD(!assignDD)} style={{padding:"10px 14px",minHeight:48}}><Ic d={IC.users} s={16}/></button>}
-                        <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x} s={18}/></div>
+                    <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
+                        {/* PREV/NEXT LEAD ARROWS */}
+                        <button className="btn" style={{padding:"8px",minHeight:40,minWidth:32}} onClick={()=>goNextLead(-1)} title="Previous lead ["><Ic d="M15 18l-6-6 6-6" s={16}/></button>
+                        {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"10px 18px",fontSize:14,fontWeight:900,display:"flex",alignItems:"center",gap:5,minHeight:44}}><Ic d={IC.phone} s={16} c="#22c55e"/>CALL</button></a>}
+                        <button className="btn" style={{padding:"8px",minHeight:40,minWidth:32}} onClick={()=>goNextLead(1)} title="Next lead ]"><Ic d="M9 18l6-6-6-6" s={16}/></button>
+                        <div style={{cursor:"pointer",padding:6}} onClick={tryClose}><Ic d={IC.x} s={18}/></div>
                     </div>
                 </div>
                 {/* INLINE STATUS DROPDOWN */}
@@ -1504,180 +1555,154 @@ function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
                     {statuses.map(s=><button key={s} className={`btn ${lead.deal_status===s?"btn-p":""}`} style={{fontSize:10,padding:"5px 10px"}} disabled={lead.deal_status===s} onClick={()=>updStatus(s)}>{sL(s)}</button>)}
                 </div>}
                 {/* INLINE OUTCOME DROPDOWN */}
-                {outcomeDD&&<div style={{position:"absolute",top:"100%",left:180,background:"#111113",border:"1px solid #27272a",borderRadius:8,padding:6,zIndex:10,display:"flex",flexWrap:"wrap",gap:3,maxWidth:360,boxShadow:"0 8px 30px #00000080"}}>
-                    {outcomes.map(o=><button key={o} className={`btn ${lead.last_outcome===o?"btn-p":""}`} style={{fontSize:10,padding:"5px 10px"}} onClick={()=>updOutcome(o)}>{sL(o)}</button>)}
+                {outcomeDD&&<div style={{position:"absolute",top:"100%",left:180,background:"#111113",border:"1px solid #27272a",borderRadius:8,padding:6,zIndex:10,display:"flex",flexWrap:"wrap",gap:3,maxWidth:380,boxShadow:"0 8px 30px #00000080"}}>
+                    {outcomes.map(o=><button key={o} className="btn" style={{fontSize:10,padding:"5px 10px",color:outcomeColors[o]||"#a1a1aa",borderColor:(outcomeColors[o]||"#27272a")+"40"}} onClick={()=>updOutcome(o)}>{sL(o)}</button>)}
                 </div>}
                 {/* INLINE ASSIGN DROPDOWN */}
-                {assignDD&&isAdmin&&<div style={{position:"absolute",top:"100%",right:20,background:"#111113",border:"1px solid #27272a",borderRadius:8,padding:6,zIndex:10,maxHeight:200,overflowY:"auto",width:220,boxShadow:"0 8px 30px #00000080"}}>
+                {assignDD&&isAdmin&&<div style={{position:"absolute",top:"100%",right:60,background:"#111113",border:"1px solid #27272a",borderRadius:8,padding:6,zIndex:10,maxHeight:200,overflowY:"auto",width:220,boxShadow:"0 8px 30px #00000080"}}>
                     {reps.map(r=><div key={r.id} style={{padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:600,borderRadius:4,background:lead.assigned_rep_id===r.id?"#f59e0b18":"transparent",display:"flex",justifyContent:"space-between"}} onClick={()=>assignRep(r.id)}><span>{r.full_name}</span>{lead.assigned_rep_id===r.id&&<span style={{color:"#f59e0b",fontSize:9}}>CURRENT</span>}</div>)}
                 </div>}
             </div>
 
+            {/* ===== FORCE ACTION LOG BANNER ===== */}
+            {pendingAction&&!actionLogged&&<div style={{background:"#ef444420",borderBottom:"2px solid #ef4444",padding:"10px 20px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <Ic d={IC.alert} s={16} c="#ef4444"/>
+                    <div><div style={{fontSize:12,fontWeight:800,color:"#ef4444"}}>ACTION REQUIRED</div><div style={{fontSize:11,color:"#fca5a5"}}>Log a note about: {pendingAction.label}</div></div>
+                </div>
+                <button className="btn btn-p" style={{padding:"6px 14px",fontSize:11}} onClick={()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),50)}}>LOG NOW</button>
+            </div>}
+
             {/* ===== TWO PANEL LAYOUT ===== */}
-            <div style={{display:"flex",height:"calc(100vh - 90px)",overflow:"hidden"}}>
-                {/* ===== LEFT PANEL — FIXED INFO + ACTIONS ===== */}
-                <div style={{width:280,flexShrink:0,borderRight:"1px solid #18181b",overflowY:"auto",padding:16,display:"flex",flexDirection:"column",gap:12}}>
-                    {/* Lead Info Block */}
-                    <div>
-                        <div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em",marginBottom:8}}>Lead Info</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                            <DF l="Phone" v={lead.phone?<a href={`tel:${lead.phone}`} style={{color:"#22c55e",textDecoration:"none",fontWeight:700}}>{lead.phone}</a>:"--"}/>
-                            <DF l="Address" v={lead.property_address?<a href={`https://maps.google.com/?q=${encodeURIComponent((lead.property_address||"")+" "+(lead.city||"")+" "+(lead.state||""))}`} target="_blank" rel="noopener" style={{color:"#3b82f6",textDecoration:"none"}}>{lead.property_address}, {lead.city}</a>:"--"}/>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                                <DF l="Monthly Bill" v={$.money(lead.average_monthly_bill)} c="#f59e0b"/>
-                                <DF l="Deal Value" v={$.money(dealVal)} c="#f59e0b"/>
-                            </div>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                                <DF l="Score" v={sc} c={sC(sc)}/>
-                                <DF l="Source" v={sL(lead.source_type)}/>
-                            </div>
-                            {nextAppt&&<div style={{background:"#3b82f610",border:"1px solid #3b82f630",borderRadius:6,padding:8}}>
-                                <div style={{fontSize:9,fontWeight:800,color:"#3b82f6",textTransform:"uppercase"}}>Next Appt</div>
-                                <div style={{fontSize:13,fontWeight:800,marginTop:2}}>{$.date(nextAppt.appointment_date)} {$.t12(nextAppt.appointment_time)}</div>
-                                <div style={{fontSize:10,color:"#71717a"}}>{sL(nextAppt.appointment_status)}</div>
-                            </div>}
-                        </div>
-                    </div>
-
-                    {/* Assigned Reps */}
-                    <div>
-                        <div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Team</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:4}}>
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span style={{color:"#52525b"}}>Assigned</span><span style={{fontWeight:700}}>{rn(lead.assigned_rep_id)}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span style={{color:"#52525b"}}>Setter</span><span style={{fontWeight:600,color:"#71717a"}}>{rn(lead.setter_id)}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span style={{color:"#52525b"}}>Runner</span><span style={{fontWeight:600,color:"#71717a"}}>{rn(lead.runner_id)}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}><span style={{color:"#52525b"}}>Closer</span><span style={{fontWeight:600,color:"#71717a"}}>{rn(lead.closer_id)}</span></div>
-                        </div>
-                    </div>
-
-                    {/* CLOSE PRESSURE PANEL */}
-                    <div style={{background:"#22c55e08",border:"1px solid #22c55e30",borderRadius:8,padding:12}}>
-                        <div style={{fontSize:9,fontWeight:900,color:"#22c55e",textTransform:"uppercase",letterSpacing:".08em",marginBottom:8}}>Close Pressure</div>
-                        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-                            <div><div style={{fontSize:18,fontWeight:900,color:"#22c55e"}}>{$.money(dealVal)}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Deal Value</div></div>
-                            <div><div style={{fontSize:18,fontWeight:900,color:"#f59e0b"}}>{$.money(commission)}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Commission (8%)</div></div>
-                        </div>
-                        {rankPos!=null&&rankPos>=0&&<div style={{marginTop:8,padding:"6px 8px",background:"#18181b",borderRadius:4,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                            <span style={{fontSize:10,color:"#52525b"}}>Leaderboard</span>
-                            <span style={{fontSize:13,fontWeight:900,color:rankPos<3?"#f59e0b":"#a1a1aa"}}>#{rankPos+1}</span>
-                        </div>}
-                        <div style={{marginTop:8,fontSize:10,color:"#52525b",textAlign:"center"}}>
-                            {lead.deal_status==="appointed"?"Close this deal!":lead.deal_status==="follow_up"?"Follow up to close":lead.deal_status==="confirmed"?"Set the appointment":"Keep pushing"}
-                        </div>
-                    </div>
-
-                    {/* Quick Action Buttons */}
-                    <div style={{display:"flex",flexDirection:"column",gap:4}}>
+            <div style={{display:"flex",height:pendingAction&&!actionLogged?"calc(100vh - 140px)":"calc(100vh - 93px)",overflow:"hidden"}}>
+                {/* ===== LEFT PANEL — COMPACT INFO ===== */}
+                <div className="drw-left" style={{width:260,flexShrink:0,borderRight:"1px solid #18181b",overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:10}}>
+                    {/* Lead Info */}
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{width:"100%",padding:"12px",fontSize:14,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",gap:8,minHeight:48}}><Ic d={IC.phone} s={18} c="#22c55e"/>CALL {lead.phone}</button></a>}
-                        <button className="btn btn-p" style={{width:"100%",padding:10,fontSize:12,fontWeight:800}} onClick={()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),100)}}><Ic d={IC.edit} s={14}/> ADD NOTE</button>
-                        <button className="btn" style={{width:"100%",padding:10,fontSize:12,fontWeight:800}} onClick={()=>{setNoteType("call_log");setTimeout(()=>noteRef.current?.focus(),100)}}><Ic d={IC.message} s={14}/> LOG CALL</button>
-                        <button className="btn" style={{width:"100%",padding:10,fontSize:12,fontWeight:800,color:"#a855f7"}} onClick={()=>{onClose();onCreateAppt(lead)}}><Ic d={IC.cal} s={14} c="#a855f7"/> RESCHEDULE</button>
-                        <button className="btn" style={{width:"100%",padding:10,fontSize:12,fontWeight:800,color:"#f59e0b"}} onClick={()=>setStatusDD(true)}><Ic d={IC.flag} s={14} c="#f59e0b"/> CHANGE STATUS</button>
+                        {lead.property_address&&<a href={`https://maps.google.com/?q=${encodeURIComponent((lead.property_address||"")+" "+(lead.city||"")+" "+(lead.state||""))}`} target="_blank" rel="noopener" style={{fontSize:11,color:"#3b82f6",textDecoration:"none",display:"block",padding:"4px 0"}}><Ic d={IC.map} s={11} c="#3b82f6"/> {lead.property_address}, {lead.city}</a>}
                     </div>
 
-                    {/* Details Accordion */}
-                    <div>
-                        <div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Details</div>
-                        <div style={{display:"flex",flexDirection:"column",gap:4,fontSize:11}}>
-                            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#52525b"}}>Email</span><span style={{color:"#a1a1aa"}}>{lead.email||"--"}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#52525b"}}>kWh/yr</span><span style={{color:"#a1a1aa"}}>{lead.estimated_annual_kwh||"--"}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#52525b"}}>Property</span><span style={{color:"#a1a1aa"}}>{sL(lead.property_type)||"--"}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#52525b"}}>Homeowner</span><span style={{color:"#a1a1aa"}}>{sL(lead.homeowner_status)||"--"}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#52525b"}}>Created</span><span style={{color:"#a1a1aa"}}>{$.dt(lead.created_at)}</span></div>
-                            <div style={{display:"flex",justifyContent:"space-between"}}><span style={{color:"#52525b"}}>Follow-up</span><span style={{color:"#a1a1aa"}}>{lead.next_follow_up_date?$.date(lead.next_follow_up_date):"--"}</span></div>
-                        </div>
+                    {/* Key Metrics */}
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                        <div style={{background:"#f59e0b08",border:"1px solid #f59e0b20",borderRadius:6,padding:8,textAlign:"center"}}><div style={{fontSize:16,fontWeight:900,color:"#f59e0b"}}>{$.money(lead.average_monthly_bill)}</div><div style={{fontSize:8,color:"#52525b",fontWeight:800}}>MONTHLY</div></div>
+                        <div style={{background:"#22c55e08",border:"1px solid #22c55e20",borderRadius:6,padding:8,textAlign:"center"}}><div style={{fontSize:16,fontWeight:900,color:"#22c55e"}}>{$.money(commission)}</div><div style={{fontSize:8,color:"#52525b",fontWeight:800}}>COMMISSION</div></div>
                     </div>
 
-                    {/* Admin Actions */}
-                    {isAdmin&&<div>
-                        <button className="btn" style={{width:"100%",fontSize:10,color:"#52525b"}} onClick={()=>setShowAdmin(!showAdmin)}>Admin Actions {showAdmin?"▲":"▼"}</button>
-                        {showAdmin&&<div style={{marginTop:6,display:"flex",flexDirection:"column",gap:4}}>
-                            {appts.filter(a=>!["completed","cancelled"].includes(a.appointment_status)).map(a=>(
-                                <button key={a.id} className="btn btn-r" style={{fontSize:10,width:"100%"}} onClick={()=>cancelAppt(a.id)}>Cancel {$.date(a.appointment_date)} appt</button>
-                            ))}
-                            <button className="btn" style={{fontSize:10,color:"#ef4444",border:"1px solid #ef444440",width:"100%"}} disabled={deleting} onClick={deleteLead}>{deleting?"Archiving...":"Archive Lead"}</button>
-                        </div>}
+                    {/* Appointment */}
+                    {nextAppt&&<div style={{background:"#3b82f610",border:"1px solid #3b82f630",borderRadius:6,padding:8}}>
+                        <div style={{fontSize:9,fontWeight:800,color:"#3b82f6",textTransform:"uppercase"}}>Next Appt</div>
+                        <div style={{fontSize:13,fontWeight:800,marginTop:2}}>{$.date(nextAppt.appointment_date)} {$.t12(nextAppt.appointment_time)}</div>
+                        <div style={{fontSize:10,color:"#71717a"}}>{sL(nextAppt.appointment_status)}</div>
                     </div>}
 
-                    {lockInfo&&lockInfo.is_locked&&<div className="badge b-red" style={{textAlign:"center",padding:8,fontSize:11}}>LOCKED — Completion required</div>}
+                    {/* Quick Actions */}
+                    <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                        <button className="btn btn-p" style={{width:"100%",padding:8,fontSize:11,fontWeight:800}} onClick={()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),50)}}><Ic d={IC.edit} s={12}/> ADD NOTE (N)</button>
+                        <button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800}} onClick={()=>{setNoteType("call_log");setTimeout(()=>noteRef.current?.focus(),50)}}><Ic d={IC.message} s={12}/> LOG CALL (L)</button>
+                        <button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800,color:"#f59e0b"}} onClick={()=>setStatusDD(true)}><Ic d={IC.flag} s={12} c="#f59e0b"/> STATUS (S)</button>
+                        <button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800,color:"#a855f7"}} onClick={()=>{onClose();onCreateAppt(lead)}}><Ic d={IC.cal} s={12} c="#a855f7"/> APPOINTMENT</button>
+                        {isAdmin&&<button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800}} onClick={()=>setAssignDD(!assignDD)}><Ic d={IC.users} s={12}/> ASSIGN</button>}
+                    </div>
+
+                    {/* Team */}
+                    <div style={{fontSize:10}}>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{color:"#3f3f46"}}>Assigned</span><span style={{fontWeight:700,color:"#a1a1aa"}}>{rn(lead.assigned_rep_id)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{color:"#3f3f46"}}>Setter</span><span style={{color:"#52525b"}}>{rn(lead.setter_id)}</span></div>
+                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}><span style={{color:"#3f3f46"}}>Closer</span><span style={{color:"#52525b"}}>{rn(lead.closer_id)}</span></div>
+                    </div>
+
+                    {/* Leaderboard rank */}
+                    {rankPos!=null&&rankPos>=0&&<div style={{background:"#18181b",borderRadius:6,padding:8,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontSize:10,color:"#52525b"}}>Your Rank</span>
+                        <span style={{fontSize:16,fontWeight:900,color:rankPos<3?"#f59e0b":"#71717a"}}>#{rankPos+1}</span>
+                    </div>}
+
+                    {/* Admin */}
+                    {isAdmin&&<div>
+                        <button className="btn" style={{width:"100%",fontSize:9,color:"#3f3f46"}} onClick={()=>setShowAdmin(!showAdmin)}>Admin {showAdmin?"▲":"▼"}</button>
+                        {showAdmin&&<div style={{marginTop:4,display:"flex",flexDirection:"column",gap:3}}>
+                            {appts.filter(a=>!["completed","cancelled"].includes(a.appointment_status)).map(a=><button key={a.id} className="btn btn-r" style={{fontSize:9,width:"100%"}} onClick={()=>cancelAppt(a.id)}>Cancel {$.date(a.appointment_date)}</button>)}
+                            <button className="btn" style={{fontSize:9,color:"#ef4444",width:"100%"}} disabled={deleting} onClick={deleteLead}>{deleting?"...":"Archive"}</button>
+                        </div>}
+                    </div>}
                 </div>
 
-                {/* ===== RIGHT PANEL — PRIMARY WORK AREA ===== */}
+                {/* ===== RIGHT PANEL — EXECUTION AREA ===== */}
                 <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column"}}>
-                    {/* NEXT ACTION ENGINE */}
-                    {nextAction&&<div style={{padding:"12px 16px",borderBottom:"1px solid #18181b"}}>
-                        <div style={{background:`${nextAction.color}10`,border:`2px solid ${nextAction.color}`,borderRadius:10,padding:14,cursor:"pointer",display:"flex",alignItems:"center",gap:14}} onClick={nextAction.act}>
-                            <div style={{width:44,height:44,borderRadius:10,background:`${nextAction.color}20`,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}><Ic d={nextAction.icon} s={22} c={nextAction.color}/></div>
-                            <div style={{flex:1,minWidth:0}}>
-                                <div style={{fontSize:9,fontWeight:900,color:nextAction.color,textTransform:"uppercase",letterSpacing:".1em"}}>NEXT ACTION</div>
-                                <div style={{fontSize:15,fontWeight:900,color:"#e4e4e7"}}>{nextAction.label}</div>
-                                <div style={{fontSize:11,color:"#a1a1aa"}}>{nextAction.sub}</div>
+                    {/* ===== NEXT MOVE — THE MOST VISIBLE ELEMENT ===== */}
+                    {nextAction&&<div style={{padding:"14px 20px",borderBottom:"2px solid "+nextAction.color,background:nextAction.color+"08"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:16,cursor:"pointer"}} onClick={nextAction.act}>
+                            <div style={{width:52,height:52,borderRadius:12,background:nextAction.color+"25",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,border:`2px solid ${nextAction.color}`}}><Ic d={nextAction.icon} s={26} c={nextAction.color}/></div>
+                            <div style={{flex:1}}>
+                                <div style={{fontSize:10,fontWeight:900,color:nextAction.color,textTransform:"uppercase",letterSpacing:".12em"}}>NEXT MOVE</div>
+                                <div style={{fontSize:18,fontWeight:900,color:"#e4e4e7",lineHeight:1.2}}>{nextAction.label}</div>
+                                <div style={{fontSize:12,color:"#a1a1aa",marginTop:2}}>{nextAction.sub}</div>
                             </div>
-                            <button className="btn btn-p" style={{padding:"10px 18px",fontSize:12,fontWeight:900,flexShrink:0}}>{nextAction.btn}</button>
+                            <button className="btn btn-p" style={{padding:"12px 24px",fontSize:14,fontWeight:900,flexShrink:0,minHeight:48}}>{nextAction.btn}</button>
                         </div>
                     </div>}
 
                     {/* RISK ALERTS */}
-                    {risks.length>0&&<div style={{padding:"8px 16px",borderBottom:"1px solid #18181b"}}>
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            {risks.map((r,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:5,background:`${r.color}10`,border:`1px solid ${r.color}30`,borderRadius:6,padding:"5px 10px",fontSize:10,fontWeight:700,color:r.color}}>
-                                <Ic d={r.icon} s={11} c={r.color}/>{r.msg}
+                    {risks.length>0&&<div style={{padding:"6px 20px",borderBottom:"1px solid #18181b",display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {risks.map((r,i)=><div key={i} style={{display:"flex",alignItems:"center",gap:4,background:r.color+"10",border:`1px solid ${r.color}30`,borderRadius:5,padding:"4px 8px",fontSize:10,fontWeight:700,color:r.color}}><Ic d={r.icon} s={10} c={r.color}/>{r.msg}</div>)}
+                    </div>}
+
+                    {/* OVERDUE TASKS */}
+                    {overdueTasks.length>0&&<div style={{padding:"8px 20px",borderBottom:"1px solid #18181b"}}>
+                        <div style={{background:"#ef444410",border:"1px solid #ef444440",borderRadius:6,padding:8}}>
+                            {overdueTasks.slice(0,3).map(t=><div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"3px 0"}}>
+                                <span style={{fontSize:11,fontWeight:700,color:"#fca5a5"}}>{t.title} — due {$.date(t.due_date)}</span>
+                                <button className="btn btn-p" style={{padding:"3px 10px",fontSize:10}} onClick={()=>completeTask(t.id)}>DONE</button>
                             </div>)}
                         </div>
                     </div>}
 
-                    {/* OVERDUE TASKS BANNER */}
-                    {overdueTasks.length>0&&<div style={{padding:"8px 16px",borderBottom:"1px solid #18181b"}}>
-                        <div style={{background:"#ef444410",border:"1px solid #ef444440",borderRadius:8,padding:10}}>
-                            <div style={{fontSize:10,fontWeight:900,color:"#ef4444",textTransform:"uppercase",marginBottom:4}}>Overdue ({overdueTasks.length})</div>
-                            {overdueTasks.slice(0,3).map(t=><div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-                                <div><span style={{fontSize:11,fontWeight:700}}>{t.title}</span><span style={{fontSize:10,color:"#fca5a5",marginLeft:6}}>Due {$.date(t.due_date)}</span></div>
-                                <button className="btn btn-p" style={{padding:"4px 10px",fontSize:10}} onClick={()=>completeTask(t.id)}>DONE</button>
-                            </div>)}
-                        </div>
-                    </div>}
-
-                    {/* NOTE INPUT — ALWAYS VISIBLE AT TOP OF FEED */}
-                    <div style={{padding:"12px 16px",borderBottom:"1px solid #18181b",background:"#0c0c0f"}}>
+                    {/* ===== NOTE INPUT — DOMINANT, ALWAYS VISIBLE ===== */}
+                    <div style={{padding:"12px 20px",borderBottom:"2px solid #27272a",background:"#0c0c0f"}}>
                         <div style={{display:"flex",gap:4,marginBottom:6}}>
                             <button className={`btn ${noteType==="general"?"btn-p":""}`} style={{fontSize:10,padding:"3px 10px"}} onClick={()=>setNoteType("general")}>Note</button>
                             <button className={`btn ${noteType==="call_log"?"btn-p":""}`} style={{fontSize:10,padding:"3px 10px"}} onClick={()=>setNoteType("call_log")}>Call Log</button>
+                            {pendingAction&&!actionLogged&&<span style={{fontSize:10,color:"#ef4444",fontWeight:700,marginLeft:8,display:"flex",alignItems:"center",gap:3}}><Ic d={IC.alert} s={10} c="#ef4444"/>Required: log what happened</span>}
                         </div>
                         <div style={{display:"flex",gap:6}}>
-                            <textarea ref={noteRef} className="inp" style={{flex:1,minHeight:40,maxHeight:100}} value={noteText} onChange={e=>setNote(e.target.value)} placeholder={noteType==="call_log"?"What was discussed on the call...":"Add a note about this lead..."} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&noteText.trim()){e.preventDefault();addNote()}}}/>
-                            <button className="btn btn-p" style={{padding:"8px 16px",fontSize:12,fontWeight:800,alignSelf:"flex-end"}} disabled={notesBusy||!noteText.trim()} onClick={addNote}>{notesBusy?<div className="spin" style={{width:16,height:16,borderWidth:2}}/>:<Ic d={IC.send} s={14}/>}</button>
+                            <textarea ref={noteRef} className="inp" style={{flex:1,minHeight:44,maxHeight:120,fontSize:13}} value={noteText} onChange={e=>setNote(e.target.value)} placeholder={pendingAction?"What happened? (required before closing)...":noteType==="call_log"?"What was discussed...":"Note about this lead..."} onKeyDown={e=>{if(e.key==="Enter"&&!e.shiftKey&&noteText.trim()){e.preventDefault();addNote()}}}/>
+                            <button className="btn btn-p" style={{padding:"10px 20px",fontSize:13,fontWeight:800,alignSelf:"flex-end",minHeight:44}} disabled={notesBusy||!noteText.trim()} onClick={addNote}>{notesBusy?<div className="spin" style={{width:16,height:16,borderWidth:2}}/>:"SAVE"}</button>
                         </div>
                     </div>
 
-                    {/* APPOINTMENTS SUMMARY */}
-                    {allAppts.length>0&&<div style={{padding:"8px 16px",borderBottom:"1px solid #18181b"}}>
-                        <div style={{fontSize:9,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",marginBottom:6}}>Appointments ({allAppts.length})</div>
-                        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:4}}>
-                            {allAppts.slice(0,5).map(a=><div key={a.id} style={{background:"#111113",border:"1px solid #1e1e21",borderRadius:6,padding:"8px 10px",minWidth:140,flexShrink:0,borderLeft:`3px solid ${a.appointment_status==="completed"?"#22c55e":a.appointment_status==="cancelled"?"#ef4444":"#3b82f6"}`}}>
-                                <div style={{fontSize:12,fontWeight:700}}>{$.date(a.appointment_date)} {$.t12(a.appointment_time)}</div>
-                                <div style={{fontSize:10,color:"#71717a"}}>{sL(a.appointment_status)}{a.outcome?" — "+sL(a.outcome):""}</div>
-                            </div>)}
+                    {/* ===== NEXT LEAD SUGGESTION (after action logged) ===== */}
+                    {showNextLead&&suggestedNext&&<div style={{padding:"10px 20px",borderBottom:"1px solid #18181b",background:"#f59e0b08"}}>
+                        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                            <div>
+                                <div style={{fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase"}}>Next Best Lead</div>
+                                <div style={{fontSize:13,fontWeight:800}}>{suggestedNext.first_name} {suggestedNext.last_name} <span style={{color:"#f59e0b",fontSize:11}}>{$.money(suggestedNext.average_monthly_bill)}/mo</span> <span className={`badge ${sB(suggestedNext.deal_status)}`} style={{fontSize:9}}>{sL(suggestedNext.deal_status)}</span></div>
+                            </div>
+                            <div style={{display:"flex",gap:4}}>
+                                <button className="btn btn-p" style={{padding:"8px 16px",fontSize:12,fontWeight:800}} onClick={()=>{setShowNextLead(false);if(onNextLead)onNextLead(suggestedNext)}}>WORK THIS LEAD</button>
+                                <button className="btn" style={{padding:"8px 10px",fontSize:10}} onClick={()=>setShowNextLead(false)}>Dismiss</button>
+                            </div>
                         </div>
                     </div>}
 
-                    {/* UNIFIED ACTIVITY FEED */}
-                    <div style={{flex:1,padding:"12px 16px",overflowY:"auto"}}>
-                        <div style={{fontSize:9,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",marginBottom:10}}>Activity Feed ({feed.length})</div>
-                        {feed.length===0&&<div style={{textAlign:"center",color:"#27272a",fontSize:12,padding:24}}>No activity yet — add a note or log a call above.</div>}
-                        {feed.slice(0,30).map((f,i)=>(
-                            <div key={i} style={{display:"flex",gap:10,marginBottom:0}}>
+                    {/* ===== UNIFIED ACTIVITY FEED — THE CENTER OF TRUTH ===== */}
+                    <div style={{flex:1,padding:"14px 20px",overflowY:"auto"}}>
+                        <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",marginBottom:12}}>Activity ({feed.length})</div>
+                        {feed.length===0&&<div style={{textAlign:"center",color:"#27272a",fontSize:13,padding:32}}>No activity yet — add a note above to start.</div>}
+                        {feed.slice(0,40).map((f,i)=>(
+                            <div key={i} style={{display:"flex",gap:12,marginBottom:0}}>
                                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",flexShrink:0}}>
-                                    <div style={{width:8,height:8,borderRadius:"50%",background:f.color,marginTop:5}}/>
-                                    {i<Math.min(feed.length,30)-1&&<div style={{width:1,background:"#27272a",flex:1,minHeight:16}}/>}
+                                    <div style={{width:10,height:10,borderRadius:"50%",background:f.color,marginTop:4,border:f.isNote?"2px solid #fff":"none"}}/>
+                                    {i<Math.min(feed.length,40)-1&&<div style={{width:1,background:"#1e1e21",flex:1,minHeight:14}}/>}
                                 </div>
-                                <div style={{paddingBottom:10,flex:1,minWidth:0}}>
+                                <div style={{paddingBottom:f.isNote?14:8,flex:1,minWidth:0,background:f.isNote?"#111113":"transparent",borderRadius:f.isNote?8:0,padding:f.isNote?"10px 12px":"0",marginBottom:f.isNote?4:0,border:f.isNote?"1px solid #1e1e21":"none"}}>
                                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:6}}>
-                                        <div style={{fontSize:12,fontWeight:700,color:"#a1a1aa"}}>{f.title}</div>
-                                        <div style={{fontSize:9,color:"#3f3f46",flexShrink:0}}>{$.ago(f.ts)}</div>
+                                        <div style={{fontSize:f.isNote?13:12,fontWeight:700,color:f.isNote?"#e4e4e7":"#71717a"}}>{f.title}</div>
+                                        <div style={{fontSize:9,color:"#3f3f46",flexShrink:0}}>{f.ts?$.dt(f.ts):"--"}</div>
                                     </div>
-                                    {f.sub&&<div style={{fontSize:11,color:"#71717a",marginTop:1}}>{f.sub}</div>}
-                                    {f.who&&<div style={{fontSize:10,color:"#3f3f46"}}>{f.who}</div>}
-                                    {f.taskId&&f.status!=="completed"&&<button className="btn btn-g" style={{fontSize:10,padding:"3px 8px",marginTop:3}} onClick={()=>completeTask(f.taskId)}>Done</button>}
+                                    {f.sub&&<div style={{fontSize:f.isNote?13:11,color:f.isNote?"#a1a1aa":"#52525b",marginTop:2,whiteSpace:f.isNote?"pre-wrap":"nowrap",overflow:f.isNote?"visible":"hidden",textOverflow:f.isNote?"clip":"ellipsis"}}>{f.sub}</div>}
+                                    {f.who&&<div style={{fontSize:10,color:"#3f3f46",marginTop:2}}>— {f.who}</div>}
+                                    {f.taskId&&f.status!=="completed"&&<button className="btn btn-g" style={{fontSize:10,padding:"3px 8px",marginTop:4}} onClick={()=>completeTask(f.taskId)}>Done</button>}
                                 </div>
                             </div>
                         ))}
