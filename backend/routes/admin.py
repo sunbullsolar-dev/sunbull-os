@@ -1083,3 +1083,115 @@ def admin_check_lead_lock(
     """Check if a lead is locked due to pending tasks."""
     from services.enforcement_engine import check_lead_locked
     return check_lead_locked(db, lead_id)
+
+
+# ========================================================================
+# PHASE 3 — ESCALATION, PRIORITY, REVENUE, LEADERBOARD, NOTIFICATIONS
+# ========================================================================
+
+@router.get("/escalation")
+def admin_escalation(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Run escalation engine and return results."""
+    from services.phase3_engines import run_escalation_engine
+    return run_escalation_engine(db)
+
+
+@router.get("/priority-leads")
+def admin_priority_leads(
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get top priority leads to close."""
+    from services.phase3_engines import get_top_leads_to_close
+    return {"leads": get_top_leads_to_close(db, limit)}
+
+
+@router.get("/rep-priority-leads/{rep_id}")
+def admin_rep_priority_leads(
+    rep_id: int,
+    limit: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get top priority leads for a specific rep."""
+    from services.phase3_engines import get_rep_top_leads
+    return {"leads": get_rep_top_leads(db, rep_id, limit)}
+
+
+@router.get("/revenue")
+def admin_revenue(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get revenue visibility dashboard."""
+    from services.phase3_engines import get_revenue_dashboard
+    return get_revenue_dashboard(db)
+
+
+@router.get("/reassignment-suggestions")
+def admin_reassignment_suggestions(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get leads that should be reassigned."""
+    from services.phase3_engines import get_reassignment_suggestions
+    return {"suggestions": get_reassignment_suggestions(db)}
+
+
+@router.get("/leaderboard")
+def admin_leaderboard(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get rep leaderboard with rankings."""
+    from services.phase3_engines import get_rep_leaderboard
+    return get_rep_leaderboard(db)
+
+
+@router.get("/smart-recommend/{lead_id}")
+def admin_smart_recommend(
+    lead_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Smart dispatch Level 2 — enhanced rep recommendation."""
+    from services.phase3_engines import smart_recommend_rep
+    return smart_recommend_rep(db, lead_id)
+
+
+@router.get("/notifications")
+def get_notifications(
+    unread_only: bool = Query(True),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Get notifications for current user."""
+    from services.phase3_engines import get_user_notifications
+    return {"notifications": get_user_notifications(db, current_user.id, unread_only)}
+
+
+@router.post("/notifications/{notification_id}/read")
+def read_notification(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark a notification as read."""
+    from services.phase3_engines import mark_notification_read
+    mark_notification_read(db, notification_id, current_user.id)
+    return {"ok": True}
+
+
+@router.post("/notifications/read-all")
+def read_all_notifications(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark all notifications as read."""
+    from services.phase3_engines import mark_all_notifications_read
+    mark_all_notifications_read(db, current_user.id)
+    return {"ok": True}

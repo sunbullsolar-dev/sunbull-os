@@ -189,6 +189,11 @@ function DashboardPage(){
     const[d,sD]=useState(null);const[tasks,sTasks]=useState([]);const[rehash,sRehash]=useState([]);
     const[appts,sAppts]=useState([]);const[loading,setLd]=useState(true);
     const[enforcement,setEnf]=useState(null);const[violations,setViol]=useState([]);
+    // Phase 3 state
+    const[revenue,setRev]=useState(null);const[escalation,setEsc]=useState(null);
+    const[topLeads,setTL]=useState([]);const[reassign,setReassign]=useState([]);
+    const[leaderboard,setLB]=useState(null);const[notifs,setNotifs]=useState([]);
+    const[repLeads,setRL]=useState([]);
 
     useEffect(()=>{load()},[]);
     const load=async()=>{
@@ -200,14 +205,21 @@ function DashboardPage(){
                 af("/api/appointments"),
                 af("/api/tasks"),
             ]);
+            // Load notifications for everyone
+            try{const nr=await af("/api/admin/notifications");if(nr.ok){const nd=await nr.json();setNotifs(nd.notifications||[])}}catch{}
             if(isA){
                 if(dr.ok)sD(await dr.json());
                 if(ar.ok){const a=await ar.json();sAppts(Array.isArray(a)?a:[])}
                 if(tr.ok){const t=await tr.json();sTasks(Array.isArray(t)?t:(t.items||[]))}
                 try{const rr=await af("/api/leads/rehash-queue");if(rr.ok)sRehash(await rr.json())}catch{}
-                // Load enforcement overview + violations
                 try{const er=await af("/api/admin/enforcement");if(er.ok)setEnf(await er.json())}catch{}
                 try{const vr=await af("/api/admin/violations?acknowledged=false&limit=10");if(vr.ok){const vd=await vr.json();setViol(vd.violations||[])}}catch{}
+                // Phase 3 admin data
+                try{const rv=await af("/api/admin/revenue");if(rv.ok)setRev(await rv.json())}catch{}
+                try{const es=await af("/api/admin/escalation");if(es.ok)setEsc(await es.json())}catch{}
+                try{const tl=await af("/api/admin/priority-leads?limit=5");if(tl.ok){const td=await tl.json();setTL(td.leads||[])}}catch{}
+                try{const ra=await af("/api/admin/reassignment-suggestions");if(ra.ok){const rd=await ra.json();setReassign(rd.suggestions||[])}}catch{}
+                try{const lb=await af("/api/admin/leaderboard");if(lb.ok)setLB(await lb.json())}catch{}
             } else {
                 const leads=dr.ok?await dr.json():[];
                 const a=ar.ok?await ar.json():[];
@@ -218,10 +230,15 @@ function DashboardPage(){
                 sD({_rep:true,total_leads:la.length,appts_today:(Array.isArray(a)?a:[]).filter(x=>x.appointment_date===today).length,open_tasks:ta.filter(x=>x.status!=="completed").length});
                 sAppts(Array.isArray(a)?a:[]);
                 sTasks(ta);
+                // Rep leaderboard + priority leads
+                try{const lb=await af("/api/admin/leaderboard");if(lb.ok)setLB(await lb.json())}catch{}
+                try{const rl=await af(`/api/admin/rep-priority-leads/${user?.id}?limit=5`);if(rl.ok){const rd=await rl.json();setRL(rd.leads||[])}}catch{}
             }
         }catch(e){console.error(e)}
         setLd(false);
     };
+
+    const markRead=async(id)=>{try{await af(`/api/admin/notifications/${id}/read`,{method:"POST"});setNotifs(n=>n.filter(x=>x.id!==id))}catch{}};
 
     if(loading)return<Spin/>;
 
@@ -231,12 +248,12 @@ function DashboardPage(){
     const pending=tasks.filter(t=>t.status==="pending");
     const dueToday=pending.filter(t=>t.due_date&&t.due_date.startsWith(today));
 
-    // === REP DASHBOARD (with UI PRESSURE) ===
+    // === REP DASHBOARD (with UI PRESSURE + LEADERBOARD) ===
     if(user?.role!=="admin"||d?._rep){
         const hasOverdue=overdue.length>0;
+        const myRank=leaderboard?.leaderboard?.find(r=>r.rep_id===user?.id);
         return(
             <div>
-                {/* FULL-WIDTH OVERDUE ALERT BAR */}
                 {hasOverdue&&(
                     <div style={{background:"#ef4444",padding:"12px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
@@ -246,24 +263,52 @@ function DashboardPage(){
                         <button className="btn" style={{background:"#fff",color:"#ef4444",borderColor:"#fff",fontWeight:900}} onClick={()=>nav("/tasks")}>FIX NOW</button>
                     </div>
                 )}
-                <PH title="My Dashboard" sub={`Welcome, ${user?.full_name}`}/>
+                {/* Notifications bar */}
+                {notifs.length>0&&(
+                    <div style={{background:"#3b82f618",padding:"8px 24px",borderBottom:"1px solid #3b82f640"}}>
+                        {notifs.slice(0,3).map(n=>(
+                            <div key={n.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
+                                <div><span style={{fontSize:11,fontWeight:700,color:n.type==="overdue"?"#ef4444":"#3b82f6"}}>{n.title}</span><span style={{fontSize:10,color:"#71717a",marginLeft:8}}>{n.message}</span></div>
+                                <button className="btn" style={{fontSize:9,padding:"2px 8px"}} onClick={()=>markRead(n.id)}>Dismiss</button>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                <PH title="My Dashboard" sub={`Welcome, ${user?.full_name}`} right={myRank&&<div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:900,color:myRank.rank<=2?"#f59e0b":myRank.rank<=5?"#22c55e":"#a1a1aa"}}>#{myRank.rank}</div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>Rank of {leaderboard?.total_reps||"?"}</div></div>}/>
                 <div style={{padding:"16px 24px"}}>
-                    {/* Overdue tasks - RED ALERT BLOCK */}
                     {hasOverdue&&(
                         <div style={{background:"#ef444415",border:"2px solid #ef4444",borderRadius:10,padding:16,marginBottom:16}}>
                             <div style={{fontSize:13,fontWeight:900,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>BLOCKED — Complete These Tasks First</div>
                             {overdue.map(t=><TaskRow key={t.id} t={t}/>)}
                         </div>
                     )}
-                    {/* KPIs */}
+                    {/* KPIs + Rank */}
                     <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:20}}>
                         <KPI l="My Leads" v={d?.total_leads||0}/>
                         <KPI l="Today's Appts" v={d?.appts_today||0} t={d?.appts_today>0?"warn":null}/>
                         <KPI l="Open Tasks" v={d?.open_tasks||0} t={d?.open_tasks>3?"hot":"ok"}/>
                         <KPI l="Due Today" v={dueToday.length} t={dueToday.length>0?"warn":null}/>
                         <KPI l="Overdue" v={overdue.length} t={overdue.length>0?"hot":null}/>
+                        {myRank&&<KPI l="Score" v={myRank.daily_score} t={myRank.daily_score>=200?"ok":myRank.daily_score>=100?"warn":"hot"}/>}
+                        {myRank&&<KPI l="Violations" v={myRank.active_violations} t={myRank.active_violations>0?"hot":null}/>}
                     </div>
-                    {/* Today's appointments — large mobile-friendly cards */}
+                    {/* Priority leads for rep */}
+                    {repLeads.length>0&&(
+                        <div style={{marginBottom:20}}>
+                            <SH title="Your Top Priority Leads" count={repLeads.length}/>
+                            <div className="cd" style={{padding:0}}>
+                                {repLeads.map((l,i)=>(
+                                    <div key={l.lead_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
+                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                            <div style={{width:24,height:24,borderRadius:"50%",background:i===0?"#f59e0b28":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i===0?"#f59e0b":"#71717a"}}>{i+1}</div>
+                                            <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.city} &middot; {sL(l.deal_status)}</div></div>
+                                        </div>
+                                        <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:800,color:"#f59e0b"}}>{$.money(l.deal_value)}</div><div style={{fontSize:9,color:"#3f3f46"}}>Priority: {l.priority_score}</div></div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                     {todayAppts.length>0&&(
                         <div style={{marginBottom:20}}>
                             <SH title="Today's Appointments" count={todayAppts.length}/>
@@ -273,45 +318,110 @@ function DashboardPage(){
                     {dueToday.length>0&&(
                         <div><SH title="Due Today" count={dueToday.length}/>{dueToday.map(t=><TaskRow key={t.id} t={t}/>)}</div>
                     )}
+                    {/* Mini Leaderboard */}
+                    {leaderboard&&leaderboard.leaderboard?.length>1&&(
+                        <div style={{marginTop:20}}>
+                            <SH title="Leaderboard"/>
+                            <div className="cd" style={{padding:0}}>
+                                {leaderboard.leaderboard.slice(0,5).map(r=>(
+                                    <div key={r.rep_id} style={{padding:"8px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center",background:r.rep_id===user?.id?"#f59e0b08":"transparent"}}>
+                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                            <div style={{width:22,height:22,borderRadius:"50%",background:r.rank===1?"#f59e0b28":r.rank<=3?"#22c55e18":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:r.rank===1?"#f59e0b":"#71717a"}}>{r.rank}</div>
+                                            <span style={{fontSize:12,fontWeight:r.rep_id===user?.id?800:600}}>{r.name}{r.rep_id===user?.id?" (You)":""}</span>
+                                        </div>
+                                        <div style={{display:"flex",gap:12,fontSize:11}}>
+                                            <span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span>
+                                            <span style={{fontWeight:800}}>{r.daily_score}</span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
         );
     }
 
-    // === ADMIN WAR ROOM (3-COLUMN LAYOUT) with ENFORCEMENT ===
+    // === ADMIN WAR ROOM (PHASE 3: REVENUE + ESCALATION + PRIORITY) ===
     const enfGlobal=enforcement?.global||{};
+    const highRiskReps=escalation?.high_risk_reps||[];
+    const leadsAtRisk=escalation?.leads_at_risk||[];
+    const reassignSuggestions=reassign.slice(0,5);
     return(
         <div>
-            {/* Enforcement alert bar */}
-            {(enfGlobal.total_overdue_tasks>0||enfGlobal.total_active_violations>0)&&(
-                <div style={{background:enfGlobal.reps_in_red>0?"#ef444418":"#f59e0b18",padding:"10px 24px",borderBottom:"1px solid "+(enfGlobal.reps_in_red>0?"#ef444440":"#f59e0b40"),display:"flex",alignItems:"center",gap:12}}>
-                    <Ic d={IC.alert} s={16} c={enfGlobal.reps_in_red>0?"#ef4444":"#f59e0b"}/>
-                    <span style={{fontSize:12,fontWeight:800,color:enfGlobal.reps_in_red>0?"#ef4444":"#f59e0b"}}>
-                        {enfGlobal.total_overdue_tasks} overdue tasks &middot; {enfGlobal.total_active_violations} active violations &middot; {enfGlobal.reps_in_red} reps in RED
-                    </span>
+            {/* REVENUE AT RISK ALERT BAR */}
+            {revenue&&revenue.revenue_at_risk>0&&(
+                <div style={{background:"linear-gradient(90deg,#ef444420,#f59e0b20)",padding:"12px 24px",borderBottom:"1px solid #ef444430",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        <Ic d={IC.alert} s={18} c="#ef4444"/>
+                        <span style={{fontSize:14,fontWeight:900,color:"#ef4444"}}>{$.money(revenue.revenue_at_risk)} AT RISK TODAY</span>
+                        <span style={{fontSize:11,color:"#f59e0b"}}>&middot; {revenue.leads_at_risk_count} leads with overdue actions</span>
+                    </div>
                 </div>
             )}
-            <PH title="War Room" sub="Real-time operations" right={<button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/> Refresh</button>}/>
+            {/* Enforcement alert bar */}
+            {(enfGlobal.total_overdue_tasks>0||enfGlobal.total_active_violations>0||highRiskReps.length>0)&&(
+                <div style={{background:highRiskReps.length>0?"#ef444418":"#f59e0b18",padding:"10px 24px",borderBottom:"1px solid "+(highRiskReps.length>0?"#ef444440":"#f59e0b40"),display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+                    <Ic d={IC.alert} s={16} c={highRiskReps.length>0?"#ef4444":"#f59e0b"}/>
+                    <span style={{fontSize:12,fontWeight:800,color:highRiskReps.length>0?"#ef4444":"#f59e0b"}}>
+                        {enfGlobal.total_overdue_tasks} overdue &middot; {enfGlobal.total_active_violations} violations &middot; {enfGlobal.reps_in_red} reps RED
+                    </span>
+                    {highRiskReps.length>0&&<span className="badge b-red" style={{fontSize:10}}>{highRiskReps.length} HIGH RISK REP{highRiskReps.length>1?"S":""}</span>}
+                </div>
+            )}
+            <PH title="War Room" sub="Revenue. Control. Action." right={<div style={{display:"flex",gap:6,alignItems:"center"}}>
+                {notifs.length>0&&<span className="badge b-blue" style={{fontSize:10}}>{notifs.length} alerts</span>}
+                <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/> Refresh</button>
+            </div>}/>
             <div style={{padding:"16px 24px"}}>
-                {/* Top KPIs — now includes enforcement data */}
+                {/* REVENUE ROW — the money bar */}
+                {revenue&&(
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+                        <KPI l="Open Pipeline" v={$.money(revenue.revenue_open)} t="warn"/>
+                        <KPI l="At Risk" v={$.money(revenue.revenue_at_risk)} t={revenue.revenue_at_risk>0?"hot":null}/>
+                        <KPI l="In Follow-ups" v={$.money(revenue.revenue_in_followups)} t="warn"/>
+                        <KPI l="In Proposals" v={$.money(revenue.revenue_in_proposals)} t="ok"/>
+                        <KPI l="New Leads $" v={$.money(revenue.revenue_new_leads)}/>
+                        <KPI l="Closed Revenue" v={$.money(revenue.revenue_closed)} t="ok"/>
+                    </div>
+                )}
+                {/* Standard KPIs */}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
                     <KPI l="Leads/Day" v={d?.leads_per_day?.toFixed(1)}/>
                     <KPI l="Close Rate" v={`${d?.close_rate?.toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/>
                     <KPI l="Held Rate" v={`${d?.held_rate?.toFixed(1)}%`} t={d?.held_rate>50?"ok":"warn"}/>
-                    <KPI l="Rev/Rep" v={$.money(d?.revenue_per_rep)}/>
                     <KPI l="Total Leads" v={d?.total_leads}/>
                     <KPI l="Closed Won" v={d?.closed_won_leads} t="ok"/>
-                    <KPI l="Overdue Tasks" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/>
+                    <KPI l="Overdue" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/>
                     <KPI l="Violations" v={d?.active_violations||0} t={(d?.active_violations||0)>0?"hot":null}/>
-                    <KPI l="Follow-ups" v={rehash.length} t={rehash.length>0?"warn":null}/>
                     <KPI l="Today Appts" v={todayAppts.length} t="warn"/>
                 </div>
+                {/* TOP 5 LEADS TO CLOSE — the money list */}
+                {topLeads.length>0&&(
+                    <div style={{marginBottom:20}}>
+                        <SH title="TOP LEADS TO CLOSE TODAY" count={topLeads.length}/>
+                        <div className="cd" style={{padding:0,border:"1px solid #f59e0b30"}}>
+                            {topLeads.map((l,i)=>(
+                                <div key={l.lead_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
+                                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                                        <div style={{width:28,height:28,borderRadius:"50%",background:i===0?"#f59e0b":i===1?"#a1a1aa40":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:i===0?"#000":"#a1a1aa"}}>{i+1}</div>
+                                        <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.city} &middot; {sL(l.deal_status)} &middot; {l.days_since_update}d ago</div></div>
+                                    </div>
+                                    <div style={{display:"flex",gap:16,alignItems:"center"}}>
+                                        <div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div><div style={{fontSize:9,color:"#3f3f46"}}>Score: {l.priority_score}</div></div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
                 {/* 3-Column Layout */}
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
-                    {/* LEFT: Dispatch Board */}
+                    {/* LEFT: Dispatch + Reassignment */}
                     <div>
                         <SH title="Dispatch Board" count={todayAppts.length}/>
-                        <div className="cd" style={{padding:0,maxHeight:500,overflowY:"auto"}}>
+                        <div className="cd" style={{padding:0,maxHeight:300,overflowY:"auto",marginBottom:12}}>
                             {todayAppts.length===0?<div style={{padding:24,textAlign:"center",color:"#3f3f46",fontSize:12}}>No appointments today</div>:
                             todayAppts.map(a=>(
                                 <div key={a.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/dispatch`)}>
@@ -319,31 +429,56 @@ function DashboardPage(){
                                         <div style={{fontSize:13,fontWeight:700}}>{a.lead_name||`Lead #${a.lead_id}`}</div>
                                         <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
                                     </div>
-                                    <div style={{fontSize:11,color:"#52525b",marginTop:3}}>{a.appointment_time||"TBD"} &middot; {a.appointment_address||"No addr"}</div>
+                                    <div style={{fontSize:11,color:"#52525b",marginTop:3}}>{a.appointment_time||"TBD"} &middot; {a.appointment_address||""}</div>
                                 </div>
                             ))}
                         </div>
+                        {/* Reassignment suggestions */}
+                        {reassignSuggestions.length>0&&(
+                            <div>
+                                <SH title="Reassignment Needed" count={reassign.length}/>
+                                <div className="cd" style={{padding:0,borderColor:"#f59e0b30",maxHeight:240,overflowY:"auto"}}>
+                                    {reassignSuggestions.map(s=>(
+                                        <div key={s.lead_id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${s.lead_id}`)}>
+                                            <div style={{display:"flex",justifyContent:"space-between"}}>
+                                                <div><div style={{fontSize:12,fontWeight:700}}>{s.lead_name}</div><div style={{fontSize:10,color:"#52525b"}}>{s.current_rep_name} &middot; {$.money(s.deal_value)}</div></div>
+                                                <span className={`badge ${s.urgency==="critical"?"b-red":s.urgency==="high"?"b-yellow":"b-gray"}`}>{s.urgency}</span>
+                                            </div>
+                                            <div style={{fontSize:10,color:"#ef4444",marginTop:3}}>{s.reason}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                     </div>
-                    {/* CENTER: Violations & Alerts */}
+                    {/* CENTER: Violations + High Risk Reps + Escalations */}
                     <div>
-                        {/* Active Violations */}
+                        {highRiskReps.length>0&&(
+                            <div style={{marginBottom:12}}>
+                                <SH title="HIGH RISK REPS"/>
+                                <div className="cd" style={{padding:0,borderColor:"#ef444440"}}>
+                                    {highRiskReps.map(r=>(
+                                        <div key={r.rep_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                            <div><div style={{fontSize:13,fontWeight:800,color:"#ef4444"}}>{r.name}</div><div style={{fontSize:10,color:"#71717a"}}>{r.active_violations} violations &middot; {r.overdue_tasks} overdue</div></div>
+                                            <span className={`badge ${r.risk_level==="critical"?"b-red":"b-yellow"}`}>{r.risk_level}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         {violations.length>0&&(
                             <div style={{marginBottom:12}}>
                                 <SH title="Active Violations" count={violations.length}/>
-                                <div className="cd" style={{padding:0,borderColor:"#ef444430",maxHeight:260,overflowY:"auto"}}>
+                                <div className="cd" style={{padding:0,borderColor:"#ef444430",maxHeight:200,overflowY:"auto"}}>
                                     {violations.map(v=>(
                                         <div key={v.id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                            <div>
-                                                <div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div>
-                                                <div style={{fontSize:10,color:"#52525b"}}>{v.rep_name} &middot; {v.lead_name||""}</div>
-                                            </div>
+                                            <div><div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div><div style={{fontSize:10,color:"#52525b"}}>{v.rep_name} &middot; {v.lead_name||""}</div></div>
                                             <span className={`badge ${v.severity==="critical"?"b-red":"b-yellow"}`}>{v.severity}</span>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
-                        <SH title="System Alerts"/>
                         {overdue.length>0&&(
                             <div className="cd" style={{padding:14,marginBottom:10,borderColor:"#ef444430"}}>
                                 <div style={{fontSize:11,fontWeight:800,color:"#ef4444",textTransform:"uppercase",marginBottom:8}}>Overdue Tasks</div>
@@ -357,16 +492,36 @@ function DashboardPage(){
                                 <button className="btn" onClick={()=>nav("/dispatch")}>Open Dispatch</button>
                                 <button className="btn" onClick={()=>nav("/leads")}>All Leads</button>
                                 <button className="btn" onClick={()=>nav("/tasks")}>Tasks</button>
-                                <button className="btn" onClick={()=>nav("/reps")}>Rep Performance</button>
+                                <button className="btn" onClick={()=>nav("/reps")}>Rep Leaderboard</button>
                             </div>
                         </div>
                     </div>
-                    {/* RIGHT: Follow-ups & Pipeline */}
+                    {/* RIGHT: Leaderboard + Follow-ups + Tasks */}
                     <div>
+                        {leaderboard&&(
+                            <div style={{marginBottom:12}}>
+                                <SH title="Rep Leaderboard" count={leaderboard.total_reps}/>
+                                <div className="cd" style={{padding:0,maxHeight:260,overflowY:"auto"}}>
+                                    {(leaderboard.leaderboard||[]).map(r=>(
+                                        <div key={r.rep_id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                            <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                                <div style={{width:20,height:20,borderRadius:"50%",background:r.rank===1?"#f59e0b28":r.rank===2?"#a1a1aa18":r.rank===3?"#cd7f3218":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:r.rank<=3?"#f59e0b":"#52525b"}}>{r.rank}</div>
+                                                <div><div style={{fontSize:12,fontWeight:700}}>{r.name}</div><div style={{fontSize:9,color:r.tier==="underperforming"?"#ef4444":r.tier==="elite"?"#22c55e":"#52525b"}}>{r.tier}</div></div>
+                                            </div>
+                                            <div style={{display:"flex",gap:8,fontSize:10,alignItems:"center"}}>
+                                                <span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span>
+                                                <span style={{fontWeight:800}}>{r.daily_score}</span>
+                                                {r.active_violations>0&&<span className="badge b-red" style={{fontSize:8}}>{r.active_violations}v</span>}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         <SH title="Follow-ups Due" count={rehash.length}/>
-                        <div className="cd" style={{padding:0,maxHeight:240,overflowY:"auto",marginBottom:12}}>
+                        <div className="cd" style={{padding:0,maxHeight:200,overflowY:"auto",marginBottom:12}}>
                             {rehash.length===0?<div style={{padding:20,textAlign:"center",color:"#3f3f46",fontSize:12}}>No follow-ups</div>:
-                            rehash.slice(0,8).map(r=>(
+                            rehash.slice(0,6).map(r=>(
                                 <div key={r.lead_id} style={{padding:"8px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${r.lead_id}`)}>
                                     <div style={{fontSize:12,fontWeight:600}}>{r.name}</div>
                                     <div style={{fontSize:10,color:"#52525b"}}>{r.next_follow_up_date?$.date(r.next_follow_up_date):"No date"} &middot; {r.phone}</div>
@@ -374,9 +529,9 @@ function DashboardPage(){
                             ))}
                         </div>
                         <SH title="Pending Tasks" count={dueToday.length}/>
-                        <div className="cd" style={{padding:0,maxHeight:240,overflowY:"auto"}}>
+                        <div className="cd" style={{padding:0,maxHeight:200,overflowY:"auto"}}>
                             {dueToday.length===0?<div style={{padding:20,textAlign:"center",color:"#3f3f46",fontSize:12}}>Nothing due today</div>:
-                            dueToday.slice(0,6).map(t=><TaskRow key={t.id} t={t} compact/>)}
+                            dueToday.slice(0,5).map(t=><TaskRow key={t.id} t={t} compact/>)}
                         </div>
                     </div>
                 </div>
@@ -433,7 +588,7 @@ function DispatchPage(){
 
     const openAssign=async(appt)=>{
         sAssign(appt);sLdRec(true);sRecReps([]);
-        try{const r=await af(`/api/admin/recommend-rep/${appt.lead_id}`);if(r.ok){const d=await r.json();sRecReps(d.recommendations||[])}}catch{}sLdRec(false);
+        try{const r=await af(`/api/admin/smart-recommend/${appt.lead_id}`);if(r.ok){const d=await r.json();sRecReps(d.recommendations||[])}}catch{}sLdRec(false);
     };
     const doAssign=async(repId)=>{
         try{const r=await af("/api/admin/reassign",{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:assignAppt.id,new_rep_id:repId})});if(r.ok){toast("ok","Assigned");sAssign(null);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
