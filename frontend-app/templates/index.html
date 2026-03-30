@@ -175,11 +175,11 @@ function Sidebar(){
 function DashboardPage(){
     const{af,user}=useA();const toast=useT();
     const[d,sD]=useState(null);const[tasks,sTasks]=useState([]);const[rehash,sRehash]=useState([]);
-    const[appts,sAppts]=useState([]);const[loading,sL]=useState(true);
+    const[appts,sAppts]=useState([]);const[loading,setLd]=useState(true);
 
     useEffect(()=>{load()},[]);
     const load=async()=>{
-        sL(true);
+        setLd(true);
         try{
             const isA=user?.role==="admin";
             const[dr,ar,tr]=await Promise.all([
@@ -205,7 +205,7 @@ function DashboardPage(){
                 sTasks(ta);
             }
         }catch(e){console.error(e)}
-        sL(false);
+        setLd(false);
     };
 
     if(loading)return<Spin/>;
@@ -871,8 +871,8 @@ function TasksPage(){
 // PIPELINE (LEAD STATUS KANBAN)
 // ========================================================================
 function PipelinePage(){
-    const{af}=useA();const[leads,sL]=useState([]);const[loading,sLd]=useState(true);
-    useEffect(()=>{load()},[]);const load=async()=>{sLd(true);try{const r=await af("/api/leads?limit=500");if(r.ok){const d=await r.json();sL(Array.isArray(d)?d:(d.items||[]))}}catch{}sLd(false)};
+    const{af}=useA();const[leads,setLeads]=useState([]);const[loading,sLd]=useState(true);
+    useEffect(()=>{load()},[]);const load=async()=>{sLd(true);try{const r=await af("/api/leads?limit=500");if(r.ok){const d=await r.json();setLeads(Array.isArray(d)?d:(d.items||[]))}}catch{}sLd(false)};
     const stages=[{k:"new",l:"New",c:"#3b82f6"},{k:"confirmed",l:"Confirmed",c:"#22c55e"},{k:"appointed",l:"Appointed",c:"#f59e0b"},{k:"dispatched",l:"Dispatched",c:"#a855f7"},{k:"closed_won",l:"Won",c:"#22c55e"},{k:"closed_lost",l:"Lost",c:"#ef4444"}];
     const grouped=useMemo(()=>{const g={};stages.forEach(s=>g[s.k]=[]);leads.forEach(l=>{const s=l.deal_status||"new";if(g[s])g[s].push(l);else if(g.new)g.new.push(l)});return g},[leads]);
     if(loading)return<Spin/>;
