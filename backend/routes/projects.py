@@ -17,11 +17,13 @@ class ProjectUpdate(BaseModel):
     install_status: Optional[str] = None
     funding_status: Optional[str] = None
     payment_status: Optional[str] = None
-    install_scheduled_date: Optional[str] = None  # YYYY-MM-DD
-    install_completed_date: Optional[str] = None  # YYYY-MM-DD
-    funding_submitted_date: Optional[str] = None  # YYYY-MM-DD
-    funding_approved_date: Optional[str] = None  # YYYY-MM-DD
-    payment_received_date: Optional[str] = None  # YYYY-MM-DD
+    survey_date: Optional[str] = None
+    permit_date: Optional[str] = None
+    install_date: Optional[str] = None
+    inspection_date: Optional[str] = None
+    pto_date: Optional[str] = None
+    funded_date: Optional[str] = None
+    paid_date: Optional[str] = None
     notes: Optional[str] = None
     installer_id: Optional[int] = None
 
@@ -29,18 +31,26 @@ class ProjectUpdate(BaseModel):
 class ProjectResponse(BaseModel):
     """Project response model."""
     id: int
-    deal_id: Optional[int]
-    lead_id: Optional[int]
+    lead_id: int
+    appointment_id: Optional[int] = None
+    closer_id: int
+    system_size_kw: Optional[float] = None
+    panel_count: Optional[int] = None
+    deal_value: Optional[float] = None
     install_status: str
     funding_status: str
     payment_status: str
-    install_scheduled_date: Optional[datetime]
-    install_completed_date: Optional[datetime]
-    funding_submitted_date: Optional[datetime]
-    funding_approved_date: Optional[datetime]
-    payment_received_date: Optional[datetime]
-    notes: Optional[str]
-    installer_id: Optional[int]
+    sold_date: Optional[datetime] = None
+    survey_date: Optional[datetime] = None
+    permit_date: Optional[datetime] = None
+    install_date: Optional[datetime] = None
+    inspection_date: Optional[datetime] = None
+    pto_date: Optional[datetime] = None
+    funded_date: Optional[datetime] = None
+    paid_date: Optional[datetime] = None
+    installer_id: Optional[int] = None
+    project_manager_id: Optional[int] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -48,222 +58,54 @@ class ProjectResponse(BaseModel):
         from_attributes = True
 
 
-class ProjectDashboardItem(BaseModel):
-    """Dashboard summary item."""
-    stage: str
-    count: int
-    total_value: float
-
-
-class ProjectDashboardResponse(BaseModel):
-    """Project dashboard summary."""
-    install_stages: List[ProjectDashboardItem]
-    funding_stages: List[ProjectDashboardItem]
-    payment_stages: List[ProjectDashboardItem]
-    delayed_projects: List[dict]
-    aging_stats: dict
-
-
-@router.get("", response_model=List[ProjectResponse])
-def list_projects(
-    install_status: Optional[str] = Query(None),
-    funding_status: Optional[str] = Query(None),
-    payment_status: Optional[str] = Query(None),
-    installer_id: Optional[int] = Query(None),
-    current_user: User = Depends(require_role("admin")),
-    db: Session = Depends(get_db),
-):
-    """
-    List all projects with optional filtering.
-
-    Args:
-        install_status: Filter by installation status
-        funding_status: Filter by funding status
-        payment_status: Filter by payment status
-        installer_id: Filter by installer ID
-        current_user: Current authenticated user (admin only)
-        db: Database session
-
-    Returns:
-        List of projects matching filters
-    """
-    query = db.query(Project)
-
-    if install_status:
-        query = query.filter(Project.install_status == install_status)
-    if funding_status:
-        query = query.filter(Project.funding_status == funding_status)
-    if payment_status:
-        query = query.filter(Project.payment_status == payment_status)
-    if installer_id:
-        query = query.filter(Project.installer_id == installer_id)
-
-    projects = query.order_by(Project.created_at.desc()).all()
-
-    return projects
-
-
-@router.get("/{project_id}", response_model=ProjectResponse)
-def get_project(
-    project_id: int,
-    current_user: User = Depends(require_role("admin")),
-    db: Session = Depends(get_db),
-):
-    """
-    Get a single project with related lead and deal information.
-
-    Args:
-        project_id: Project ID
-        current_user: Current authenticated user (admin only)
-        db: Database session
-
-    Returns:
-        Project details
-
-    Raises:
-        HTTPException: 404 if project not found
-    """
-    project = db.query(Project).filter(Project.id == project_id).first()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    return project
-
-
-@router.put("/{project_id}", response_model=ProjectResponse)
-def update_project(
-    project_id: int,
-    update_data: ProjectUpdate,
-    current_user: User = Depends(require_role("admin")),
-    db: Session = Depends(get_db),
-):
-    """
-    Update a project's status and details.
-
-    Args:
-        project_id: Project ID
-        update_data: Fields to update
-        current_user: Current authenticated user (admin only)
-        db: Database session
-
-    Returns:
-        Updated project
-
-    Raises:
-        HTTPException: 404 if project not found
-    """
-    project = db.query(Project).filter(Project.id == project_id).first()
-
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Project not found",
-        )
-
-    # Update fields
-    if update_data.install_status is not None:
-        project.install_status = update_data.install_status
-    if update_data.funding_status is not None:
-        project.funding_status = update_data.funding_status
-    if update_data.payment_status is not None:
-        project.payment_status = update_data.payment_status
-    if update_data.install_scheduled_date is not None:
-        project.install_scheduled_date = datetime.fromisoformat(update_data.install_scheduled_date)
-    if update_data.install_completed_date is not None:
-        project.install_completed_date = datetime.fromisoformat(update_data.install_completed_date)
-    if update_data.funding_submitted_date is not None:
-        project.funding_submitted_date = datetime.fromisoformat(update_data.funding_submitted_date)
-    if update_data.funding_approved_date is not None:
-        project.funding_approved_date = datetime.fromisoformat(update_data.funding_approved_date)
-    if update_data.payment_received_date is not None:
-        project.payment_received_date = datetime.fromisoformat(update_data.payment_received_date)
-    if update_data.notes is not None:
-        project.notes = update_data.notes
-    if update_data.installer_id is not None:
-        project.installer_id = update_data.installer_id
-
-    project.updated_at = datetime.utcnow()
-
-    db.add(project)
-    db.commit()
-    db.refresh(project)
-
-    return project
-
+# ---- DASHBOARD (must be before /{project_id} to avoid route collision) ----
 
 @router.get("/dashboard/summary")
 def get_project_dashboard(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db),
 ):
-    """
-    Get project dashboard summary: counts and values per stage, delayed projects, aging stats.
-
-    Returns:
-        Dashboard summary with stage breakdowns and delayed project list
-    """
+    """Get project dashboard summary: counts and values per stage, delayed projects, aging stats."""
     projects = db.query(Project).all()
 
-    # Build stage summaries
     install_stages = {}
     funding_stages = {}
     payment_stages = {}
-
     now = datetime.utcnow()
     delayed_projects = []
 
     for proj in projects:
-        # Install stages
         if proj.install_status not in install_stages:
             install_stages[proj.install_status] = {"count": 0, "total_value": 0.0}
         install_stages[proj.install_status]["count"] += 1
 
-        # Funding stages
         if proj.funding_status not in funding_stages:
             funding_stages[proj.funding_status] = {"count": 0, "total_value": 0.0}
         funding_stages[proj.funding_status]["count"] += 1
 
-        # Payment stages
         if proj.payment_status not in payment_stages:
             payment_stages[proj.payment_status] = {"count": 0, "total_value": 0.0}
         payment_stages[proj.payment_status]["count"] += 1
 
-        # Get deal value if available
-        if proj.deal_id:
-            deal = db.query(Deal).filter(Deal.id == proj.deal_id).first()
-            if deal:
-                install_stages[proj.install_status]["total_value"] += deal.deal_value or 0
-                funding_stages[proj.funding_status]["total_value"] += deal.deal_value or 0
-                payment_stages[proj.payment_status]["total_value"] += deal.deal_value or 0
+        dv = proj.deal_value or 0
+        install_stages[proj.install_status]["total_value"] += dv
+        funding_stages[proj.funding_status]["total_value"] += dv
+        payment_stages[proj.payment_status]["total_value"] += dv
 
         # Check for delayed projects (>30 days in current stage)
-        stage_entered = None
-        if proj.install_status == "scheduled" and proj.install_scheduled_date:
-            stage_entered = proj.install_scheduled_date
-        elif proj.install_status == "in_progress" and proj.install_scheduled_date:
-            stage_entered = proj.install_scheduled_date
-        elif proj.funding_status == "submitted" and proj.funding_submitted_date:
-            stage_entered = proj.funding_submitted_date
-
+        stage_entered = proj.install_date or proj.funded_date or proj.sold_date
         if stage_entered and (now - stage_entered) > timedelta(days=30):
-            deal = db.query(Deal).filter(Deal.id == proj.deal_id).first() if proj.deal_id else None
             lead = db.query(Lead).filter(Lead.id == proj.lead_id).first() if proj.lead_id else None
-
             delayed_projects.append({
                 "project_id": proj.id,
-                "deal_id": proj.deal_id,
+                "lead_id": proj.lead_id,
                 "lead_name": f"{lead.first_name} {lead.last_name}" if lead else "Unknown",
                 "install_status": proj.install_status,
                 "funding_status": proj.funding_status,
                 "days_in_stage": (now - stage_entered).days,
-                "deal_value": deal.deal_value if deal else 0,
+                "deal_value": dv,
             })
 
-    # Calculate aging stats
     aging_stats = {
         "total_projects": len(projects),
         "by_age": {
@@ -275,18 +117,82 @@ def get_project_dashboard(
     }
 
     return {
-        "install_stages": [
-            {"stage": k, "count": v["count"], "total_value": v["total_value"]}
-            for k, v in install_stages.items()
-        ],
-        "funding_stages": [
-            {"stage": k, "count": v["count"], "total_value": v["total_value"]}
-            for k, v in funding_stages.items()
-        ],
-        "payment_stages": [
-            {"stage": k, "count": v["count"], "total_value": v["total_value"]}
-            for k, v in payment_stages.items()
-        ],
+        "install_stages": [{"stage": k, "count": v["count"], "total_value": v["total_value"]} for k, v in install_stages.items()],
+        "funding_stages": [{"stage": k, "count": v["count"], "total_value": v["total_value"]} for k, v in funding_stages.items()],
+        "payment_stages": [{"stage": k, "count": v["count"], "total_value": v["total_value"]} for k, v in payment_stages.items()],
         "delayed_projects": delayed_projects,
         "aging_stats": aging_stats,
     }
+
+
+# ---- LIST / CRUD ----
+
+@router.get("", response_model=List[ProjectResponse])
+def list_projects(
+    install_status: Optional[str] = Query(None),
+    funding_status: Optional[str] = Query(None),
+    payment_status: Optional[str] = Query(None),
+    installer_id: Optional[int] = Query(None),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """List all projects with optional filtering."""
+    query = db.query(Project)
+    if install_status:
+        query = query.filter(Project.install_status == install_status)
+    if funding_status:
+        query = query.filter(Project.funding_status == funding_status)
+    if payment_status:
+        query = query.filter(Project.payment_status == payment_status)
+    if installer_id:
+        query = query.filter(Project.installer_id == installer_id)
+    return query.order_by(Project.created_at.desc()).all()
+
+
+@router.get("/{project_id}", response_model=ProjectResponse)
+def get_project(
+    project_id: int,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Get a single project."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+    return project
+
+
+@router.put("/{project_id}", response_model=ProjectResponse)
+def update_project(
+    project_id: int,
+    update_data: ProjectUpdate,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Update a project's status and details (admin only)."""
+    project = db.query(Project).filter(Project.id == project_id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")
+
+    if update_data.install_status is not None:
+        project.install_status = update_data.install_status
+    if update_data.funding_status is not None:
+        project.funding_status = update_data.funding_status
+    if update_data.payment_status is not None:
+        project.payment_status = update_data.payment_status
+    date_fields = ['survey_date', 'permit_date', 'install_date', 'inspection_date',
+                    'pto_date', 'funded_date', 'paid_date']
+    for field in date_fields:
+        val = getattr(update_data, field, None)
+        if val is not None:
+            setattr(project, field, datetime.fromisoformat(val))
+    if update_data.notes is not None:
+        project.notes = update_data.notes
+    if update_data.installer_id is not None:
+        project.installer_id = update_data.installer_id
+
+    project.updated_at = datetime.utcnow()
+    db.add(project)
+    db.commit()
+    db.refresh(project)
+    return project
