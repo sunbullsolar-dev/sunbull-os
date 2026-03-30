@@ -110,6 +110,12 @@ def fix_geo_columns():
             total += r.rowcount
         conn.commit()
         results.append(f"Updated {total} leads with geo coords")
+        # Verify by reading back
+        rows = conn.execute(_t("SELECT id, city, geo_lat, geo_lng FROM leads WHERE geo_lat IS NOT NULL LIMIT 5"))
+        verified = [{"id": r[0], "city": r[1], "geo_lat": r[2], "geo_lng": r[3]} for r in rows]
+        results.append(f"Verified {len(verified)} leads with geo in DB")
+        if verified:
+            results.append(str(verified[:3]))
     return {"results": results}
 
 
