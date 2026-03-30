@@ -8,276 +8,137 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Inter',-apple-system,BlinkMacSystemFont,sans-serif;background:#0a0a0a;color:#e5e5e5;-webkit-font-smoothing:antialiased}
-        ::-webkit-scrollbar{width:6px}
-        ::-webkit-scrollbar-track{background:transparent}
-        ::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
-
-        /* Sidebar */
-        .sidebar{width:220px;background:#111;min-height:100vh;position:fixed;left:0;top:0;z-index:30;display:flex;flex-direction:column;border-right:1px solid #1a1a1a}
-        .sidebar-link{display:flex;align-items:center;gap:10px;padding:10px 18px;color:#666;font-size:13px;font-weight:500;cursor:pointer;border-radius:8px;margin:1px 10px;transition:all .15s}
-        .sidebar-link:hover{color:#ccc;background:rgba(255,255,255,.04)}
-        .sidebar-link.active{color:#FF9F0A;background:rgba(255,159,10,.08)}
-        .main-content{margin-left:220px;min-height:100vh}
-
-        /* Dark premium cards */
-        .card-dark{background:#141414;border:1px solid #1e1e1e;border-radius:12px}
-        .card-dark-lg{background:#141414;border:1px solid #1e1e1e;border-radius:16px}
-
-        /* KPI chip */
-        .kpi-chip{display:flex;flex-direction:column;padding:14px 18px;border-radius:10px;background:#141414;border:1px solid #1e1e1e;min-width:120px}
-        .kpi-chip.urgent{border-color:#FF453A40;background:#FF453A08}
-        .kpi-chip.warning{border-color:#FF9F0A40;background:#FF9F0A08}
-        .kpi-chip.good{border-color:#30D15840;background:#30D15808}
-
-        /* Badges */
-        .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
-        .badge-green{background:#30D15820;color:#30D158}
-        .badge-yellow{background:#FFD60A20;color:#FFD60A}
-        .badge-red{background:#FF453A20;color:#FF453A}
-        .badge-blue{background:#007AFF20;color:#007AFF}
-        .badge-gray{background:#ffffff10;color:#888}
-        .badge-orange{background:#FF9F0A20;color:#FF9F0A}
-        .badge-purple{background:#BF5AF220;color:#BF5AF2}
-
-        /* Appt card */
-        .appt-card{background:#141414;border:1px solid #1e1e1e;border-radius:12px;padding:16px;transition:all .15s;cursor:pointer;position:relative}
-        .appt-card:hover{border-color:#333;background:#181818}
-        .appt-card.live{border-left:3px solid #30D158;animation:pulse-border 2s infinite}
-        .appt-card.at-risk{border-left:3px solid #FF453A}
-        .appt-card.warning{border-left:3px solid #FF9F0A}
-        .appt-card.upcoming{border-left:3px solid #007AFF}
-        @keyframes pulse-border{0%,100%{border-left-color:#30D158}50%{border-left-color:#30D15860}}
-
-        /* Action buttons */
-        .action-btn{padding:5px 12px;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;border:1px solid #333;background:transparent;color:#ccc;transition:all .1s}
-        .action-btn:hover{background:#222;border-color:#555}
-        .action-btn.primary{background:#FF9F0A;border-color:#FF9F0A;color:#000}
-        .action-btn.primary:hover{background:#E68F00}
-        .action-btn.danger{border-color:#FF453A50;color:#FF453A}
-        .action-btn.danger:hover{background:#FF453A15}
-        .action-btn.success{border-color:#30D15850;color:#30D158}
-        .action-btn.success:hover{background:#30D15815}
-
-        /* Section header */
-        .section-hdr{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #1e1e1e}
-        .section-hdr h3{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#888}
-        .section-hdr .count{font-size:11px;color:#555;font-weight:600}
-
-        /* Tables */
-        .table-row{display:grid;align-items:center;padding:10px 16px;border-bottom:1px solid #1a1a1a;font-size:13px;cursor:pointer;transition:background .1s}
-        .table-row:hover{background:#ffffff06}
-
-        /* Drawer */
-        .drawer-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:40;opacity:0;animation:fadeIn .2s forwards}
-        .drawer{position:fixed;right:0;top:0;bottom:0;width:480px;background:#111;z-index:50;border-left:1px solid #1e1e1e;transform:translateX(100%);animation:slideLeft .25s forwards;overflow-y:auto}
-        @keyframes fadeIn{to{opacity:1}}
-        @keyframes slideLeft{to{transform:translateX(0)}}
-
-        /* Toast */
-        .toast{position:fixed;bottom:24px;right:24px;z-index:60;padding:12px 20px;border-radius:12px;font-size:13px;font-weight:600;color:#fff;animation:toastIn .3s forwards}
-        .toast-success{background:#30D158}
-        .toast-error{background:#FF453A}
-        @keyframes toastIn{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
-
-        /* Forms */
-        .input{width:100%;padding:10px 14px;border:1px solid #333;border-radius:10px;font-size:13px;font-family:inherit;outline:none;background:#0a0a0a;color:#e5e5e5;transition:border-color .15s}
-        .input:focus{border-color:#FF9F0A}
-        select.input{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
-        .btn-primary{background:#FF9F0A;color:#000;border:none;padding:10px 20px;border-radius:10px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit}
-        .btn-primary:hover{background:#E68F00}
-        .btn-primary:disabled{opacity:.4;cursor:not-allowed}
-        .btn-ghost{background:transparent;border:1px solid #333;padding:8px 16px;border-radius:10px;font-size:12px;font-weight:600;cursor:pointer;color:#ccc;font-family:inherit}
-        .btn-ghost:hover{border-color:#555;background:#ffffff06}
-        .spinner{border:3px solid #1e1e1e;border-top:3px solid #FF9F0A;border-radius:50%;width:32px;height:32px;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-
-        /* Modal */
-        .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;display:flex;align-items:center;justify-content:center}
-        .modal{background:#141414;border:1px solid #1e1e1e;border-radius:16px;padding:28px;width:440px;max-width:90vw}
-
-        @media(max-width:768px){
-            .sidebar{width:60px}
-            .sidebar .nav-label,.sidebar .logo-text,.sidebar .logo-sub{display:none}
-            .sidebar-link{justify-content:center;padding:12px}
-            .main-content{margin-left:60px}
-            .drawer{width:100%}
-        }
+        body{font-family:'Inter',sans-serif;background:#09090b;color:#e4e4e7;-webkit-font-smoothing:antialiased}
+        ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#27272a;border-radius:3px}
+        .sb{width:200px;background:#0c0c0f;min-height:100vh;position:fixed;left:0;top:0;z-index:30;display:flex;flex-direction:column;border-right:1px solid #18181b}
+        .sb-link{display:flex;align-items:center;gap:9px;padding:9px 16px;color:#52525b;font-size:13px;font-weight:500;cursor:pointer;border-radius:7px;margin:1px 8px;transition:all .12s}
+        .sb-link:hover{color:#a1a1aa;background:#18181b}.sb-link.on{color:#f59e0b;background:#f59e0b10}
+        .mc{margin-left:200px;min-height:100vh}
+        .cd{background:#111113;border:1px solid #1e1e21;border-radius:10px}
+        .badge{display:inline-flex;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
+        .b-green{background:#22c55e18;color:#22c55e}.b-yellow{background:#eab30818;color:#eab308}.b-red{background:#ef444418;color:#ef4444}
+        .b-blue{background:#3b82f618;color:#3b82f6}.b-gray{background:#ffffff08;color:#71717a}.b-orange{background:#f59e0b18;color:#f59e0b}
+        .b-purple{background:#a855f718;color:#a855f7}
+        .kpi{display:flex;flex-direction:column;padding:12px 16px;border-radius:8px;background:#111113;border:1px solid #1e1e21;min-width:100px}
+        .kpi.hot{border-color:#ef444440;background:#ef444408}.kpi.warn{border-color:#f59e0b40;background:#f59e0b08}.kpi.ok{border-color:#22c55e40;background:#22c55e08}
+        .tr{display:grid;align-items:center;padding:9px 14px;border-bottom:1px solid #18181b;font-size:13px;cursor:pointer;transition:background .08s}
+        .tr:hover{background:#ffffff04}
+        .dov{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:40;animation:fi .15s forwards;opacity:0}
+        .drw{position:fixed;right:0;top:0;bottom:0;width:520px;background:#0c0c0f;z-index:50;border-left:1px solid #1e1e21;transform:translateX(100%);animation:sl .2s forwards;overflow-y:auto}
+        @keyframes fi{to{opacity:1}}@keyframes sl{to{transform:translateX(0)}}
+        .toast{position:fixed;bottom:20px;right:20px;z-index:60;padding:10px 18px;border-radius:10px;font-size:12px;font-weight:700;color:#fff;animation:ti .25s forwards}
+        .t-ok{background:#22c55e}.t-err{background:#ef4444}@keyframes ti{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
+        .inp{width:100%;padding:9px 12px;border:1px solid #27272a;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#09090b;color:#e4e4e7;transition:border .12s}
+        .inp:focus{border-color:#f59e0b}
+        select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+        textarea.inp{resize:vertical;min-height:60px}
+        .btn{padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid #27272a;background:transparent;color:#a1a1aa;font-family:inherit;transition:all .1s}
+        .btn:hover{background:#18181b;border-color:#3f3f46}
+        .btn-p{background:#f59e0b;border-color:#f59e0b;color:#000}.btn-p:hover{background:#d97706}
+        .btn-p:disabled{opacity:.35;cursor:not-allowed}
+        .btn-g{border-color:#22c55e40;color:#22c55e}.btn-g:hover{background:#22c55e10}
+        .btn-r{border-color:#ef444440;color:#ef4444}.btn-r:hover{background:#ef444410}
+        .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;display:flex;align-items:center;justify-content:center}
+        .modal{background:#111113;border:1px solid #1e1e21;border-radius:14px;padding:24px;width:480px;max-width:92vw;max-height:85vh;overflow-y:auto}
+        .spin{border:3px solid #18181b;border-top:3px solid #f59e0b;border-radius:50%;width:28px;height:28px;animation:sp .6s linear infinite}
+        @keyframes sp{to{transform:rotate(360deg)}}
+        .tab{padding:8px 16px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid transparent;color:#52525b;transition:all .1s}
+        .tab.on{color:#f59e0b;border-color:#f59e0b}
+        .tab:hover{color:#a1a1aa}
+        .appt-card{background:#111113;border:1px solid #1e1e21;border-radius:10px;padding:14px;cursor:pointer;transition:all .12s;position:relative}
+        .appt-card:hover{border-color:#27272a;background:#141416}
+        .appt-card.live{border-left:3px solid #22c55e}.appt-card.risk{border-left:3px solid #ef4444}.appt-card.wrn{border-left:3px solid #f59e0b}.appt-card.next{border-left:3px solid #3b82f6}
+        .tl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
+        .tl-line{width:1px;background:#27272a;margin-left:3px;flex-shrink:0;min-height:20px}
+        @media(max-width:768px){.sb{width:52px}.sb .nl,.sb .lt,.sb .ls{display:none}.sb-link{justify-content:center;padding:10px}.mc{margin-left:52px}.drw{width:100%}}
     </style>
 </head>
 <body>
 <div id="root"></div>
-
 <script type="text/babel" data-type="module">
-const { useState, useEffect, useCallback, useMemo, useRef, createContext, useContext } = React;
-const API = window.location.origin;
+const {useState,useEffect,useCallback,useMemo,useRef,createContext,useContext}=React;
+const API=window.location.origin;
 
-// ===== AUTH CONTEXT =====
-const AuthCtx = createContext(null);
-function useAuth() { return useContext(AuthCtx); }
+// ===== CONTEXTS =====
+const AC=createContext(null); const useA=()=>useContext(AC);
+const TC=createContext(null); const useT=()=>useContext(TC);
 
-function AuthProvider({ children }) {
-    const [user, setUser] = useState(null);
-    const [token, setToken] = useState(localStorage.getItem("sb_token") || "");
-    const [loading, setLoading] = useState(true);
-
-    useEffect(() => {
-        if (!token) { setLoading(false); return; }
-        fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
-            .then(r => r.ok ? r.json() : Promise.reject())
-            .then(u => { setUser(u); setLoading(false); })
-            .catch(() => { setToken(""); localStorage.removeItem("sb_token"); setLoading(false); });
-    }, [token]);
-
-    const login = async (email, password) => {
-        const r = await fetch(`${API}/api/auth/login`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email, password }),
-        });
-        if (!r.ok) throw new Error("Invalid credentials");
-        const data = await r.json();
-        localStorage.setItem("sb_token", data.access_token);
-        setToken(data.access_token);
-        return data;
-    };
-
-    const logout = () => { localStorage.removeItem("sb_token"); setToken(""); setUser(null); };
-
-    const authFetch = useCallback(async (url, opts = {}) => {
-        const r = await fetch(`${API}${url}`, {
-            ...opts,
-            headers: { ...opts.headers, Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        });
-        if (r.status === 401) { logout(); throw new Error("Session expired"); }
-        return r;
-    }, [token]);
-
-    return <AuthCtx.Provider value={{ user, token, login, logout, authFetch, loading }}>{children}</AuthCtx.Provider>;
+function AP({children}){
+    const[user,setUser]=useState(null);const[token,setTk]=useState(localStorage.getItem("sb_token")||"");const[loading,setL]=useState(true);
+    useEffect(()=>{if(!token){setL(false);return}
+        fetch(`${API}/api/auth/me`,{headers:{Authorization:`Bearer ${token}`}}).then(r=>r.ok?r.json():Promise.reject()).then(u=>{setUser(u);setL(false)}).catch(()=>{setTk("");localStorage.removeItem("sb_token");setL(false)})
+    },[token]);
+    const login=async(e,p)=>{const r=await fetch(`${API}/api/auth/login`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({email:e,password:p})});if(!r.ok)throw Error();const d=await r.json();localStorage.setItem("sb_token",d.access_token);setTk(d.access_token);return d};
+    const logout=()=>{localStorage.removeItem("sb_token");setTk("");setUser(null)};
+    const af=useCallback(async(url,opts={})=>{const r=await fetch(`${API}${url}`,{...opts,headers:{...opts.headers,Authorization:`Bearer ${token}`,"Content-Type":"application/json"}});if(r.status===401){logout();throw Error("expired")}return r},[token]);
+    return<AC.Provider value={{user,token,login,logout,af,loading}}>{children}</AC.Provider>
 }
-
-// ===== TOAST CONTEXT =====
-const ToastCtx = createContext(null);
-function useToast() { return useContext(ToastCtx); }
-function ToastProvider({ children }) {
-    const [toast, setToast] = useState(null);
-    const show = (type, msg) => { setToast({ type, msg }); setTimeout(() => setToast(null), 3000); };
-    return (
-        <ToastCtx.Provider value={show}>
-            {children}
-            {toast && <div className={`toast toast-${toast.type}`}>{toast.msg}</div>}
-        </ToastCtx.Provider>
-    );
+function TP({children}){const[t,sT]=useState(null);const show=(type,msg)=>{sT({type,msg});setTimeout(()=>sT(null),3000)};
+    return<TC.Provider value={show}>{children}{t&&<div className={`toast t-${t.type}`}>{t.msg}</div>}</TC.Provider>
 }
 
 // ===== ROUTER =====
-function useHash() {
-    const [hash, setHash] = useState(window.location.hash.slice(1) || "/dashboard");
-    useEffect(() => {
-        const handler = () => setHash(window.location.hash.slice(1) || "/dashboard");
-        window.addEventListener("hashchange", handler);
-        return () => window.removeEventListener("hashchange", handler);
-    }, []);
-    return hash;
-}
-function navigate(path) { window.location.hash = path; }
-
-// ===== SVG ICONS =====
-const I = ({ d, size = 16, color = "currentColor" }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
-);
-const Icons = {
-    grid: <I d="M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z" />,
-    users: <I d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-0.01M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />,
-    calendar: <I d="M3 4h18a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M1 10h22" />,
-    user: <I d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 7a4 4 0 1 0 0-0.01" />,
-    check: <I d="M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />,
-    list: <I d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />,
-    logout: <I d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" />,
-    search: <I d="M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35" />,
-    x: <I d="M18 6L6 18M6 6l12 12" />,
-    plus: <I d="M12 5v14M5 12h14" />,
-    refresh: <I d="M23 4v6h-6M1 20v-6h6M20.49 9A9 9 0 0 0 5.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 0 1 3.51 15" />,
-    phone: <I d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z" />,
-    mail: <I d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6" />,
-    dollar: <I d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />,
-    map: <I d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 10a3 3 0 1 0 0-0.01" />,
-    alert: <I d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 8v4M12 16h.01" />,
-    clock: <I d="M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2" />,
-    zap: <I d="M13 2L3 14h9l-1 8 10-12h-9l1-8" />,
-    send: <I d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7" />,
-    copy: <I d="M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />,
-    home: <I d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />,
-    bell: <I d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" />,
-    arrow: <I d="M5 12h14M12 5l7 7-7 7" />,
-};
+function useH(){const[h,sH]=useState(window.location.hash.slice(1)||"/dashboard");useEffect(()=>{const f=()=>sH(window.location.hash.slice(1)||"/dashboard");window.addEventListener("hashchange",f);return()=>window.removeEventListener("hashchange",f)},[]);return h}
+function nav(p){window.location.hash=p}
 
 // ===== HELPERS =====
-const fmt = {
-    money: v => v != null ? `$${Number(v).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:0})}` : "--",
-    pct: v => v != null ? `${(Number(v)*100).toFixed(1)}%` : "--",
-    date: v => v ? new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric"}) : "--",
-    time: v => v || "--",
-    datetime: v => v ? new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}) : "--",
-    ago: v => {
-        if (!v) return "--";
-        const mins = Math.floor((Date.now() - new Date(v).getTime())/60000);
-        if (mins < 1) return "just now";
-        if (mins < 60) return `${mins}m ago`;
-        if (mins < 1440) return `${Math.floor(mins/60)}h ago`;
-        return `${Math.floor(mins/1440)}d ago`;
-    },
+const $={
+    money:v=>v!=null?`$${Number(v).toLocaleString("en-US",{maximumFractionDigits:0})}`:"--",
+    pct:v=>v!=null?`${(Number(v)*100).toFixed(1)}%`:"--",
+    date:v=>v?new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric"}):"--",
+    dt:v=>v?new Date(v).toLocaleDateString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}):"--",
+    time:v=>v||"--",
+    ago:v=>{if(!v)return"--";const m=Math.floor((Date.now()-new Date(v).getTime())/60000);if(m<1)return"now";if(m<60)return m+"m";if(m<1440)return Math.floor(m/60)+"h";return Math.floor(m/1440)+"d"},
+};
+function sB(s){const m={new:"b-blue",confirmed:"b-green",appointed:"b-green",scheduled:"b-blue",en_route:"b-purple",arrived:"b-orange",completed:"b-green",held:"b-yellow",closed_won:"b-green",closed_lost:"b-red",no_show:"b-red",cancelled:"b-red",rescheduled:"b-yellow",follow_up:"b-yellow",dispatched:"b-blue",unconfirmed:"b-yellow",overdue:"b-red",pending:"b-yellow",proposal_sent:"b-blue",declined:"b-red",reschedule:"b-yellow",canceled:"b-red"};return m[s]||"b-gray"}
+function sL(s){return(s||"").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase())}
+function sC(s){if(s>=70)return"#ef4444";if(s>=50)return"#f59e0b";if(s>=30)return"#eab308";return"#3b82f6"}
+
+// ===== SVG ICONS (tiny) =====
+const Ic=({d,s=15,c="currentColor"})=><svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>;
+const IC={
+    grid:"M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z",
+    users:"M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 7a4 4 0 1 0 0-.01M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75",
+    cal:"M3 4h18a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM16 2v4M8 2v4M1 10h22",
+    user:"M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 7a4 4 0 1 0 0-.01",
+    check:"M9 11l3 3L22 4M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11",
+    list:"M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
+    out:"M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9",
+    search:"M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35",
+    x:"M18 6L6 18M6 6l12 12",plus:"M12 5v14M5 12h14",
+    refresh:"M23 4v6h-6M1 20v-6h6M20.49 9A9 9 0 0 0 5.64 5.64L1 10M23 14l-4.64 4.36A9 9 0 0 1 3.51 15",
+    phone:"M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.11 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z",
+    mail:"M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2zM22 6l-10 7L2 6",
+    dollar:"M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
+    map:"M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0zM12 10a3 3 0 1 0 0-.01",
+    alert:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 8v4M12 16h.01",
+    clock:"M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM12 6v6l4 2",
+    zap:"M13 2L3 14h9l-1 8 10-12h-9l1-8",
+    send:"M22 2L11 13M22 2l-7 20-4-9-9-4 20-7",
+    copy:"M20 9h-9a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-9a2 2 0 0 0-2-2zM5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1",
+    pipe:"M22 12h-4l-3 9L9 3l-3 9H2",
+    flag:"M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1zM4 22v-7",
+    edit:"M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z",
+    trash:"M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2",
+    arrow:"M5 12h14M12 5l7 7-7 7",
 };
 
-function statusBadge(s) {
-    const map = { new:"badge-blue",confirmed:"badge-green",appointed:"badge-green",scheduled:"badge-blue",
-        en_route:"badge-purple",arrived:"badge-orange",completed:"badge-green",held:"badge-yellow",
-        closed_won:"badge-green",closed_lost:"badge-red",no_show:"badge-red",cancelled:"badge-red",
-        rescheduled:"badge-yellow",follow_up:"badge-yellow",dispatched:"badge-blue",unconfirmed:"badge-yellow",
-        overdue:"badge-red",pending:"badge-yellow",on_the_way:"badge-purple" };
-    return map[s] || "badge-gray";
-}
-function statusLabel(s) { return (s||"").replace(/_/g," ").replace(/\b\w/g,c=>c.toUpperCase()); }
-function scoreColor(s) { if(s>=70) return "#FF453A"; if(s>=50) return "#FF9F0A"; if(s>=30) return "#FFD60A"; return "#007AFF"; }
-
 // ===== LOGIN =====
-function LoginPage() {
-    const { login } = useAuth();
-    const [email, setEmail] = useState("");
-    const [pw, setPw] = useState("");
-    const [err, setErr] = useState("");
-    const [busy, setBusy] = useState(false);
-
-    const go = async e => {
-        e.preventDefault(); setErr(""); setBusy(true);
-        try { await login(email, pw); navigate("/dashboard"); }
-        catch { setErr("Invalid email or password"); }
-        setBusy(false);
-    };
-
-    return (
-        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#0a0a0a"}}>
-            <div style={{width:380,background:"#141414",border:"1px solid #1e1e1e",borderRadius:20,padding:"40px 32px"}}>
-                <div style={{textAlign:"center",marginBottom:32}}>
-                    <div style={{fontSize:28,fontWeight:800,letterSpacing:"-.03em"}}><span style={{color:"#FF9F0A"}}>Sunbull</span> OS</div>
-                    <div style={{color:"#666",fontSize:13,marginTop:4}}>Command Center</div>
-                </div>
+function Login(){
+    const{login}=useA();const[e,sE]=useState("");const[p,sP]=useState("");const[err,sErr]=useState("");const[busy,sB]=useState(false);
+    const go=async ev=>{ev.preventDefault();sErr("");sB(true);try{await login(e,p);nav("/dashboard")}catch{sErr("Invalid credentials")}sB(false)};
+    return(
+        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <div style={{width:360,background:"#111113",border:"1px solid #1e1e21",borderRadius:16,padding:"36px 28px"}}>
+                <div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:26,fontWeight:900}}><span style={{color:"#f59e0b"}}>Sunbull</span> OS</div><div style={{color:"#52525b",fontSize:12,marginTop:3}}>Command Center</div></div>
                 <form onSubmit={go}>
-                    <div style={{marginBottom:16}}>
-                        <label style={{display:"block",fontSize:11,fontWeight:700,color:"#666",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Email</label>
-                        <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="you@sunbull.com" required/>
-                    </div>
-                    <div style={{marginBottom:24}}>
-                        <label style={{display:"block",fontSize:11,fontWeight:700,color:"#666",marginBottom:6,textTransform:"uppercase",letterSpacing:".05em"}}>Password</label>
-                        <input className="input" type="password" value={pw} onChange={e=>setPw(e.target.value)} placeholder="Enter password" required/>
-                    </div>
-                    {err&&<div style={{color:"#FF453A",fontSize:13,marginBottom:16,textAlign:"center"}}>{err}</div>}
-                    <button className="btn-primary" type="submit" disabled={busy} style={{width:"100%",padding:14,fontSize:15}}>
-                        {busy?"Signing in...":"Sign In"}
-                    </button>
+                    <div style={{marginBottom:14}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Email</label><input className="inp" type="email" value={e} onChange={x=>sE(x.target.value)} required/></div>
+                    <div style={{marginBottom:20}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Password</label><input className="inp" type="password" value={p} onChange={x=>sP(x.target.value)} required/></div>
+                    {err&&<div style={{color:"#ef4444",fontSize:12,marginBottom:14,textAlign:"center"}}>{err}</div>}
+                    <button className="btn btn-p" type="submit" disabled={busy} style={{width:"100%",padding:12,fontSize:14}}>{busy?"Signing in...":"Sign In"}</button>
                 </form>
             </div>
         </div>
@@ -285,700 +146,719 @@ function LoginPage() {
 }
 
 // ===== SIDEBAR =====
-function Sidebar() {
-    const { user, logout } = useAuth();
-    const hash = useHash();
-    const isAdmin = user?.role === "admin";
-
-    const links = [
-        {path:"/dashboard",icon:Icons.grid,label:"Dashboard"},
-        {path:"/appointments",icon:Icons.calendar,label:"Dispatch"},
-        {path:"/leads",icon:Icons.users,label:"Leads"},
-        ...(isAdmin?[{path:"/reps",icon:Icons.user,label:"Reps"}]:[]),
-        {path:"/tasks",icon:Icons.check,label:"Tasks"},
-        {path:"/pipeline",icon:Icons.list,label:"Pipeline"},
+function Sidebar(){
+    const{user,logout}=useA();const h=useH();const isA=user?.role==="admin";
+    const lnk=[
+        {p:"/dashboard",i:IC.grid,l:"Dashboard"},
+        {p:"/dispatch",i:IC.zap,l:"Dispatch"},
+        {p:"/leads",i:IC.users,l:"Leads"},
+        ...(isA?[{p:"/reps",i:IC.user,l:"Reps"}]:[]),
+        {p:"/tasks",i:IC.check,l:"Tasks"},
+        {p:"/pipeline",i:IC.pipe,l:"Pipeline"},
+        ...(isA?[{p:"/projects",i:IC.flag,l:"Projects"}]:[]),
     ];
-
-    return (
-        <div className="sidebar">
-            <div style={{padding:"18px 18px 14px",borderBottom:"1px solid #1a1a1a"}}>
-                <div style={{fontSize:18,fontWeight:800,color:"#e5e5e5",letterSpacing:"-.02em"}}>
-                    <span style={{color:"#FF9F0A"}}>SB</span> <span className="logo-text">OS</span>
-                </div>
-                <div className="logo-sub" style={{color:"#444",fontSize:10,marginTop:2,textTransform:"uppercase",letterSpacing:".08em",fontWeight:700}}>Command Center</div>
-            </div>
-            <nav style={{flex:1,padding:"10px 0"}}>
-                {links.map(l=>(
-                    <div key={l.path} className={`sidebar-link ${hash.startsWith(l.path)?"active":""}`} onClick={()=>navigate(l.path)}>
-                        {l.icon}<span className="nav-label">{l.label}</span>
-                    </div>
-                ))}
-            </nav>
-            <div style={{padding:"12px 10px",borderTop:"1px solid #1a1a1a"}}>
-                <div style={{padding:"8px 10px",marginBottom:6}}>
-                    <div style={{color:"#ccc",fontSize:12,fontWeight:600}}>{user?.full_name}</div>
-                    <div style={{color:"#555",fontSize:10,textTransform:"uppercase",fontWeight:700}}>{user?.role}</div>
-                </div>
-                <div className="sidebar-link" onClick={logout}>{Icons.logout}<span className="nav-label">Sign Out</span></div>
+    return(
+        <div className="sb">
+            <div style={{padding:"16px 14px 12px",borderBottom:"1px solid #18181b"}}><div style={{fontSize:16,fontWeight:900}}><span style={{color:"#f59e0b"}}>SB</span> <span className="lt">OS</span></div><div className="ls" style={{color:"#3f3f46",fontSize:9,marginTop:1,textTransform:"uppercase",letterSpacing:".08em",fontWeight:800}}>Command Center</div></div>
+            <nav style={{flex:1,padding:"8px 0"}}>{lnk.map(l=><div key={l.p} className={`sb-link ${h.startsWith(l.p)?"on":""}`} onClick={()=>nav(l.p)}><Ic d={l.i}/><span className="nl">{l.l}</span></div>)}</nav>
+            <div style={{padding:"10px 8px",borderTop:"1px solid #18181b"}}>
+                <div style={{padding:"6px 10px",marginBottom:4}}><div style={{color:"#a1a1aa",fontSize:11,fontWeight:700}}>{user?.full_name}</div><div style={{color:"#3f3f46",fontSize:9,textTransform:"uppercase",fontWeight:800}}>{user?.role}</div></div>
+                <div className="sb-link" onClick={logout}><Ic d={IC.out}/><span className="nl">Sign Out</span></div>
             </div>
         </div>
     );
 }
 
-// ===== DASHBOARD =====
-function DashboardPage() {
-    const { authFetch, user } = useAuth();
-    const [data, setData] = useState(null);
-    const [loading, setLoading] = useState(true);
+// ========================================================================
+// ADMIN DASHBOARD (WAR ROOM)
+// ========================================================================
+function DashboardPage(){
+    const{af,user}=useA();const toast=useT();
+    const[d,sD]=useState(null);const[tasks,sTasks]=useState([]);const[rehash,sRehash]=useState([]);
+    const[appts,sAppts]=useState([]);const[loading,sL]=useState(true);
 
-    useEffect(() => { load(); }, []);
-    const load = async () => {
-        setLoading(true);
-        try {
-            if (user?.role === "admin") {
-                const r = await authFetch("/api/admin/dashboard");
-                if (r.ok) setData(await r.json());
-            } else {
-                const [lr,ar,tr] = await Promise.all([authFetch("/api/leads?limit=100"),authFetch("/api/appointments"),authFetch("/api/tasks")]);
-                const leads = lr.ok ? await lr.json() : [];
-                const appts = ar.ok ? await ar.json() : [];
-                const tasks = tr.ok ? await tr.json() : [];
-                const la = Array.isArray(leads)?leads:(leads.items||[]);
-                const aa = Array.isArray(appts)?appts:[];
-                const ta = Array.isArray(tasks)?tasks:(tasks.items||[]);
-                const today = new Date().toISOString().split("T")[0];
-                setData({_rep:true,total_leads:la.length,appts_today:aa.filter(a=>a.appointment_date===today).length,open_tasks:ta.filter(t=>t.status!=="completed").length,leads:la.slice(0,5),appts:aa.slice(0,5)});
-            }
-        } catch(e){console.error(e)}
-        setLoading(false);
-    };
-
-    if(loading) return <Spinner/>;
-
-    if(user?.role==="admin"&&data&&!data._rep) return (
-        <div>
-            <PageHeader title="War Room" sub="Real-time operations overview" right={<button className="btn-ghost" onClick={load}>{Icons.refresh} Refresh</button>}/>
-            <div style={{padding:"20px 28px"}}>
-                <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:28}}>
-                    <KPI label="Leads/Day" value={data.leads_per_day?.toFixed(1)} />
-                    <KPI label="Close Rate" value={`${data.close_rate?.toFixed(1)}%`} type={data.close_rate>20?"good":"urgent"} />
-                    <KPI label="Rev/Rep" value={fmt.money(data.revenue_per_rep)} />
-                    <KPI label="Follow-up" value={`${data.held_rate?.toFixed(1)}%`} type={data.held_rate>20?"urgent":"good"} />
-                    <KPI label="Total Leads" value={data.total_leads} />
-                    <KPI label="Closed Won" value={data.closed_won_leads} type="good" />
-                </div>
-                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
-                    <div className="card-dark" style={{padding:20}}>
-                        <h3 style={{fontSize:13,fontWeight:700,color:"#888",marginBottom:14,textTransform:"uppercase",letterSpacing:".05em"}}>Quick Actions</h3>
-                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                            <button className="btn-ghost" onClick={()=>navigate("/appointments")}>Dispatch Center</button>
-                            <button className="btn-ghost" onClick={()=>navigate("/leads")}>All Leads</button>
-                            <button className="btn-ghost" onClick={()=>navigate("/tasks")}>Open Tasks</button>
-                            <button className="btn-ghost" onClick={()=>navigate("/reps")}>Rep Performance</button>
-                        </div>
-                    </div>
-                    <div className="card-dark" style={{padding:20}}>
-                        <h3 style={{fontSize:13,fontWeight:700,color:"#888",marginBottom:14,textTransform:"uppercase",letterSpacing:".05em"}}>Pipeline</h3>
-                        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-                            {[["Active",data.total_leads-data.closed_won_leads,"#FF9F0A"],["Closed Won",data.closed_won_leads,"#30D158"],["Total",data.total_leads,"#e5e5e5"]].map(([l,v,c])=>(
-                                <div key={l} style={{display:"flex",justifyContent:"space-between"}}><span style={{fontSize:13,color:"#888"}}>{l}</span><span style={{fontSize:14,fontWeight:700,color:c}}>{v}</span></div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    );
-
-    // Rep dashboard
-    return (
-        <div>
-            <PageHeader title="My Dashboard" sub={`Welcome back, ${user?.full_name}`} />
-            <div style={{padding:"20px 28px"}}>
-                <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:28}}>
-                    <KPI label="My Leads" value={data?.total_leads||0} />
-                    <KPI label="Today's Appts" value={data?.appts_today||0} type={data?.appts_today>0?"warning":null} />
-                    <KPI label="Open Tasks" value={data?.open_tasks||0} type={data?.open_tasks>3?"urgent":"good"} />
-                </div>
-            </div>
-        </div>
-    );
-}
-
-// ===== DISPATCH CENTER (APPOINTMENTS WAR ROOM) =====
-function AppointmentsPage() {
-    const { authFetch, user } = useAuth();
-    const toast = useToast();
-    const [appts, setAppts] = useState([]);
-    const [leads, setLeads] = useState({});
-    const [reps, setReps] = useState({});
-    const [loading, setLoading] = useState(true);
-    const [selected, setSelected] = useState(null);
-
-    useEffect(() => { loadAll(); const iv = setInterval(loadAll, 30000); return () => clearInterval(iv); }, []);
-
-    const loadAll = async () => {
-        try {
-            const [ar, lr, rr] = await Promise.all([
-                authFetch("/api/appointments"),
-                authFetch("/api/leads?limit=300"),
-                user?.role==="admin" ? authFetch("/api/admin/reps") : Promise.resolve(null),
+    useEffect(()=>{load()},[]);
+    const load=async()=>{
+        sL(true);
+        try{
+            const isA=user?.role==="admin";
+            const[dr,ar,tr]=await Promise.all([
+                isA?af("/api/admin/dashboard"):af("/api/leads?limit=100"),
+                af("/api/appointments"),
+                af("/api/tasks"),
             ]);
-            if(ar.ok){const d=await ar.json();setAppts(Array.isArray(d)?d:(d.items||[]));}
-            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);setLeads(m);}
-            if(rr&&rr.ok){const d=await rr.json();const arr=Array.isArray(d)?d:(d.reps||d.items||[]);const m={};arr.forEach(r=>m[r.id]=r);setReps(m);}
-        } catch(e){console.error(e)}
-        setLoading(false);
+            if(isA){
+                if(dr.ok)sD(await dr.json());
+                if(ar.ok){const a=await ar.json();sAppts(Array.isArray(a)?a:[])}
+                if(tr.ok){const t=await tr.json();sTasks(Array.isArray(t)?t:(t.items||[]))}
+                // Load rehash
+                try{const rr=await af("/api/leads/rehash");if(rr.ok)sRehash(await rr.json())}catch{}
+            } else {
+                const leads=dr.ok?await dr.json():[];
+                const a=ar.ok?await ar.json():[];
+                const t=tr.ok?await tr.json():[];
+                const la=Array.isArray(leads)?leads:(leads.items||[]);
+                const ta=Array.isArray(t)?t:(t.items||[]);
+                const today=new Date().toISOString().split("T")[0];
+                sD({_rep:true,total_leads:la.length,appts_today:(Array.isArray(a)?a:[]).filter(x=>x.appointment_date===today).length,open_tasks:ta.filter(x=>x.status!=="completed").length});
+                sAppts(Array.isArray(a)?a:[]);
+                sTasks(ta);
+            }
+        }catch(e){console.error(e)}
+        sL(false);
     };
 
-    const updateApptStatus = async (id, status) => {
-        try {
-            const r = await authFetch(`/api/appointments/${id}/status`, { method: "PUT", body: JSON.stringify({ appointment_status: status }) });
-            if(r.ok){ toast("success",`Updated to ${statusLabel(status)}`); loadAll(); }
-            else { const d=await r.json().catch(()=>({})); toast("error", d.detail||"Failed"); }
-        } catch(e){ toast("error","Error updating"); }
-    };
+    if(loading)return<Spin/>;
 
-    const now = new Date();
-    const today = now.toISOString().split("T")[0];
+    const today=new Date().toISOString().split("T")[0];
+    const todayAppts=appts.filter(a=>a.appointment_date===today);
+    const overdue=tasks.filter(t=>t.status==="overdue");
+    const pending=tasks.filter(t=>t.status==="pending");
+    const dueToday=pending.filter(t=>t.due_date&&t.due_date.startsWith(today));
 
-    // Categorize appointments
-    const todayAppts = appts.filter(a=>a.appointment_date===today);
-    const liveNow = todayAppts.filter(a=>["en_route","arrived"].includes(a.appointment_status));
-    const confirmed = todayAppts.filter(a=>a.appointment_status==="confirmed"||a.confirmation_status==="confirmed");
-    const unconfirmed = todayAppts.filter(a=>a.confirmation_status!=="confirmed"&&!["completed","cancelled","no_show"].includes(a.appointment_status));
-    const completed = todayAppts.filter(a=>a.appointment_status==="completed");
-    const noShow = todayAppts.filter(a=>a.appointment_status==="no_show");
-    const upcoming = appts.filter(a=>a.appointment_date>today).sort((a,b)=>a.appointment_date.localeCompare(b.appointment_date));
-    const atRisk = todayAppts.filter(a=>{
-        if(["completed","cancelled","no_show"].includes(a.appointment_status)) return false;
-        if(a.confirmation_status!=="confirmed") return true;
-        return false;
-    });
-    const needsOutcome = todayAppts.filter(a=>a.appointment_status==="arrived"||
-        (a.appointment_status==="confirmed"&&a.appointment_time&&(() => {
-            const [h,m] = (a.appointment_time||"").split(":").map(Number);
-            if(isNaN(h)) return false;
-            const apptTime = new Date(now); apptTime.setHours(h,(m||0)+90,0);
-            return now > apptTime;
-        })())
-    );
-
-    const totalRevAtStake = todayAppts.filter(a=>!["completed","cancelled"].includes(a.appointment_status))
-        .reduce((sum,a)=>{ const l=leads[a.lead_id]; return sum+(l?.average_monthly_bill||200)*12*20*0.6; },0);
-
-    if(loading) return <Spinner/>;
-
-    return (
-        <div>
-            {/* Top Command Bar */}
-            <div style={{padding:"16px 28px",background:"#111",borderBottom:"1px solid #1a1a1a",position:"sticky",top:0,zIndex:20}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-                    <div>
-                        <h1 style={{fontSize:20,fontWeight:800,letterSpacing:"-.02em"}}>Dispatch Center</h1>
-                        <div style={{fontSize:11,color:"#555",marginTop:2}}>{today} &middot; Auto-refresh 30s</div>
-                    </div>
-                    <button className="btn-ghost" onClick={loadAll} style={{display:"flex",alignItems:"center",gap:4}}>{Icons.refresh} Refresh</button>
-                </div>
-                {/* KPI Chips */}
-                <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:4}}>
-                    <KPI label="Today" value={todayAppts.length} />
-                    <KPI label="Live Now" value={liveNow.length} type={liveNow.length>0?"good":null} />
-                    <KPI label="Confirmed" value={confirmed.length} type="good" />
-                    <KPI label="Unconfirmed" value={unconfirmed.length} type={unconfirmed.length>0?"warning":null} />
-                    <KPI label="At Risk" value={atRisk.length} type={atRisk.length>0?"urgent":null} />
-                    <KPI label="Needs Outcome" value={needsOutcome.length} type={needsOutcome.length>0?"warning":null} />
-                    <KPI label="Revenue at Stake" value={fmt.money(totalRevAtStake)} type="warning" />
-                </div>
-            </div>
-
-            {/* Main Sections */}
-            <div style={{padding:"20px 28px"}}>
-                {/* LIVE NOW */}
-                {liveNow.length>0 && (
-                    <ApptSection title="Live Now" icon={Icons.zap} count={liveNow.length} color="#30D158">
-                        {liveNow.map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="live" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                    </ApptSection>
-                )}
-
-                {/* NEEDS CONFIRMATION */}
-                {unconfirmed.length>0 && (
-                    <ApptSection title="Needs Confirmation" icon={Icons.alert} count={unconfirmed.length} color="#FF9F0A">
-                        {unconfirmed.map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="warning" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                    </ApptSection>
-                )}
-
-                {/* AT RISK */}
-                {atRisk.length>0 && atRisk.some(a=>!unconfirmed.includes(a)) && (
-                    <ApptSection title="At Risk" icon={Icons.alert} count={atRisk.length} color="#FF453A">
-                        {atRisk.filter(a=>!unconfirmed.includes(a)).map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="at-risk" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                    </ApptSection>
-                )}
-
-                {/* NEXT UP (confirmed, not yet en route) */}
-                {confirmed.length>0 && (
-                    <ApptSection title="Next Up \u2014 Confirmed" icon={Icons.clock} count={confirmed.length} color="#007AFF">
-                        {confirmed.map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="upcoming" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                    </ApptSection>
-                )}
-
-                {/* AWAITING OUTCOME */}
-                {needsOutcome.length>0 && (
-                    <ApptSection title="Awaiting Outcome" icon={Icons.clock} count={needsOutcome.length} color="#BF5AF2">
-                        {needsOutcome.map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="warning" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                    </ApptSection>
-                )}
-
-                {/* COMPLETED / NO SHOW */}
-                {(completed.length>0||noShow.length>0) && (
-                    <ApptSection title="Today's Results" icon={Icons.check} count={completed.length+noShow.length} color="#888">
-                        {completed.map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                        {noShow.map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="at-risk" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                    </ApptSection>
-                )}
-
-                {/* UPCOMING (future days) */}
-                {upcoming.length>0 && (
-                    <ApptSection title="Upcoming" icon={Icons.calendar} count={upcoming.length} color="#555">
-                        {upcoming.slice(0,10).map(a=><ApptCard key={a.id} appt={a} lead={leads[a.lead_id]} rep={reps[a.assigned_rep_id]} cls="upcoming" onAction={updateApptStatus} onSelect={setSelected}/>)}
-                        {upcoming.length>10 && <div style={{textAlign:"center",padding:12,color:"#555",fontSize:12}}>+{upcoming.length-10} more</div>}
-                    </ApptSection>
-                )}
-
-                {todayAppts.length===0&&upcoming.length===0 && (
-                    <div className="card-dark" style={{padding:60,textAlign:"center"}}>
-                        <div style={{color:"#444",fontSize:14}}>No appointments scheduled</div>
-                    </div>
-                )}
-            </div>
-
-            {/* Detail Drawer */}
-            {selected && <ApptDrawer appt={selected} lead={leads[selected.lead_id]} rep={reps[selected.assigned_rep_id]} onClose={()=>setSelected(null)} onAction={updateApptStatus} onRefresh={loadAll}/>}
-        </div>
-    );
-}
-
-function ApptSection({ title, icon, count, color, children }) {
-    return (
-        <div style={{marginBottom:24}}>
-            <div className="section-hdr">
-                <div style={{color}}>{icon}</div>
-                <h3 style={{color}}>{title}</h3>
-                <div className="count">{count}</div>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))",gap:10}}>
-                {children}
-            </div>
-        </div>
-    );
-}
-
-function ApptCard({ appt, lead, rep, cls, onAction, onSelect }) {
-    const bill = lead?.average_monthly_bill;
-    const opValue = bill ? Math.round(bill*12*20*0.6) : null;
-    const score = lead?.lead_quality_score||0;
-
-    return (
-        <div className={`appt-card ${cls}`} onClick={()=>onSelect(appt)}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-                <div>
-                    <div style={{fontSize:15,fontWeight:700,color:"#e5e5e5"}}>{lead?`${lead.first_name} ${lead.last_name}`:`Lead #${appt.lead_id}`}</div>
-                    <div style={{fontSize:12,color:"#666",marginTop:2}}>{appt.appointment_address||lead?.property_address||"No address"}</div>
-                </div>
-                <div style={{textAlign:"right"}}>
-                    <div style={{fontSize:14,fontWeight:700,color:"#FF9F0A"}}>{appt.appointment_time||"TBD"}</div>
-                    <div style={{fontSize:11,color:"#555"}}>{fmt.date(appt.appointment_date)}</div>
-                </div>
-            </div>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
-                <span className={`badge ${statusBadge(appt.appointment_status)}`}>{statusLabel(appt.appointment_status)}</span>
-                {score>0&&<span className="badge" style={{background:scoreColor(score)+"20",color:scoreColor(score)}}>{score}pt</span>}
-                {bill&&<span className="badge badge-gray">{fmt.money(bill)}/mo</span>}
-                {opValue&&<span className="badge badge-orange">{fmt.money(opValue)} opp</span>}
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div style={{fontSize:11,color:"#555"}}>{rep?.full_name||"Unassigned"}</div>
-                <div style={{display:"flex",gap:4}}>
-                    {appt.appointment_status==="scheduled"&&<button className="action-btn success" onClick={e=>{e.stopPropagation();onAction(appt.id,"confirmed")}}>Confirm</button>}
-                    {appt.appointment_status==="confirmed"&&<button className="action-btn primary" onClick={e=>{e.stopPropagation();onAction(appt.id,"en_route")}}>Dispatch</button>}
-                    {appt.appointment_status==="en_route"&&<button className="action-btn success" onClick={e=>{e.stopPropagation();onAction(appt.id,"arrived")}}>Arrived</button>}
-                    {appt.appointment_status==="arrived"&&<button className="action-btn primary" onClick={e=>{e.stopPropagation();onAction(appt.id,"completed")}}>Complete</button>}
-                </div>
-            </div>
-        </div>
-    );
-}
-
-function ApptDrawer({ appt, lead, rep, onClose, onAction, onRefresh }) {
-    const toast = useToast();
-    const score = lead?.lead_quality_score||0;
-    const bill = lead?.average_monthly_bill;
-    const opValue = bill?Math.round(bill*12*20*0.6):null;
-
-    return (
-        <>
-            <div className="drawer-overlay" onClick={onClose}/>
-            <div className="drawer">
-                <div style={{padding:"18px 24px",borderBottom:"1px solid #1e1e1e",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div>
-                        <h2 style={{fontSize:18,fontWeight:800}}>{lead?`${lead.first_name} ${lead.last_name}`:`Appointment #${appt.id}`}</h2>
-                        <div style={{display:"flex",gap:6,marginTop:6}}>
-                            <span className={`badge ${statusBadge(appt.appointment_status)}`}>{statusLabel(appt.appointment_status)}</span>
-                            {score>0&&<span className="badge" style={{background:scoreColor(score)+"20",color:scoreColor(score)}}>{score}pt</span>}
+    // === REP DASHBOARD ===
+    if(user?.role!=="admin"||d?._rep){
+        return(
+            <div>
+                <PH title="My Dashboard" sub={`Welcome, ${user?.full_name}`}/>
+                <div style={{padding:"16px 24px"}}>
+                    {/* Overdue tasks - RED ALERT */}
+                    {overdue.length>0&&(
+                        <div style={{background:"#ef444410",border:"1px solid #ef444430",borderRadius:10,padding:16,marginBottom:16}}>
+                            <div style={{fontSize:12,fontWeight:800,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>Overdue Tasks ({overdue.length})</div>
+                            {overdue.map(t=><TaskRow key={t.id} t={t}/>)}
                         </div>
+                    )}
+                    {/* KPIs */}
+                    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:20}}>
+                        <KPI l="My Leads" v={d?.total_leads||0}/>
+                        <KPI l="Today's Appts" v={d?.appts_today||0} t={d?.appts_today>0?"warn":null}/>
+                        <KPI l="Open Tasks" v={d?.open_tasks||0} t={d?.open_tasks>3?"hot":"ok"}/>
+                        <KPI l="Due Today" v={dueToday.length} t={dueToday.length>0?"warn":null}/>
                     </div>
-                    <div style={{cursor:"pointer",padding:8}} onClick={onClose}>{Icons.x}</div>
-                </div>
-                <div style={{padding:24}}>
-                    {/* Key info */}
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,marginBottom:24}}>
-                        <DField label="Date" value={fmt.date(appt.appointment_date)}/>
-                        <DField label="Time" value={appt.appointment_time||"TBD"}/>
-                        <DField label="Address" value={appt.appointment_address||lead?.property_address}/>
-                        <DField label="Rep" value={rep?.full_name||"Unassigned"}/>
-                        <DField label="Monthly Bill" value={fmt.money(bill)}/>
-                        <DField label="Opportunity" value={fmt.money(opValue)} color="#FF9F0A"/>
-                        <DField label="Phone" value={lead?.phone}/>
-                        <DField label="Email" value={lead?.email}/>
-                        <DField label="Source" value={statusLabel(lead?.source_type)}/>
-                        <DField label="Property" value={statusLabel(lead?.property_type)}/>
-                    </div>
-                    {/* Actions */}
-                    <div style={{marginBottom:20}}>
-                        <div style={{fontSize:11,fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>Quick Actions</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                            {["scheduled","confirmed","en_route","arrived","completed","no_show","rescheduled","cancelled"].map(s=>(
-                                <button key={s} className={`action-btn ${appt.appointment_status===s?"primary":""}`} disabled={appt.appointment_status===s}
-                                    onClick={()=>{onAction(appt.id,s);onClose();}}>
-                                    {statusLabel(s)}
-                                </button>
-                            ))}
+                    {/* Today's appointments */}
+                    {todayAppts.length>0&&(
+                        <div style={{marginBottom:20}}>
+                            <SH title="Today's Appointments" count={todayAppts.length}/>
+                            {todayAppts.map(a=><RepApptCard key={a.id} a={a}/>)}
                         </div>
-                    </div>
+                    )}
+                    {/* Due today tasks */}
+                    {dueToday.length>0&&(
+                        <div><SH title="Due Today" count={dueToday.length}/>{dueToday.map(t=><TaskRow key={t.id} t={t}/>)}</div>
+                    )}
                 </div>
             </div>
-        </>
-    );
-}
+        );
+    }
 
-function DField({label,value,color}){
+    // === ADMIN WAR ROOM (3-COLUMN LAYOUT) ===
     return(
         <div>
-            <div style={{fontSize:10,fontWeight:700,color:"#444",textTransform:"uppercase",letterSpacing:".04em",marginBottom:3}}>{label}</div>
-            <div style={{fontSize:13,fontWeight:600,color:color||"#ccc"}}>{value||"--"}</div>
+            <PH title="War Room" sub="Real-time operations" right={<button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/> Refresh</button>}/>
+            <div style={{padding:"16px 24px"}}>
+                {/* Top KPIs */}
+                <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+                    <KPI l="Leads/Day" v={d?.leads_per_day?.toFixed(1)}/>
+                    <KPI l="Close Rate" v={`${d?.close_rate?.toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/>
+                    <KPI l="Rev/Rep" v={$.money(d?.revenue_per_rep)}/>
+                    <KPI l="Total Leads" v={d?.total_leads}/>
+                    <KPI l="Closed Won" v={d?.closed_won_leads} t="ok"/>
+                    <KPI l="Overdue Tasks" v={overdue.length} t={overdue.length>0?"hot":null}/>
+                    <KPI l="Follow-ups" v={rehash.length} t={rehash.length>0?"warn":null}/>
+                    <KPI l="Today Appts" v={todayAppts.length} t="warn"/>
+                </div>
+                {/* 3-Column Layout */}
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:16}}>
+                    {/* LEFT: Dispatch Board */}
+                    <div>
+                        <SH title="Dispatch Board" count={todayAppts.length}/>
+                        <div className="cd" style={{padding:0,maxHeight:500,overflowY:"auto"}}>
+                            {todayAppts.length===0?<div style={{padding:24,textAlign:"center",color:"#3f3f46",fontSize:12}}>No appointments today</div>:
+                            todayAppts.map(a=>(
+                                <div key={a.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/dispatch`)}>
+                                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div style={{fontSize:13,fontWeight:700}}>{a.lead_name||`Lead #${a.lead_id}`}</div>
+                                        <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
+                                    </div>
+                                    <div style={{fontSize:11,color:"#52525b",marginTop:3}}>{a.appointment_time||"TBD"} &middot; {a.appointment_address||"No addr"}</div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    {/* CENTER: Alerts & Activity */}
+                    <div>
+                        <SH title="System Alerts"/>
+                        {overdue.length>0&&(
+                            <div className="cd" style={{padding:14,marginBottom:10,borderColor:"#ef444430"}}>
+                                <div style={{fontSize:11,fontWeight:800,color:"#ef4444",textTransform:"uppercase",marginBottom:8}}>Overdue Tasks</div>
+                                {overdue.slice(0,5).map(t=><TaskRow key={t.id} t={t} compact/>)}
+                                {overdue.length>5&&<div style={{fontSize:11,color:"#52525b",padding:"6px 0"}}>+{overdue.length-5} more</div>}
+                            </div>
+                        )}
+                        <div className="cd" style={{padding:14}}>
+                            <div style={{fontSize:11,fontWeight:800,color:"#a1a1aa",textTransform:"uppercase",marginBottom:8}}>Quick Actions</div>
+                            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                                <button className="btn" onClick={()=>nav("/dispatch")}>Open Dispatch</button>
+                                <button className="btn" onClick={()=>nav("/leads")}>All Leads</button>
+                                <button className="btn" onClick={()=>nav("/tasks")}>Tasks</button>
+                                <button className="btn" onClick={()=>nav("/reps")}>Rep Performance</button>
+                            </div>
+                        </div>
+                    </div>
+                    {/* RIGHT: Follow-ups & Pipeline */}
+                    <div>
+                        <SH title="Follow-ups Due" count={rehash.length}/>
+                        <div className="cd" style={{padding:0,maxHeight:240,overflowY:"auto",marginBottom:12}}>
+                            {rehash.length===0?<div style={{padding:20,textAlign:"center",color:"#3f3f46",fontSize:12}}>No follow-ups</div>:
+                            rehash.slice(0,8).map(r=>(
+                                <div key={r.lead_id} style={{padding:"8px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${r.lead_id}`)}>
+                                    <div style={{fontSize:12,fontWeight:600}}>{r.name}</div>
+                                    <div style={{fontSize:10,color:"#52525b"}}>{r.next_follow_up_date?$.date(r.next_follow_up_date):"No date"} &middot; {r.phone}</div>
+                                </div>
+                            ))}
+                        </div>
+                        <SH title="Pending Tasks" count={dueToday.length}/>
+                        <div className="cd" style={{padding:0,maxHeight:240,overflowY:"auto"}}>
+                            {dueToday.length===0?<div style={{padding:20,textAlign:"center",color:"#3f3f46",fontSize:12}}>Nothing due today</div>:
+                            dueToday.slice(0,6).map(t=><TaskRow key={t.id} t={t} compact/>)}
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }
 
-// ===== LEADS PAGE =====
-function LeadsPage() {
-    const { authFetch, user } = useAuth();
-    const toast = useToast();
-    const [leads, setLeads] = useState([]);
-    const [reps, setReps] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [search, setSearch] = useState("");
-    const [statusFilter, setStatusFilter] = useState("");
-    const [selected, setSelected] = useState(null);
+function RepApptCard({a}){
+    const{af}=useA();const toast=useT();
+    const go=async(id,st)=>{try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok)toast("ok",sL(st));else toast("err","Failed")}catch{toast("err","Error")}};
+    return(
+        <div className={`appt-card ${a.appointment_status==="en_route"||a.appointment_status==="arrived"?"live":a.appointment_status==="confirmed"?"next":"wrn"}`} style={{marginBottom:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                <div><div style={{fontSize:14,fontWeight:700}}>{a.lead_name||`Lead #${a.lead_id}`}</div><div style={{fontSize:11,color:"#52525b"}}>{a.appointment_address||"No addr"}</div></div>
+                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{a.appointment_time||"TBD"}</div></div>
+            </div>
+            <div style={{display:"flex",gap:4,marginBottom:8}}><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
+            <div style={{display:"flex",gap:4}}>
+                {a.appointment_status==="scheduled"&&<button className="btn btn-g" onClick={()=>go(a.id,"confirmed")}>Confirm</button>}
+                {a.appointment_status==="confirmed"&&<button className="btn btn-p" onClick={()=>go(a.id,"en_route")}>Start En Route</button>}
+                {a.appointment_status==="en_route"&&<button className="btn btn-g" onClick={()=>go(a.id,"arrived")}>Mark Arrived</button>}
+                {a.appointment_status==="arrived"&&<button className="btn btn-p" onClick={()=>nav(`/dispatch?complete=${a.id}`)}>Complete</button>}
+            </div>
+        </div>
+    );
+}
 
-    useEffect(()=>{loadLeads(); if(user?.role==="admin") loadReps();},[]);
-    const hash = useHash();
-    useEffect(()=>{
-        const p=new URLSearchParams(hash.split("?")[1]||"");
-        const id=p.get("id");
-        if(id&&leads.length){const l=leads.find(x=>x.id===parseInt(id));if(l)setSelected(l);}
-    },[hash,leads]);
+// ========================================================================
+// DISPATCH CENTER
+// ========================================================================
+function DispatchPage(){
+    const{af,user}=useA();const toast=useT();
+    const[appts,sA]=useState([]);const[leads,sL2]=useState({});const[reps,sR]=useState({});
+    const[loading,sLd]=useState(true);const[selA,setSA]=useState(null);const[showComplete,setSC]=useState(null);
 
-    const loadLeads = async()=>{
-        setLoading(true);
-        try{const r=await authFetch("/api/leads?limit=300");if(r.ok){const d=await r.json();setLeads(Array.isArray(d)?d:(d.items||d.leads||[]));}
-        }catch(e){console.error(e)}
-        setLoading(false);
+    useEffect(()=>{loadAll();const iv=setInterval(loadAll,30000);return()=>clearInterval(iv)},[]);
+    const h=useH();
+    useEffect(()=>{const p=new URLSearchParams(h.split("?")[1]||"");const c=p.get("complete");if(c&&appts.length){const a=appts.find(x=>x.id===parseInt(c));if(a)setSC(a)}},[h,appts]);
+
+    const loadAll=async()=>{
+        try{
+            const[ar,lr,rr]=await Promise.all([af("/api/appointments"),af("/api/leads?limit=300"),user?.role==="admin"?af("/api/admin/reps"):Promise.resolve(null)]);
+            if(ar.ok){const d=await ar.json();sA(Array.isArray(d)?d:[])}
+            if(lr.ok){const d=await lr.json();const arr=Array.isArray(d)?d:(d.items||[]);const m={};arr.forEach(l=>m[l.id]=l);sL2(m)}
+            if(rr&&rr.ok){const d=await rr.json();const arr=Array.isArray(d)?d:(d.reps||d.items||[]);const m={};arr.forEach(r=>m[r.id]=r);sR(m)}
+        }catch(e){console.error(e)}sLd(false);
     };
-    const loadReps = async()=>{
-        try{const r=await authFetch("/api/admin/reps");if(r.ok){const d=await r.json();setReps(Array.isArray(d)?d:(d.reps||d.items||[]));}
-        }catch(e){}
+
+    const updSt=async(id,st)=>{
+        try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",`${sL(st)}`);loadAll()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
     };
 
-    const updateStatus=async(id,newStatus)=>{
-        try{const r=await authFetch(`/api/leads/${id}`,{method:"PUT",body:JSON.stringify({deal_status:newStatus})});
-        if(r.ok){toast("success",`Status: ${statusLabel(newStatus)}`);loadLeads();}
-        }catch(e){toast("error","Failed");}
+    const today=new Date().toISOString().split("T")[0];
+    const todayA=appts.filter(a=>a.appointment_date===today);
+    const liveNow=todayA.filter(a=>["en_route","arrived"].includes(a.appointment_status));
+    const confirmed=todayA.filter(a=>a.appointment_status==="confirmed");
+    const scheduled=todayA.filter(a=>a.appointment_status==="scheduled");
+    const completed=todayA.filter(a=>a.appointment_status==="completed");
+    const noShow=todayA.filter(a=>["no_show","cancelled"].includes(a.appointment_status));
+    const upcoming=appts.filter(a=>a.appointment_date>today).sort((a,b)=>a.appointment_date.localeCompare(b.appointment_date));
+
+    const totalRev=todayA.filter(a=>!["completed","cancelled","no_show"].includes(a.appointment_status)).reduce((s,a)=>{const l=leads[a.lead_id];return s+(l?.average_monthly_bill||200)*12*20*0.6},0);
+
+    if(loading)return<Spin/>;
+
+    return(
+        <div>
+            <div style={{padding:"14px 24px",background:"#0c0c0f",borderBottom:"1px solid #18181b",position:"sticky",top:0,zIndex:20}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                    <div><h1 style={{fontSize:18,fontWeight:900}}>Dispatch Center</h1><div style={{fontSize:10,color:"#3f3f46",marginTop:1}}>{today} &middot; Auto-refresh 30s</div></div>
+                    <button className="btn" onClick={loadAll}><Ic d={IC.refresh} s={12}/></button>
+                </div>
+                <div style={{display:"flex",gap:6,overflowX:"auto"}}>
+                    <KPI l="Today" v={todayA.length}/><KPI l="Live" v={liveNow.length} t={liveNow.length>0?"ok":null}/><KPI l="Confirmed" v={confirmed.length} t="ok"/><KPI l="Unconfirmed" v={scheduled.length} t={scheduled.length>0?"warn":null}/><KPI l="Rev at Stake" v={$.money(totalRev)} t="warn"/>
+                </div>
+            </div>
+            <div style={{padding:"16px 24px"}}>
+                {liveNow.length>0&&<ASection title="Live Now" color="#22c55e" items={liveNow} leads={leads} reps={reps} cls="live" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {scheduled.length>0&&<ASection title="Needs Confirmation" color="#f59e0b" items={scheduled} leads={leads} reps={reps} cls="wrn" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {confirmed.length>0&&<ASection title="Ready to Dispatch" color="#3b82f6" items={confirmed} leads={leads} reps={reps} cls="next" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {(completed.length>0||noShow.length>0)&&<ASection title="Results" color="#52525b" items={[...completed,...noShow]} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
+                {todayA.length===0&&upcoming.length===0&&<div className="cd" style={{padding:48,textAlign:"center",color:"#3f3f46"}}>No appointments</div>}
+            </div>
+            {showComplete&&<CompleteModal appt={showComplete} lead={leads[showComplete.lead_id]} onClose={()=>{setSC(null);nav("/dispatch")}} onDone={()=>{setSC(null);nav("/dispatch");loadAll()}}/>}
+        </div>
+    );
+}
+
+function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete}){
+    return(
+        <div style={{marginBottom:20}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><div style={{width:7,height:7,borderRadius:"50%",background:color}}/><span style={{fontSize:11,fontWeight:800,color,textTransform:"uppercase",letterSpacing:".05em"}}>{title}</span><span style={{fontSize:10,color:"#3f3f46"}}>{items.length}</span></div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(320px,1fr))",gap:8}}>
+                {items.map(a=>{
+                    const l=leads[a.lead_id];const r=reps[a.assigned_rep_id];const bill=l?.average_monthly_bill;
+                    return(
+                        <div key={a.id} className={`appt-card ${cls}`} onClick={()=>onSel(a)}>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                                <div><div style={{fontSize:14,fontWeight:700}}>{l?`${l.first_name} ${l.last_name}`:`#${a.lead_id}`}</div><div style={{fontSize:11,color:"#52525b"}}>{a.appointment_address||l?.property_address||""}</div></div>
+                                <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:700,color:"#f59e0b"}}>{a.appointment_time||"TBD"}</div><div style={{fontSize:10,color:"#3f3f46"}}>{$.date(a.appointment_date)}</div></div>
+                            </div>
+                            <div style={{display:"flex",gap:4,marginBottom:8,flexWrap:"wrap"}}>
+                                <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
+                                {bill&&<span className="badge b-gray">{$.money(bill)}/mo</span>}
+                                {l?.lead_quality_score>0&&<span className="badge" style={{background:sC(l.lead_quality_score)+"18",color:sC(l.lead_quality_score)}}>{l.lead_quality_score}pt</span>}
+                            </div>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                <div style={{fontSize:11,color:"#52525b"}}>{r?.full_name||"Unassigned"}</div>
+                                <div style={{display:"flex",gap:3}} onClick={e=>e.stopPropagation()}>
+                                    {a.appointment_status==="scheduled"&&<button className="btn btn-g" onClick={()=>onAct(a.id,"confirmed")}>Confirm</button>}
+                                    {a.appointment_status==="confirmed"&&<button className="btn btn-p" onClick={()=>onAct(a.id,"en_route")}>Dispatch</button>}
+                                    {a.appointment_status==="en_route"&&<button className="btn btn-g" onClick={()=>onAct(a.id,"arrived")}>Arrived</button>}
+                                    {a.appointment_status==="arrived"&&<button className="btn btn-p" onClick={()=>onComplete(a)}>Complete</button>}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+}
+
+// ===== COMPLETION MODAL (OUTCOME ENGINE UI) =====
+function CompleteModal({appt,lead,onClose,onDone}){
+    const{af}=useA();const toast=useT();
+    const[outcome,setOC]=useState("");const[notes,setN]=useState("");const[fuDate,setFD]=useState("");const[fuNote,setFN]=useState("");const[busy,setBsy]=useState(false);
+
+    const HELD=["closed","proposal_presented","proposal_sent","follow_up_required","declined"];
+    const NOT_HELD=["no_show","not_home","canceled","reschedule_requested"];
+    const NEEDS_FU=["proposal_presented","proposal_sent","follow_up_required","not_home","reschedule_requested"];
+
+    const submit=async()=>{
+        if(!outcome){toast("err","Select an outcome");return}
+        if(!notes.trim()){toast("err","Notes required");return}
+        if(NEEDS_FU.includes(outcome)&&!fuDate){toast("err","Follow-up date required");return}
+        if(NEEDS_FU.includes(outcome)&&!fuNote.trim()){toast("err","Follow-up note required");return}
+        setBsy(true);
+        try{
+            const r=await af(`/api/appointments/${appt.id}/complete`,{method:"POST",body:JSON.stringify({outcome,notes,follow_up_date:fuDate||null,follow_up_note:fuNote||null})});
+            if(r.ok){toast("ok","Outcome recorded!");onDone()}
+            else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}
+        }catch{toast("err","Error")}
+        setBsy(false);
     };
 
-    const assignRep=async(leadId,repId)=>{
-        try{const r=await authFetch(`/api/leads/${leadId}/assign`,{method:"POST",body:JSON.stringify({rep_id:repId})});
-        if(r.ok){toast("success","Rep assigned");loadLeads();}else{const d=await r.json().catch(()=>({}));toast("error",d.detail||"Failed");}
-        }catch(e){toast("error","Failed");}
-    };
+    return(
+        <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+                <div><h3 style={{fontSize:16,fontWeight:800}}>Complete Appointment</h3>{lead&&<div style={{fontSize:12,color:"#52525b"}}>{lead.first_name} {lead.last_name} &middot; {lead.phone}</div>}</div>
+                <div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div>
+            </div>
+            {/* HELD Outcomes */}
+            <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#22c55e",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Held (Rep spoke to homeowner)</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {HELD.map(o=><button key={o} className={`btn ${outcome===o?"btn-p":""}`} onClick={()=>setOC(o)}>{sL(o)}</button>)}
+                </div>
+            </div>
+            {/* NOT HELD Outcomes */}
+            <div style={{marginBottom:16}}>
+                <div style={{fontSize:10,fontWeight:800,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:6}}>Not Held</div>
+                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                    {NOT_HELD.map(o=><button key={o} className={`btn ${outcome===o?"btn-r btn-p":""}`} onClick={()=>setOC(o)}>{sL(o)}</button>)}
+                </div>
+            </div>
+            {/* Notes */}
+            <div style={{marginBottom:14}}>
+                <label style={{display:"block",fontSize:10,fontWeight:800,color:"#52525b",marginBottom:4,textTransform:"uppercase"}}>Notes (required)</label>
+                <textarea className="inp" value={notes} onChange={e=>setN(e.target.value)} placeholder="What happened at this appointment..."/>
+            </div>
+            {/* Follow-up fields */}
+            {NEEDS_FU.includes(outcome)&&(
+                <div style={{background:"#f59e0b08",border:"1px solid #f59e0b30",borderRadius:8,padding:12,marginBottom:14}}>
+                    <div style={{fontSize:10,fontWeight:800,color:"#f59e0b",marginBottom:8,textTransform:"uppercase"}}>Follow-up Required</div>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                        <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Date</label><input className="inp" type="date" value={fuDate} onChange={e=>setFD(e.target.value)}/></div>
+                        <div><label style={{fontSize:10,fontWeight:700,color:"#52525b",display:"block",marginBottom:3}}>Note</label><input className="inp" value={fuNote} onChange={e=>setFN(e.target.value)} placeholder="Follow-up details"/></div>
+                    </div>
+                </div>
+            )}
+            <button className="btn btn-p" style={{width:"100%",padding:12}} disabled={busy||!outcome} onClick={submit}>{busy?"Processing...":"Submit Outcome"}</button>
+        </div></div>
+    );
+}
 
-    const filtered = useMemo(()=>leads.filter(l=>{
-        const ms=!search||`${l.first_name} ${l.last_name} ${l.city} ${l.phone} ${l.email}`.toLowerCase().includes(search.toLowerCase());
-        const mf=!statusFilter||l.deal_status===statusFilter;
-        return ms&&mf;
-    }),[leads,search,statusFilter]);
+// ========================================================================
+// LEADS PAGE
+// ========================================================================
+function LeadsPage(){
+    const{af,user}=useA();const toast=useT();
+    const[leads,sLeads]=useState([]);const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);
+    const[search,sSrch]=useState("");const[sf,sSF]=useState("");const[sel,sSel]=useState(null);
+    const[showCreate,setSC]=useState(false);const[showCreateAppt,setSCA]=useState(null);
 
+    useEffect(()=>{loadLeads();if(user?.role==="admin")loadReps()},[]);
+    const h=useH();
+    useEffect(()=>{const p=new URLSearchParams(h.split("?")[1]||"");const id=p.get("id");if(id&&leads.length){const l=leads.find(x=>x.id===parseInt(id));if(l)sSel(l)}},[h,leads]);
+
+    const loadLeads=async()=>{sLd(true);try{const r=await af("/api/leads?limit=500");if(r.ok){const d=await r.json();sLeads(Array.isArray(d)?d:(d.items||[]))}}catch(e){}sLd(false)};
+    const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}};
+
+    const filtered=useMemo(()=>leads.filter(l=>{
+        const ms=!search||`${l.first_name} ${l.last_name} ${l.city} ${l.phone} ${l.email||""}`.toLowerCase().includes(search.toLowerCase());
+        const mf=!sf||l.deal_status===sf;return ms&&mf;
+    }),[leads,search,sf]);
     const statuses=[...new Set(leads.map(l=>l.deal_status).filter(Boolean))].sort();
 
-    if(loading) return <Spinner/>;
+    if(loading)return<Spin/>;
 
-    return (
+    return(
         <div>
-            <PageHeader title="Leads" sub={`${leads.length} total`} right={<button className="btn-primary" style={{display:"flex",alignItems:"center",gap:4}}>{Icons.plus} New Lead</button>}/>
-            <div style={{padding:"16px 28px"}}>
-                <div style={{display:"flex",gap:10,marginBottom:16}}>
-                    <div style={{position:"relative",flex:1,maxWidth:300}}>
-                        <div style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#555"}}>{Icons.search}</div>
-                        <input className="input" style={{paddingLeft:36}} placeholder="Search..." value={search} onChange={e=>setSearch(e.target.value)}/>
-                    </div>
-                    <select className="input" style={{width:160}} value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}>
-                        <option value="">All Statuses</option>
-                        {statuses.map(s=><option key={s} value={s}>{statusLabel(s)}</option>)}
-                    </select>
-                    <button className="btn-ghost" onClick={loadLeads}>{Icons.refresh}</button>
+            <PH title="Leads" sub={`${leads.length} total`} right={user?.role==="admin"&&<button className="btn btn-p" onClick={()=>setSC(true)}><Ic d={IC.plus} s={12}/> New Lead</button>}/>
+            <div style={{padding:"14px 24px"}}>
+                <div style={{display:"flex",gap:8,marginBottom:12}}>
+                    <div style={{position:"relative",flex:1,maxWidth:280}}><div style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",color:"#3f3f46"}}><Ic d={IC.search} s={13}/></div><input className="inp" style={{paddingLeft:32}} placeholder="Search..." value={search} onChange={e=>sSrch(e.target.value)}/></div>
+                    <select className="inp" style={{width:150}} value={sf} onChange={e=>sSF(e.target.value)}><option value="">All</option>{statuses.map(s=><option key={s} value={s}>{sL(s)}</option>)}</select>
+                    <button className="btn" onClick={loadLeads}><Ic d={IC.refresh} s={12}/></button>
                 </div>
-                <div className="card-dark" style={{overflow:"hidden"}}>
-                    <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr 1fr 1fr 1fr .6fr",padding:"10px 16px",borderBottom:"1px solid #1a1a1a",fontSize:10,fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:".05em"}}>
-                        <div>Name</div><div>Location</div><div>Bill</div><div>Score</div><div>Status</div><div>Source</div>
+                <div className="cd" style={{overflow:"hidden"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"2fr 1.2fr .8fr .7fr 1fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}>
+                        <div>Name</div><div>Location</div><div>Bill</div><div>Score</div><div>Status</div><div>Src</div>
                     </div>
-                    {filtered.length===0&&<div style={{padding:40,textAlign:"center",color:"#444"}}>No leads found</div>}
+                    {filtered.length===0&&<div style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No leads</div>}
                     {filtered.map(l=>(
-                        <div key={l.id} className="table-row" style={{gridTemplateColumns:"2fr 1.2fr 1fr 1fr 1fr .6fr"}} onClick={()=>setSelected(l)}>
-                            <div><div style={{fontWeight:600,fontSize:13}}>{l.first_name} {l.last_name}</div><div style={{fontSize:11,color:"#555"}}>{l.phone}</div></div>
-                            <div style={{fontSize:12,color:"#888"}}>{l.city}, {l.state}</div>
-                            <div style={{fontWeight:600,color:"#FF9F0A"}}>{fmt.money(l.average_monthly_bill)}</div>
-                            <div><span className="badge" style={{background:scoreColor(l.lead_quality_score||0)+"20",color:scoreColor(l.lead_quality_score||0)}}>{l.lead_quality_score||0}</span></div>
-                            <div><span className={`badge ${statusBadge(l.deal_status)}`}>{statusLabel(l.deal_status)}</span></div>
-                            <div style={{fontSize:11,color:"#555"}}>{statusLabel(l.source_type)}</div>
+                        <div key={l.id} className="tr" style={{gridTemplateColumns:"2fr 1.2fr .8fr .7fr 1fr .5fr"}} onClick={()=>sSel(l)}>
+                            <div><div style={{fontWeight:700,fontSize:13}}>{l.first_name} {l.last_name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.phone}</div></div>
+                            <div style={{fontSize:12,color:"#71717a"}}>{l.city}, {l.state}</div>
+                            <div style={{fontWeight:700,color:"#f59e0b",fontSize:13}}>{$.money(l.average_monthly_bill)}</div>
+                            <div>{l.lead_quality_score>0&&<span className="badge" style={{background:sC(l.lead_quality_score)+"18",color:sC(l.lead_quality_score)}}>{l.lead_quality_score}</span>}</div>
+                            <div><span className={`badge ${sB(l.deal_status)}`}>{sL(l.deal_status)}</span></div>
+                            <div style={{fontSize:10,color:"#3f3f46"}}>{sL(l.source_type)}</div>
                         </div>
                     ))}
                 </div>
             </div>
-            {selected&&<LeadDrawer lead={selected} reps={reps} onClose={()=>setSelected(null)} onUpdateStatus={updateStatus} onAssignRep={assignRep} onRefresh={loadLeads}/>}
+            {sel&&<LeadDrawer lead={sel} reps={reps} onClose={()=>sSel(null)} onRefresh={loadLeads} onCreateAppt={setSCA}/>}
+            {showCreate&&<CreateLeadModal onClose={()=>setSC(false)} onDone={()=>{setSC(false);loadLeads()}}/>}
+            {showCreateAppt&&<CreateApptModal lead={showCreateAppt} reps={reps} onClose={()=>setSCA(null)} onDone={()=>{setSCA(null);loadLeads()}}/>}
         </div>
     );
 }
 
-function LeadDrawer({lead,reps,onClose,onUpdateStatus,onAssignRep,onRefresh}){
-    const [tab,setTab]=useState("details");
+// ===== LEAD DETAIL DRAWER (ALL TABS) =====
+function LeadDrawer({lead,reps,onClose,onRefresh,onCreateAppt}){
+    const{af,user}=useA();const toast=useT();
+    const[tab,sTab]=useState("overview");const[timeline,sTL]=useState([]);const[tasks,sTasks]=useState([]);const[appts,sAppts]=useState([]);
     const sc=lead.lead_quality_score||0;
+
+    useEffect(()=>{loadExtra()},[lead.id]);
+    const loadExtra=async()=>{
+        try{
+            const[tr,tskr,ar]=await Promise.all([af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af("/api/appointments")]);
+            if(tr.ok)sTL(await tr.json());
+            if(tskr.ok){const d=await tskr.json();sTasks(Array.isArray(d)?d:(d.items||[]))}
+            if(ar.ok){const d=await ar.json();sAppts((Array.isArray(d)?d:[]).filter(a=>a.lead_id===lead.id))}
+        }catch{}
+    };
+
+    const updStatus=async(s)=>{try{const r=await af(`/api/leads/${lead.id}`,{method:"PUT",body:JSON.stringify({deal_status:s})});if(r.ok){toast("ok",sL(s));onRefresh()}}catch{toast("err","Failed")}};
+    const assignRep=async(rid)=>{try{const r=await af(`/api/leads/${lead.id}/assign`,{method:"POST",body:JSON.stringify({rep_id:rid})});if(r.ok){toast("ok","Assigned");onRefresh()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Failed")}};
+    const completeTask=async(tid)=>{try{const r=await af(`/api/tasks/${tid}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from lead drawer"})});if(r.ok){toast("ok","Done");loadExtra()}}catch{toast("err","Failed")}};
+
+    const tabs=["overview","timeline","appointments","tasks","ownership","actions"];
+
     return(
-        <>
-        <div className="drawer-overlay" onClick={onClose}/>
-        <div className="drawer">
-            <div style={{padding:"18px 24px",borderBottom:"1px solid #1e1e1e",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <><div className="dov" onClick={onClose}/><div className="drw">
+            <div style={{padding:"16px 20px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                 <div>
-                    <h2 style={{fontSize:18,fontWeight:800}}>{lead.first_name} {lead.last_name}</h2>
-                    <div style={{display:"flex",gap:6,marginTop:6}}>
-                        <span className="badge" style={{background:scoreColor(sc)+"20",color:scoreColor(sc)}}>{sc}pt</span>
-                        <span className={`badge ${statusBadge(lead.deal_status)}`}>{statusLabel(lead.deal_status)}</span>
+                    <h2 style={{fontSize:17,fontWeight:900}}>{lead.first_name} {lead.last_name}</h2>
+                    <div style={{display:"flex",gap:5,marginTop:5}}>
+                        <span className="badge" style={{background:sC(sc)+"18",color:sC(sc)}}>{sc}pt</span>
+                        <span className={`badge ${sB(lead.deal_status)}`}>{sL(lead.deal_status)}</span>
+                        {lead.is_held&&<span className="badge b-green">Held</span>}
                     </div>
                 </div>
-                <div style={{cursor:"pointer",padding:8}} onClick={onClose}>{Icons.x}</div>
+                <div style={{cursor:"pointer",padding:6}} onClick={onClose}><Ic d={IC.x}/></div>
             </div>
-            <div style={{display:"flex",borderBottom:"1px solid #1e1e1e"}}>
-                {["details","actions","assign"].map(t=>(
-                    <div key={t} onClick={()=>setTab(t)} style={{padding:"10px 18px",fontSize:12,fontWeight:700,cursor:"pointer",borderBottom:tab===t?"2px solid #FF9F0A":"2px solid transparent",color:tab===t?"#FF9F0A":"#555",textTransform:"uppercase",letterSpacing:".04em"}}>{t}</div>
-                ))}
-            </div>
-            <div style={{padding:24}}>
-                {tab==="details"&&(
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
-                        <DField label="Phone" value={lead.phone}/><DField label="Email" value={lead.email}/>
-                        <DField label="Address" value={lead.property_address}/><DField label="City/State" value={`${lead.city}, ${lead.state} ${lead.zip_code}`}/>
-                        <DField label="Bill" value={fmt.money(lead.average_monthly_bill)} color="#FF9F0A"/><DField label="Score" value={`${sc}/100`}/>
-                        <DField label="Source" value={statusLabel(lead.source_type)}/><DField label="Property" value={statusLabel(lead.property_type)}/>
-                        <DField label="Created" value={fmt.datetime(lead.created_at)}/>
+            {/* Tabs */}
+            <div style={{display:"flex",borderBottom:"1px solid #18181b",overflowX:"auto"}}>{tabs.map(t=><div key={t} className={`tab ${tab===t?"on":""}`} onClick={()=>sTab(t)}>{t}</div>)}</div>
+            <div style={{padding:20}}>
+                {/* OVERVIEW */}
+                {tab==="overview"&&(
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <DF l="Phone" v={lead.phone}/><DF l="Email" v={lead.email}/>
+                        <DF l="Address" v={lead.property_address}/><DF l="City/State" v={`${lead.city}, ${lead.state} ${lead.zip_code}`}/>
+                        <DF l="Monthly Bill" v={$.money(lead.average_monthly_bill)} c="#f59e0b"/><DF l="Annual kWh" v={lead.estimated_annual_kwh}/>
+                        <DF l="Source" v={sL(lead.source_type)}/><DF l="Property" v={sL(lead.property_type)}/>
+                        <DF l="Homeowner" v={sL(lead.homeowner_status)}/><DF l="Created" v={$.dt(lead.created_at)}/>
+                        <DF l="Last Outcome" v={sL(lead.last_outcome)}/><DF l="Follow-up" v={lead.next_follow_up_date?$.date(lead.next_follow_up_date):"None"}/>
+                        {lead.notes&&<div style={{gridColumn:"span 2",padding:12,background:"#18181b",borderRadius:8}}><div style={{fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:4}}>Notes</div><div style={{fontSize:12,color:"#a1a1aa"}}>{lead.notes}</div></div>}
                     </div>
                 )}
+                {/* TIMELINE */}
+                {tab==="timeline"&&(
+                    <div>{Array.isArray(timeline)&&timeline.length>0?
+                        <div style={{display:"flex",flexDirection:"column",gap:0}}>
+                            {(Array.isArray(timeline)?timeline:(timeline.timeline||[])).map((e,i)=>(
+                                <div key={i} style={{display:"flex",gap:10}}>
+                                    <div style={{display:"flex",flexDirection:"column",alignItems:"center"}}>
+                                        <div className="tl-dot" style={{background:e.entry_type==="action"?"#f59e0b":e.entry_type==="task"?"#3b82f6":"#22c55e"}}/>
+                                        {i<(Array.isArray(timeline)?timeline:(timeline.timeline||[])).length-1&&<div className="tl-line" style={{flex:1}}/>}
+                                    </div>
+                                    <div style={{paddingBottom:14,flex:1}}>
+                                        <div style={{fontSize:12,fontWeight:700}}>{sL(e.action_type||e.task_type||e.entry_type)}</div>
+                                        <div style={{fontSize:11,color:"#52525b"}}>{e.note||e.description||e.title||""}</div>
+                                        <div style={{fontSize:10,color:"#3f3f46",marginTop:2}}>{e.rep_name||""} &middot; {$.dt(e.created_at)}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        :<div style={{color:"#3f3f46",fontSize:12,textAlign:"center",padding:20}}>No timeline events</div>
+                    }</div>
+                )}
+                {/* APPOINTMENTS */}
+                {tab==="appointments"&&(
+                    <div>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+                            <span style={{fontSize:12,fontWeight:700}}>{appts.length} appointments</span>
+                            <button className="btn btn-p" onClick={()=>{onClose();onCreateAppt(lead)}}><Ic d={IC.plus} s={11}/> New Appt</button>
+                        </div>
+                        {appts.map(a=>(
+                            <div key={a.id} className="cd" style={{padding:12,marginBottom:6}}>
+                                <div style={{display:"flex",justifyContent:"space-between"}}>
+                                    <div><div style={{fontSize:13,fontWeight:700}}>{$.date(a.appointment_date)} at {a.appointment_time||"TBD"}</div><div style={{fontSize:11,color:"#52525b"}}>{a.appointment_address}</div></div>
+                                    <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
+                                </div>
+                                {a.outcome&&<div style={{fontSize:11,color:"#71717a",marginTop:4}}>Outcome: {sL(a.outcome)}</div>}
+                            </div>
+                        ))}
+                        {appts.length===0&&<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No appointments</div>}
+                    </div>
+                )}
+                {/* TASKS */}
+                {tab==="tasks"&&(
+                    <div>
+                        {tasks.filter(t=>t.lead_id===lead.id).length===0?<div style={{textAlign:"center",color:"#3f3f46",padding:20,fontSize:12}}>No tasks</div>:
+                        tasks.filter(t=>t.lead_id===lead.id).map(t=>(
+                            <div key={t.id} className="cd" style={{padding:12,marginBottom:6,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                <div><div style={{fontSize:13,fontWeight:700}}>{t.title}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(t.task_type)} &middot; Due {$.date(t.due_date)}</div></div>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                    <span className={`badge ${t.status==="overdue"?"b-red":t.status==="completed"?"b-green":"b-yellow"}`}>{sL(t.status)}</span>
+                                    {t.status!=="completed"&&<button className="btn btn-g" style={{fontSize:10,padding:"3px 8px"}} onClick={()=>completeTask(t.id)}>Done</button>}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
+                {/* OWNERSHIP */}
+                {tab==="ownership"&&(
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+                        <DF l="Setter" v={lead.setter_id?`Rep #${lead.setter_id}`:"--"}/><DF l="Runner" v={lead.runner_id?`Rep #${lead.runner_id}`:"--"}/>
+                        <DF l="Closer" v={lead.closer_id?`Rep #${lead.closer_id}`:"--"}/><DF l="Assigned Rep" v={lead.assigned_rep_id?`Rep #${lead.assigned_rep_id}`:"Unassigned"}/>
+                        <DF l="Rehash Rep" v={lead.rehash_rep_id?`Rep #${lead.rehash_rep_id}`:"--"}/>
+                        {user?.role==="admin"&&reps.length>0&&(
+                            <div style={{gridColumn:"span 2",marginTop:8}}>
+                                <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Reassign</div>
+                                <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:200,overflowY:"auto"}}>
+                                    {reps.map(r=>(
+                                        <div key={r.id} className="cd" style={{padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:lead.assigned_rep_id===r.id?"1px solid #f59e0b":"1px solid #1e1e21"}} onClick={()=>assignRep(r.id)}>
+                                            <span style={{fontSize:12,fontWeight:600}}>{r.full_name}</span>
+                                            {lead.assigned_rep_id===r.id&&<span className="badge b-orange">Current</span>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+                {/* ACTIONS */}
                 {tab==="actions"&&(
                     <div>
-                        <div style={{fontSize:11,fontWeight:700,color:"#555",marginBottom:10,textTransform:"uppercase"}}>Update Status</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                            {["new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up","no_show"].map(s=>(
-                                <button key={s} className={`action-btn ${lead.deal_status===s?"primary":""}`} disabled={lead.deal_status===s}
-                                    onClick={()=>{onUpdateStatus(lead.id,s);onClose();}}>
-                                    {statusLabel(s)}
-                                </button>
-                            ))}
+                        <div style={{marginBottom:16}}>
+                            <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:8}}>Update Status</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                                {["new","confirmed","appointed","dispatched","closed_won","closed_lost","follow_up","no_show","rehash"].map(s=>(
+                                    <button key={s} className={`btn ${lead.deal_status===s?"btn-p":""}`} disabled={lead.deal_status===s} onClick={()=>updStatus(s)}>{sL(s)}</button>
+                                ))}
+                            </div>
+                        </div>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            <button className="btn btn-p" onClick={()=>{onClose();onCreateAppt(lead)}}>Create Appointment</button>
+                            <button className="btn" onClick={()=>sTab("ownership")}>Reassign</button>
                         </div>
                     </div>
                 )}
-                {tab==="assign"&&(
-                    <div>
-                        <div style={{fontSize:11,fontWeight:700,color:"#555",marginBottom:10,textTransform:"uppercase"}}>Assign to Rep</div>
-                        {reps.length===0?<div style={{color:"#555",fontSize:13}}>No reps loaded (admin only)</div>:
-                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                            {reps.map(r=>(
-                                <div key={r.id} className="card-dark" style={{padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",border:lead.assigned_rep_id===r.id?"1px solid #FF9F0A":"1px solid #1e1e1e"}}
-                                    onClick={()=>{onAssignRep(lead.id,r.id);onClose();}}>
-                                    <div><div style={{fontSize:13,fontWeight:600}}>{r.full_name}</div><div style={{fontSize:11,color:"#555"}}>{fmt.pct(r.close_rate)} close</div></div>
-                                    {lead.assigned_rep_id===r.id&&<span className="badge badge-green">Current</span>}
-                                </div>
-                            ))}
-                        </div>}
-                    </div>
-                )}
             </div>
-        </div>
-        </>
+        </div></>
     );
 }
 
-// ===== REPS PAGE =====
-function RepsPage() {
-    const { authFetch } = useAuth();
-    const toast = useToast();
-    const [reps, setReps] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [showInvite, setShowInvite] = useState(false);
-
-    useEffect(()=>{loadReps();},[]);
-    const loadReps=async()=>{
-        setLoading(true);
-        try{const r=await authFetch("/api/admin/reps");if(r.ok){const d=await r.json();setReps(Array.isArray(d)?d:(d.reps||d.items||[]));}
-        }catch(e){console.error(e)}
-        setLoading(false);
+// ===== CREATE LEAD MODAL =====
+function CreateLeadModal({onClose,onDone}){
+    const{af}=useA();const toast=useT();const[busy,sBusy]=useState(false);
+    const[f,sF]=useState({first_name:"",last_name:"",phone:"",email:"",property_address:"",city:"",state:"CA",zip_code:"",average_monthly_bill:"",source_type:"web",homeowner_status:"owner",property_type:"single_family"});
+    const set=(k,v)=>sF(o=>({...o,[k]:v}));
+    const submit=async()=>{
+        if(!f.first_name||!f.last_name||!f.phone||!f.property_address){toast("err","Fill required fields");return}
+        sBusy(true);
+        try{const r=await af("/api/leads",{method:"POST",body:JSON.stringify({...f,average_monthly_bill:parseFloat(f.average_monthly_bill)||0})});if(r.ok){toast("ok","Lead created");onDone()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
+        sBusy(false);
     };
-
-    if(loading)return<Spinner/>;
+    const states=["AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"];
 
     return(
+        <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><h3 style={{fontSize:16,fontWeight:800}}>New Lead</h3><div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div></div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div><label className="lbl">First Name *</label><input className="inp" value={f.first_name} onChange={e=>set("first_name",e.target.value)}/></div>
+                <div><label className="lbl">Last Name *</label><input className="inp" value={f.last_name} onChange={e=>set("last_name",e.target.value)}/></div>
+                <div><label className="lbl">Phone *</label><input className="inp" value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
+                <div><label className="lbl">Email</label><input className="inp" value={f.email} onChange={e=>set("email",e.target.value)}/></div>
+                <div style={{gridColumn:"span 2"}}><label className="lbl">Address *</label><input className="inp" value={f.property_address} onChange={e=>set("property_address",e.target.value)}/></div>
+                <div><label className="lbl">City</label><input className="inp" value={f.city} onChange={e=>set("city",e.target.value)}/></div>
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+                    <div><label className="lbl">State</label><select className="inp" value={f.state} onChange={e=>set("state",e.target.value)}>{states.map(s=><option key={s}>{s}</option>)}</select></div>
+                    <div><label className="lbl">ZIP</label><input className="inp" value={f.zip_code} onChange={e=>set("zip_code",e.target.value)}/></div>
+                </div>
+                <div><label className="lbl">Monthly Bill</label><input className="inp" type="number" value={f.average_monthly_bill} onChange={e=>set("average_monthly_bill",e.target.value)}/></div>
+                <div><label className="lbl">Source</label><select className="inp" value={f.source_type} onChange={e=>set("source_type",e.target.value)}><option value="web">Web</option><option value="door_to_door">Door to Door</option><option value="call_center">Call Center</option><option value="referral">Referral</option></select></div>
+            </div>
+            <button className="btn btn-p" style={{width:"100%",marginTop:16,padding:12}} disabled={busy} onClick={submit}>{busy?"Creating...":"Create Lead"}</button>
+        </div></div>
+    );
+}
+
+// ===== CREATE APPOINTMENT MODAL =====
+function CreateApptModal({lead,reps,onClose,onDone}){
+    const{af}=useA();const toast=useT();const[busy,sBusy]=useState(false);
+    const[f,sF]=useState({lead_id:lead.id,assigned_rep_id:lead.assigned_rep_id||"",appointment_date:"",appointment_time:"",appointment_address:lead.property_address||"",notes:""});
+    const set=(k,v)=>sF(o=>({...o,[k]:v}));
+    const submit=async()=>{
+        if(!f.assigned_rep_id||!f.appointment_date||!f.appointment_time){toast("err","Fill required fields");return}
+        sBusy(true);
+        try{const r=await af("/api/appointments",{method:"POST",body:JSON.stringify({...f,assigned_rep_id:parseInt(f.assigned_rep_id)})});if(r.ok){toast("ok","Appointment created");onDone()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}
+        sBusy(false);
+    };
+    return(
+        <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><h3 style={{fontSize:16,fontWeight:800}}>New Appointment</h3><div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div></div>
+            <div style={{fontSize:12,color:"#71717a",marginBottom:12}}>For: {lead.first_name} {lead.last_name}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                <div><label className="lbl">Date *</label><input className="inp" type="date" value={f.appointment_date} onChange={e=>set("appointment_date",e.target.value)}/></div>
+                <div><label className="lbl">Time *</label><input className="inp" type="time" value={f.appointment_time} onChange={e=>set("appointment_time",e.target.value)}/></div>
+                <div style={{gridColumn:"span 2"}}><label className="lbl">Address</label><input className="inp" value={f.appointment_address} onChange={e=>set("appointment_address",e.target.value)}/></div>
+                <div style={{gridColumn:"span 2"}}><label className="lbl">Assign Rep *</label><select className="inp" value={f.assigned_rep_id} onChange={e=>set("assigned_rep_id",e.target.value)}><option value="">Select rep...</option>{reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}</select></div>
+                <div style={{gridColumn:"span 2"}}><label className="lbl">Notes</label><textarea className="inp" value={f.notes} onChange={e=>set("notes",e.target.value)}/></div>
+            </div>
+            <button className="btn btn-p" style={{width:"100%",marginTop:16,padding:12}} disabled={busy} onClick={submit}>{busy?"Creating...":"Create Appointment"}</button>
+        </div></div>
+    );
+}
+
+// ========================================================================
+// REPS PAGE
+// ========================================================================
+function RepsPage(){
+    const{af}=useA();const toast=useT();const[reps,sReps]=useState([]);const[loading,sLd]=useState(true);const[showInvite,sSI]=useState(false);
+
+    useEffect(()=>{load()},[]);
+    const load=async()=>{sLd(true);try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}sLd(false)};
+
+    if(loading)return<Spin/>;
+    return(
         <div>
-            <PageHeader title="Sales Reps" sub={`${reps.length} reps`} right={
-                <button className="btn-primary" onClick={()=>setShowInvite(true)} style={{display:"flex",alignItems:"center",gap:4}}>{Icons.send} Invite Rep</button>
-            }/>
-            <div style={{padding:"20px 28px"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
-                    {reps.map(rep=>(
-                        <div key={rep.id} className="card-dark" style={{padding:18}}>
-                            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-                                <div style={{width:40,height:40,borderRadius:"50%",background:"#FF9F0A20",display:"flex",alignItems:"center",justifyContent:"center",color:"#FF9F0A",fontWeight:800,fontSize:15}}>
-                                    {(rep.full_name||"?")[0]}
-                                </div>
-                                <div>
-                                    <div style={{fontWeight:700,fontSize:14}}>{rep.full_name}</div>
-                                    <div style={{fontSize:11,color:"#555"}}>{rep.email}</div>
-                                </div>
+            <PH title="Sales Reps" sub={`${reps.length} reps`} right={<button className="btn btn-p" onClick={()=>sSI(true)}><Ic d={IC.send} s={12}/> Invite Rep</button>}/>
+            <div style={{padding:"16px 24px"}}>
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>
+                    {reps.map(r=>(
+                        <div key={r.id} className="cd" style={{padding:16}}>
+                            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+                                <div style={{width:36,height:36,borderRadius:"50%",background:"#f59e0b18",display:"flex",alignItems:"center",justifyContent:"center",color:"#f59e0b",fontWeight:900,fontSize:14}}>{(r.full_name||"?")[0]}</div>
+                                <div><div style={{fontWeight:700,fontSize:13}}>{r.full_name}</div><div style={{fontSize:10,color:"#52525b"}}>{r.email}</div></div>
                             </div>
-                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,textAlign:"center"}}>
-                                <div><div style={{fontSize:18,fontWeight:800,color:"#30D158"}}>{fmt.pct(rep.close_rate)}</div><div style={{fontSize:9,color:"#555",fontWeight:700,textTransform:"uppercase"}}>Close</div></div>
-                                <div><div style={{fontSize:18,fontWeight:800}}>{rep.total_deals||0}</div><div style={{fontSize:9,color:"#555",fontWeight:700,textTransform:"uppercase"}}>Deals</div></div>
-                                <div><div style={{fontSize:18,fontWeight:800,color:rep.is_active?"#30D158":"#FF453A"}}>{rep.is_active?"On":"Off"}</div><div style={{fontSize:9,color:"#555",fontWeight:700,textTransform:"uppercase"}}>Status</div></div>
+                            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:6,textAlign:"center"}}>
+                                <div><div style={{fontSize:16,fontWeight:900,color:"#22c55e"}}>{$.pct(r.close_rate)}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Close</div></div>
+                                <div><div style={{fontSize:16,fontWeight:900}}>{r.total_deals||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Deals</div></div>
+                                <div><div style={{fontSize:16,fontWeight:900,color:r.is_active?"#22c55e":"#ef4444"}}>{r.is_active?"On":"Off"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Active</div></div>
                             </div>
                         </div>
                     ))}
                 </div>
             </div>
-            {showInvite&&<InviteModal onClose={()=>setShowInvite(false)} onDone={()=>{setShowInvite(false);loadReps();}}/>}
+            {showInvite&&<InviteModal onClose={()=>sSI(false)} onDone={()=>{sSI(false);load()}}/>}
         </div>
     );
 }
 
-// ===== INVITE MODAL =====
 function InviteModal({onClose,onDone}){
-    const {authFetch}=useAuth();
-    const toast=useToast();
-    const [email,setEmail]=useState("");
-    const [name,setName]=useState("");
-    const [busy,setBusy]=useState(false);
-    const [link,setLink]=useState("");
-
-    const send=async()=>{
-        if(!email||!name){toast("error","Fill in all fields");return;}
-        setBusy(true);
-        try{
-            const r=await authFetch("/api/auth/invite",{method:"POST",body:JSON.stringify({email,full_name:name,role:"rep"})});
-            if(r.ok){const d=await r.json();setLink(`${window.location.origin}/register?token=${d.token}`);toast("success","Invite created!");}
-            else{const d=await r.json().catch(()=>({}));toast("error",d.detail||"Failed");}
-        }catch(e){toast("error","Error");}
-        setBusy(false);
-    };
-
-    const copyLink=()=>{navigator.clipboard.writeText(link);toast("success","Link copied!");};
-
+    const{af}=useA();const toast=useT();const[email,sE]=useState("");const[name,sN]=useState("");const[busy,sBusy]=useState(false);const[link,sLink]=useState("");
+    const send=async()=>{if(!email||!name){toast("err","Fill all fields");return}sBusy(true);try{const r=await af("/api/auth/invite",{method:"POST",body:JSON.stringify({email,full_name:name,role:"rep"})});if(r.ok){const d=await r.json();sLink(`${window.location.origin}/register?token=${d.token}`);toast("ok","Invite created")}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}sBusy(false)};
+    const copy=()=>{navigator.clipboard.writeText(link);toast("ok","Copied!")};
     return(
-        <div className="modal-overlay" onClick={onClose}>
-            <div className="modal" onClick={e=>e.stopPropagation()}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
-                    <h3 style={{fontSize:16,fontWeight:800}}>Invite New Rep</h3>
-                    <div style={{cursor:"pointer"}} onClick={onClose}>{Icons.x}</div>
+        <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><h3 style={{fontSize:16,fontWeight:800}}>Invite Rep</h3><div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div></div>
+            {!link?(
+                <div>
+                    <div style={{marginBottom:12}}><label className="lbl">Full Name</label><input className="inp" value={name} onChange={e=>sN(e.target.value)}/></div>
+                    <div style={{marginBottom:16}}><label className="lbl">Email</label><input className="inp" type="email" value={email} onChange={e=>sE(e.target.value)}/></div>
+                    <button className="btn btn-p" style={{width:"100%",padding:10}} disabled={busy} onClick={send}>{busy?"Creating...":"Create Invite Link"}</button>
                 </div>
-                {!link?(
-                    <div>
-                        <div style={{marginBottom:14}}>
-                            <label style={{display:"block",fontSize:11,fontWeight:700,color:"#555",marginBottom:6,textTransform:"uppercase"}}>Full Name</label>
-                            <input className="input" value={name} onChange={e=>setName(e.target.value)} placeholder="John Smith"/>
-                        </div>
-                        <div style={{marginBottom:20}}>
-                            <label style={{display:"block",fontSize:11,fontWeight:700,color:"#555",marginBottom:6,textTransform:"uppercase"}}>Email</label>
-                            <input className="input" type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="john@email.com"/>
-                        </div>
-                        <button className="btn-primary" style={{width:"100%",padding:12}} disabled={busy} onClick={send}>
-                            {busy?"Creating...":"Create Invite Link"}
-                        </button>
-                    </div>
-                ):(
-                    <div>
-                        <div style={{fontSize:13,color:"#888",marginBottom:12}}>Share this link with the rep. They'll set their own password.</div>
-                        <div style={{background:"#0a0a0a",border:"1px solid #333",borderRadius:10,padding:12,fontSize:12,color:"#FF9F0A",wordBreak:"break-all",marginBottom:16}}>{link}</div>
-                        <div style={{display:"flex",gap:8}}>
-                            <button className="btn-primary" style={{flex:1}} onClick={copyLink}>{Icons.copy} Copy Link</button>
-                            <button className="btn-ghost" style={{flex:1}} onClick={onDone}>Done</button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
+            ):(
+                <div>
+                    <div style={{fontSize:12,color:"#71717a",marginBottom:10}}>Send this link to the rep:</div>
+                    <div style={{background:"#09090b",border:"1px solid #27272a",borderRadius:8,padding:10,fontSize:11,color:"#f59e0b",wordBreak:"break-all",marginBottom:12}}>{link}</div>
+                    <div style={{display:"flex",gap:6}}><button className="btn btn-p" style={{flex:1}} onClick={copy}>Copy Link</button><button className="btn" style={{flex:1}} onClick={onDone}>Done</button></div>
+                </div>
+            )}
+        </div></div>
     );
 }
 
-// ===== TASKS PAGE =====
+// ========================================================================
+// TASKS PAGE
+// ========================================================================
 function TasksPage(){
-    const {authFetch}=useAuth();
-    const toast=useToast();
-    const [tasks,setTasks]=useState([]);
-    const [loading,setLoading]=useState(true);
-    const [filter,setFilter]=useState("pending");
-
-    useEffect(()=>{load();},[filter]);
-    const load=async()=>{
-        setLoading(true);
-        try{const url=filter?`/api/tasks?status=${filter}`:"/api/tasks";const r=await authFetch(url);
-        if(r.ok){const d=await r.json();setTasks(Array.isArray(d)?d:(d.items||d.tasks||[]));}
-        }catch(e){console.error(e)}setLoading(false);
-    };
-
-    const complete=async(id)=>{
-        try{const r=await authFetch(`/api/tasks/${id}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from Command Center"})});
-        if(r.ok){toast("success","Task completed");load();}
-        }catch(e){toast("error","Failed");}
-    };
-
-    if(loading)return<Spinner/>;
-
+    const{af}=useA();const toast=useT();const[tasks,sTasks]=useState([]);const[loading,sLd]=useState(true);const[filter,sF]=useState("pending");
+    useEffect(()=>{load()},[filter]);
+    const load=async()=>{sLd(true);try{const url=filter?`/api/tasks?status=${filter}`:"/api/tasks";const r=await af(url);if(r.ok){const d=await r.json();sTasks(Array.isArray(d)?d:(d.items||d.tasks||[]))}}catch{}sLd(false)};
+    const complete=async id=>{try{const r=await af(`/api/tasks/${id}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Done"})});if(r.ok){toast("ok","Completed");load()}}catch{toast("err","Failed")}};
+    if(loading)return<Spin/>;
     return(
         <div>
-            <PageHeader title="Tasks" sub={`${tasks.length} tasks`} right={
-                <div style={{display:"flex",gap:6}}>
-                    {["pending","overdue","completed",""].map(f=>(
-                        <button key={f} className={`action-btn ${filter===f?"primary":""}`} onClick={()=>setFilter(f)}>{f||"All"}</button>
-                    ))}
-                </div>
-            }/>
-            <div style={{padding:"16px 28px"}}>
-                {tasks.length===0?<div className="card-dark" style={{padding:40,textAlign:"center",color:"#444"}}>No tasks</div>:
-                <div className="card-dark" style={{overflow:"hidden"}}>
-                    <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr 1fr 1fr .6fr",padding:"10px 16px",borderBottom:"1px solid #1a1a1a",fontSize:10,fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:".05em"}}>
-                        <div>Task</div><div>Lead</div><div>Due</div><div>Status</div><div/>
-                    </div>
+            <PH title="Tasks" sub={`${tasks.length}`} right={<div style={{display:"flex",gap:4}}>{["pending","overdue","completed",""].map(f=><button key={f} className={`btn ${filter===f?"btn-p":""}`} onClick={()=>sF(f)}>{f||"All"}</button>)}</div>}/>
+            <div style={{padding:"14px 24px"}}>
+                {tasks.length===0?<div className="cd" style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No tasks</div>:
+                <div className="cd" style={{overflow:"hidden"}}>
+                    <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr .8fr .8fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}><div>Task</div><div>Lead</div><div>Due</div><div>Status</div><div/></div>
                     {tasks.map(t=>(
-                        <div key={t.id} className="table-row" style={{gridTemplateColumns:"2fr 1.5fr 1fr 1fr .6fr",display:"grid"}}>
-                            <div><div style={{fontWeight:600,fontSize:13}}>{t.title}</div><div style={{fontSize:11,color:"#555"}}>{t.task_type}</div></div>
-                            <div style={{fontSize:12,color:"#888"}}>{t.lead_name||`#${t.lead_id}`}</div>
-                            <div style={{fontSize:12}}>{fmt.date(t.due_date)}</div>
-                            <div><span className={`badge ${t.status==="overdue"?"badge-red":t.status==="completed"?"badge-green":"badge-yellow"}`}>{statusLabel(t.status)}</span></div>
-                            <div>{t.status!=="completed"&&<button className="action-btn success" style={{fontSize:10}} onClick={()=>complete(t.id)}>Done</button>}</div>
+                        <div key={t.id} className="tr" style={{gridTemplateColumns:"2fr 1.5fr .8fr .8fr .5fr",display:"grid"}}>
+                            <div><div style={{fontWeight:700,fontSize:12}}>{t.title}</div><div style={{fontSize:10,color:"#52525b"}}>{t.task_type}</div></div>
+                            <div style={{fontSize:11,color:"#71717a",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${t.lead_id}`)}>{t.lead_name||`#${t.lead_id}`}</div>
+                            <div style={{fontSize:11}}>{$.date(t.due_date)}</div>
+                            <div><span className={`badge ${t.status==="overdue"?"b-red":t.status==="completed"?"b-green":"b-yellow"}`}>{sL(t.status)}</span></div>
+                            <div>{t.status!=="completed"&&<button className="btn btn-g" style={{fontSize:9,padding:"2px 6px"}} onClick={()=>complete(t.id)}>Done</button>}</div>
                         </div>
                     ))}
                 </div>}
@@ -987,51 +867,31 @@ function TasksPage(){
     );
 }
 
-// ===== PIPELINE =====
+// ========================================================================
+// PIPELINE (LEAD STATUS KANBAN)
+// ========================================================================
 function PipelinePage(){
-    const {authFetch}=useAuth();
-    const [leads,setLeads]=useState([]);
-    const [loading,setLoading]=useState(true);
-
-    useEffect(()=>{load();},[]);
-    const load=async()=>{
-        setLoading(true);
-        try{const r=await authFetch("/api/leads?limit=300");if(r.ok){const d=await r.json();setLeads(Array.isArray(d)?d:(d.items||[]));}
-        }catch(e){console.error(e)}setLoading(false);
-    };
-
-    const stages=[
-        {key:"new",label:"New",color:"#007AFF"},{key:"confirmed",label:"Confirmed",color:"#30D158"},
-        {key:"appointed",label:"Appointed",color:"#FF9F0A"},{key:"dispatched",label:"Dispatched",color:"#BF5AF2"},
-        {key:"closed_won",label:"Won",color:"#30D158"},{key:"closed_lost",label:"Lost",color:"#FF453A"},
-    ];
-
-    const grouped=useMemo(()=>{const g={};stages.forEach(s=>g[s.key]=[]);g.other=[];
-        leads.forEach(l=>{const s=l.deal_status||"new";if(g[s])g[s].push(l);else g.other.push(l);});return g;},[leads]);
-
-    if(loading)return<Spinner/>;
-
+    const{af}=useA();const[leads,sL]=useState([]);const[loading,sLd]=useState(true);
+    useEffect(()=>{load()},[]);const load=async()=>{sLd(true);try{const r=await af("/api/leads?limit=500");if(r.ok){const d=await r.json();sL(Array.isArray(d)?d:(d.items||[]))}}catch{}sLd(false)};
+    const stages=[{k:"new",l:"New",c:"#3b82f6"},{k:"confirmed",l:"Confirmed",c:"#22c55e"},{k:"appointed",l:"Appointed",c:"#f59e0b"},{k:"dispatched",l:"Dispatched",c:"#a855f7"},{k:"closed_won",l:"Won",c:"#22c55e"},{k:"closed_lost",l:"Lost",c:"#ef4444"}];
+    const grouped=useMemo(()=>{const g={};stages.forEach(s=>g[s.k]=[]);leads.forEach(l=>{const s=l.deal_status||"new";if(g[s])g[s].push(l);else if(g.new)g.new.push(l)});return g},[leads]);
+    if(loading)return<Spin/>;
     return(
         <div>
-            <PageHeader title="Pipeline" sub="Deal flow"/>
-            <div style={{padding:"16px 28px",overflowX:"auto"}}>
-                <div style={{display:"flex",gap:12,minWidth:stages.length*220}}>
+            <PH title="Pipeline" sub="Deal flow"/>
+            <div style={{padding:"14px 24px",overflowX:"auto"}}>
+                <div style={{display:"flex",gap:10,minWidth:stages.length*200}}>
                     {stages.map(s=>(
-                        <div key={s.key} style={{flex:1,minWidth:200}}>
-                            <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10,paddingBottom:8,borderBottom:`2px solid ${s.color}30`}}>
-                                <div style={{width:8,height:8,borderRadius:"50%",background:s.color}}/>
-                                <span style={{fontSize:12,fontWeight:700,color:"#888"}}>{s.label}</span>
-                                <span style={{fontSize:11,color:"#444",marginLeft:"auto"}}>{(grouped[s.key]||[]).length}</span>
-                            </div>
-                            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                                {(grouped[s.key]||[]).map(l=>(
-                                    <div key={l.id} className="card-dark" style={{padding:12,borderLeft:`3px solid ${s.color}`,cursor:"pointer"}} onClick={()=>navigate(`/leads?id=${l.id}`)}>
-                                        <div style={{fontWeight:700,fontSize:12}}>{l.first_name} {l.last_name}</div>
-                                        <div style={{fontSize:11,color:"#555",marginTop:2}}>{l.city}, {l.state}</div>
-                                        <div style={{fontSize:12,fontWeight:700,marginTop:6,color:s.color}}>{fmt.money(l.average_monthly_bill)}/mo</div>
+                        <div key={s.k} style={{flex:1,minWidth:180}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:6,borderBottom:`2px solid ${s.c}30`}}><div style={{width:7,height:7,borderRadius:"50%",background:s.c}}/><span style={{fontSize:11,fontWeight:800,color:"#71717a"}}>{s.l}</span><span style={{fontSize:10,color:"#3f3f46",marginLeft:"auto"}}>{(grouped[s.k]||[]).length}</span></div>
+                            <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                                {(grouped[s.k]||[]).map(l=>(
+                                    <div key={l.id} className="cd" style={{padding:10,borderLeft:`3px solid ${s.c}`,cursor:"pointer"}} onClick={()=>nav(`/leads?id=${l.id}`)}>
+                                        <div style={{fontWeight:700,fontSize:11}}>{l.first_name} {l.last_name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.city}, {l.state}</div>
+                                        <div style={{fontSize:11,fontWeight:700,marginTop:4,color:s.c}}>{$.money(l.average_monthly_bill)}/mo</div>
                                     </div>
                                 ))}
-                                {(grouped[s.key]||[]).length===0&&<div style={{padding:20,textAlign:"center",color:"#333",fontSize:11,border:"1px dashed #222",borderRadius:8}}>Empty</div>}
+                                {(grouped[s.k]||[]).length===0&&<div style={{padding:16,textAlign:"center",color:"#27272a",fontSize:10,border:"1px dashed #1e1e21",borderRadius:6}}>Empty</div>}
                             </div>
                         </div>
                     ))}
@@ -1041,46 +901,78 @@ function PipelinePage(){
     );
 }
 
-// ===== SHARED COMPONENTS =====
-function PageHeader({title,sub,right}){
+// ========================================================================
+// PROJECTS PAGE (POST-SALE PIPELINE)
+// ========================================================================
+function ProjectsPage(){
+    const{af}=useA();const[data,sData]=useState(null);const[deals,sDeals]=useState([]);const[loading,sLd]=useState(true);
+    useEffect(()=>{load()},[]);
+    const load=async()=>{sLd(true);try{
+        const[pr,dr]=await Promise.all([af("/api/deals/pipeline"),af("/api/deals")]);
+        if(pr.ok)sData(await pr.json());
+        if(dr.ok)sDeals(await dr.json());
+    }catch{}sLd(false)};
+
+    const stages=[{k:"sold",l:"Sold",c:"#f59e0b"},{k:"installed",l:"Installed",c:"#3b82f6"},{k:"submitted_for_funding",l:"Submitted",c:"#a855f7"},{k:"funded",l:"Funded",c:"#22c55e"},{k:"paid",l:"Paid",c:"#22c55e"}];
+
+    if(loading)return<Spin/>;
+    const pipeline=data?.pipeline||{};
+
     return(
-        <div style={{padding:"20px 28px 14px",borderBottom:"1px solid #1a1a1a",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-            <div><h1 style={{fontSize:20,fontWeight:800,letterSpacing:"-.02em"}}>{title}</h1>{sub&&<p style={{color:"#555",fontSize:12,marginTop:2}}>{sub}</p>}</div>
-            {right}
+        <div>
+            <PH title="Projects" sub="Post-sale pipeline"/>
+            <div style={{padding:"16px 24px"}}>
+                <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+                    {stages.map(s=>{const d=pipeline[s.k]||{count:0,total_value:0};return<KPI key={s.k} l={s.l} v={`${d.count} (${$.money(d.total_value)})`} t={s.k==="paid"?"ok":null}/>})}
+                </div>
+                <div style={{display:"flex",gap:10,overflowX:"auto"}}>
+                    {stages.map(s=>{
+                        const sd=(Array.isArray(deals)?deals:[]).filter(d=>d.pipeline_stage===s.k);
+                        return(
+                            <div key={s.k} style={{flex:1,minWidth:180}}>
+                                <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:8,paddingBottom:6,borderBottom:`2px solid ${s.c}30`}}><div style={{width:7,height:7,borderRadius:"50%",background:s.c}}/><span style={{fontSize:11,fontWeight:800,color:"#71717a"}}>{s.l}</span><span style={{fontSize:10,color:"#3f3f46",marginLeft:"auto"}}>{sd.length}</span></div>
+                                <div style={{display:"flex",flexDirection:"column",gap:5}}>
+                                    {sd.map(d=>(
+                                        <div key={d.id} className="cd" style={{padding:10,borderLeft:`3px solid ${s.c}`}}>
+                                            <div style={{fontWeight:700,fontSize:11}}>Deal #{d.id}</div>
+                                            <div style={{fontSize:11,fontWeight:700,marginTop:4,color:s.c}}>{$.money(d.deal_value)}</div>
+                                        </div>
+                                    ))}
+                                    {sd.length===0&&<div style={{padding:16,textAlign:"center",color:"#27272a",fontSize:10,border:"1px dashed #1e1e21",borderRadius:6}}>Empty</div>}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
         </div>
     );
 }
 
-function KPI({label,value,type}){
-    return(
-        <div className={`kpi-chip ${type||""}`}>
-            <div style={{fontSize:10,fontWeight:700,color:"#555",textTransform:"uppercase",letterSpacing:".05em",marginBottom:4}}>{label}</div>
-            <div style={{fontSize:20,fontWeight:800,color:type==="urgent"?"#FF453A":type==="warning"?"#FF9F0A":type==="good"?"#30D158":"#e5e5e5"}}>{value}</div>
-        </div>
-    );
+// ========================================================================
+// SHARED COMPONENTS
+// ========================================================================
+function PH({title,sub,right}){return<div style={{padding:"16px 24px 12px",borderBottom:"1px solid #18181b",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><h1 style={{fontSize:18,fontWeight:900}}>{title}</h1>{sub&&<p style={{color:"#3f3f46",fontSize:11,marginTop:1}}>{sub}</p>}</div>{right}</div>}
+function KPI({l,v,t}){return<div className={`kpi ${t||""}`}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>{l}</div><div style={{fontSize:18,fontWeight:900,color:t==="hot"?"#ef4444":t==="warn"?"#f59e0b":t==="ok"?"#22c55e":"#e4e4e7"}}>{v}</div></div>}
+function SH({title,count}){return<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><span style={{fontSize:11,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".05em"}}>{title}</span>{count!=null&&<span style={{fontSize:10,color:"#3f3f46"}}>{count}</span>}</div>}
+function DF({l,v,c}){return<div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:600,color:c||"#a1a1aa"}}>{v||"--"}</div></div>}
+function TaskRow({t,compact}){return<div style={{padding:compact?"6px 0":"8px 12px",borderBottom:"1px solid #18181b20",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:compact?11:12,fontWeight:600}}>{t.title}</div><div style={{fontSize:10,color:"#3f3f46"}}>Due {$.date(t.due_date)}</div></div><span className={`badge ${t.status==="overdue"?"b-red":"b-yellow"}`}>{sL(t.status)}</span></div>}
+function Spin(){return<div style={{display:"flex",justifyContent:"center",padding:60}}><div className="spin"/></div>}
+
+// ========================================================================
+// APP
+// ========================================================================
+function Shell(){
+    const h=useH();const p=h.split("?")[0];
+    const routes={"/dashboard":DashboardPage,"/dispatch":DispatchPage,"/leads":LeadsPage,"/reps":RepsPage,"/tasks":TasksPage,"/pipeline":PipelinePage,"/projects":ProjectsPage};
+    const P=routes[p]||DashboardPage;
+    return<div><Sidebar/><div className="mc"><P/></div></div>;
 }
 
-function Spinner(){return<div style={{display:"flex",justifyContent:"center",padding:80}}><div className="spinner"/></div>}
+function App(){const{user,loading}=useA();if(loading)return<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div className="spin"/></div>;if(!user)return<Login/>;return<Shell/>}
 
-// ===== APP SHELL =====
-function AppShell(){
-    const hash=useHash();
-    const page=hash.split("?")[0];
-    const routes={"/dashboard":DashboardPage,"/appointments":AppointmentsPage,"/leads":LeadsPage,"/reps":RepsPage,"/tasks":TasksPage,"/pipeline":PipelinePage};
-    const Page=routes[page]||DashboardPage;
-    return<div><Sidebar/><div className="main-content"><Page/></div></div>;
-}
-
-function App(){
-    const {user,loading}=useAuth();
-    if(loading)return<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#0a0a0a"}}><div className="spinner"/></div>;
-    if(!user)return<LoginPage/>;
-    return<AppShell/>;
-}
-
-ReactDOM.createRoot(document.getElementById("root")).render(
-    <AuthProvider><ToastProvider><App/></ToastProvider></AuthProvider>
-);
+ReactDOM.createRoot(document.getElementById("root")).render(<AP><TP><App/></TP></AP>);
 </script>
+<style>.lbl{display:block;font-size:10px;font-weight:800;color:#52525b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}</style>
 </body>
 </html>
