@@ -700,41 +700,92 @@ def assign_lead(
 
 @router.get("/rehash-queue")
 def get_rehash_queue(
-    current_user: User = Depends(require_role("admin")),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
-    Get leads needing follow-up (follow_up_required=True).
-
-    Args:
-        current_user: Current authenticated user (admin)
-        db: Database session
-
-    Returns:
-        List of leads requiring follow-up
+    Dedicated rehash queue: leads in rehash/follow_up/dead status.
+    Grouped by reason, with scheduled callbacks and assigned reps.
     """
+    from app.models import RehashEntry
     leads = (
         db.query(Lead)
-        .filter(Lead.follow_up_required == True)
-        .order_by(Lead.next_follow_up_date.asc())
+        .filter(Lead.deal_status.in_(["rehash", "follow_up", "dead"]))
+        .order_by(Lead.next_follow_up_date.asc().nullslast(), Lead.updated_at.desc())
+        .limit(200)
         .all()
     )
 
+    # Get rehash entries for context
+    rehash_entries = {}
+    try:
+        entries = db.query(RehashEntry).filter(RehashEntry.status == "pending").all()
+        for e in entries:
+            rehash_entries[e.lead_id] = {
+                "reason": e.reason,
+                "callback_at": str(e.callback_at) if e.callback_at else None,
+                "attempts": e.attempts,
+                "original_rep_id": e.original_rep_id,
+            }
+    except Exception:
+        pass
+
+    # Get associated tasks
+    task_map = {}
+    try:
+        from app.models import Task as _T
+        tasks = db.query(_T).filter(
+            _T.lead_id.in_([l.id for l in leads]),
+            _T.status.in_(["pending", "overdue"]),
+            _T.task_type.in_(["rehash", "follow_up"]),
+        ).all()
+        for t in tasks:
+            if t.lead_id not in task_map:
+                task_map[t.lead_id] = []
+            task_map[t.lead_id].append({
+                "task_id": t.id,
+                "title": t.title,
+                "due_date": str(t.due_date) if t.due_date else None,
+                "status": t.status,
+                "task_type": t.task_type,
+            })
+    except Exception:
+        pass
+
+    # Get rep names
+    rep_map = {}
+    try:
+        reps = db.query(User).filter(User.role == "rep").all()
+        for r in reps:
+            rep_map[r.id] = r.full_name
+    except Exception:
+        pass
+
     result = []
     for lead in leads:
-        result.append(
-            {
-                "lead_id": lead.id,
-                "name": f"{lead.first_name} {lead.last_name}",
-                "phone": lead.phone,
-                "property_address": lead.property_address,
-                "city": lead.city,
-                "state": lead.state,
-                "assigned_rep_id": lead.assigned_rep_id,
-                "follow_up_required": lead.follow_up_required,
-                "next_follow_up_date": lead.next_follow_up_date,
-            }
-        )
+        rehash_info = rehash_entries.get(lead.id, {})
+        result.append({
+            "lead_id": lead.id,
+            "name": f"{lead.first_name} {lead.last_name}",
+            "phone": lead.phone,
+            "property_address": lead.property_address,
+            "city": lead.city,
+            "state": lead.state,
+            "deal_status": lead.deal_status,
+            "last_outcome": lead.last_outcome,
+            "average_monthly_bill": lead.average_monthly_bill,
+            "assigned_rep_id": lead.assigned_rep_id,
+            "assigned_rep_name": rep_map.get(lead.assigned_rep_id),
+            "rehash_rep_id": lead.rehash_rep_id,
+            "rehash_rep_name": rep_map.get(lead.rehash_rep_id),
+            "follow_up_required": lead.follow_up_required,
+            "next_follow_up_date": str(lead.next_follow_up_date) if lead.next_follow_up_date else None,
+            "rehash_reason": rehash_info.get("reason"),
+            "rehash_callback": rehash_info.get("callback_at"),
+            "rehash_attempts": rehash_info.get("attempts", 0),
+            "tasks": task_map.get(lead.id, []),
+            "created_at": str(lead.created_at) if lead.created_at else None,
+        })
 
     return result
 

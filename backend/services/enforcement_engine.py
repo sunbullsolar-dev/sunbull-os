@@ -125,6 +125,156 @@ def run_enforcement_check(db: Session) -> dict:
             db.add(violation)
             actions_taken["violations_created"] += 1
 
+    # ── 4. CONFIRMATION SLA: flag overdue confirmations ───────────
+    # Appointments with confirmation_status=pending and created > 2 hours ago
+    confirmation_sla_cutoff = now - timedelta(hours=2)
+    overdue_confirmations = (
+        db.query(Appointment)
+        .filter(
+            Appointment.confirmation_status.in_(["pending", "confirming"]),
+            Appointment.created_at < confirmation_sla_cutoff,
+        )
+        .all()
+    )
+    for appt in overdue_confirmations:
+        if not getattr(appt, "confirmation_overdue", False):
+            try:
+                appt.confirmation_overdue = True
+                actions_taken.setdefault("confirmations_flagged_overdue", 0)
+                actions_taken["confirmations_flagged_overdue"] = actions_taken.get("confirmations_flagged_overdue", 0) + 1
+            except Exception:
+                pass
+
+    # ── 5. AUTO-REHASH: 3+ failed confirmation attempts ────────────
+    three_strike_appts = (
+        db.query(Appointment)
+        .filter(
+            Appointment.confirmation_status.in_(["pending", "confirming"]),
+            Appointment.confirmation_attempts_count >= 3,
+        )
+        .all()
+    )
+    for appt in three_strike_appts:
+        lead = db.query(Lead).filter(Lead.id == appt.lead_id).first()
+        if lead and lead.deal_status not in ("rehash", "dead", "closed_won", "closed_lost"):
+            lead.deal_status = "rehash"
+            appt.confirmation_status = "unconfirmed"
+            # Create rehash task
+            existing_task = (
+                db.query(Task)
+                .filter(Task.lead_id == lead.id, Task.task_type == "rehash", Task.status.in_(["pending", "overdue"]))
+                .first()
+            )
+            if not existing_task:
+                rehash_task = Task(
+                    lead_id=lead.id,
+                    appointment_id=appt.id,
+                    assigned_to=appt.assigned_rep_id,
+                    task_type="rehash",
+                    title=f"Rehash: {lead.first_name} {lead.last_name} (3 failed confirmations)",
+                    due_date=now + timedelta(days=3),
+                    status="pending",
+                )
+                db.add(rehash_task)
+            actions_taken.setdefault("auto_rehashed", 0)
+            actions_taken["auto_rehashed"] = actions_taken.get("auto_rehashed", 0) + 1
+
+    # ── 6. DISPATCH ACCEPT TIMEOUT: unacknowledged > 30 min ────────
+    dispatch_timeout = now - timedelta(minutes=30)
+    unacked_appts = (
+        db.query(Appointment)
+        .filter(
+            Appointment.dispatch_status == "assigned",
+            Appointment.assigned_at != None,
+            Appointment.assigned_at < dispatch_timeout,
+        )
+        .all()
+    )
+    for appt in unacked_appts:
+        if not getattr(appt, "rep_acknowledged_at", None):
+            existing_v = (
+                db.query(Violation)
+                .filter(
+                    Violation.appointment_id == appt.id,
+                    Violation.violation_type == "no_update",
+                    Violation.description.like("%unacknowledged%"),
+                )
+                .first()
+            )
+            if not existing_v:
+                mins = int((now - appt.assigned_at).total_seconds() / 60)
+                violation = Violation(
+                    rep_id=appt.assigned_rep_id,
+                    violation_type="no_update",
+                    severity="warning",
+                    lead_id=appt.lead_id,
+                    appointment_id=appt.id,
+                    description=f"Dispatch unacknowledged for {mins} minutes",
+                )
+                db.add(violation)
+                actions_taken["violations_created"] += 1
+
+    # ── 7. LATE ARRIVAL DETECTION ──────────────────────────────────
+    today = now.date()
+    today_appts = (
+        db.query(Appointment)
+        .filter(
+            Appointment.appointment_date == today,
+            Appointment.appointment_status.in_(["en_route", "arrived", "completed"]),
+        )
+        .all()
+    )
+    for appt in today_appts:
+        if appt.appointment_time and appt.rep_checked_in_at:
+            from datetime import datetime as _dt, time as _t
+            scheduled_dt = _dt.combine(appt.appointment_date, appt.appointment_time)
+            if appt.rep_checked_in_at > scheduled_dt + timedelta(minutes=15):
+                if not getattr(appt, "rep_late", False):
+                    try:
+                        appt.rep_late = True
+                    except Exception:
+                        pass
+                    existing_v = (
+                        db.query(Violation)
+                        .filter(Violation.appointment_id == appt.id, Violation.violation_type.like("%late%"))
+                        .first()
+                    )
+                    if not existing_v:
+                        mins_late = int((appt.rep_checked_in_at - scheduled_dt).total_seconds() / 60)
+                        violation = Violation(
+                            rep_id=appt.assigned_rep_id,
+                            violation_type="late_completion",
+                            severity="warning" if mins_late < 30 else "critical",
+                            lead_id=appt.lead_id,
+                            appointment_id=appt.id,
+                            description=f"Rep arrived {mins_late} minutes late to appointment",
+                        )
+                        db.add(violation)
+                        actions_taken["violations_created"] += 1
+
+    # ── 8. NO STATUS UPDATE: scheduled today but no action taken ───
+    for appt in today_appts:
+        if appt.appointment_time:
+            from datetime import datetime as _dt2
+            scheduled_dt = _dt2.combine(appt.appointment_date, appt.appointment_time)
+            if now > scheduled_dt + timedelta(hours=2) and appt.appointment_status == "en_route" and not appt.outcome:
+                existing_v = (
+                    db.query(Violation)
+                    .filter(Violation.appointment_id == appt.id, Violation.violation_type == "no_update")
+                    .first()
+                )
+                if not existing_v:
+                    violation = Violation(
+                        rep_id=appt.assigned_rep_id,
+                        violation_type="no_update",
+                        severity="critical",
+                        lead_id=appt.lead_id,
+                        appointment_id=appt.id,
+                        description=f"No arrival/outcome update 2+ hours after scheduled time",
+                    )
+                    db.add(violation)
+                    actions_taken["violations_created"] += 1
+
     if any(v > 0 for v in actions_taken.values()):
         db.commit()
 

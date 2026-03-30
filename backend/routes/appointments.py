@@ -55,6 +55,11 @@ class AppointmentResult(BaseModel):
     notes: str
     follow_up_date: Optional[str] = None  # YYYY-MM-DD, required for certain outcomes
     follow_up_note: Optional[str] = None  # Required when follow_up_date is set
+    # Structured execution fields (required for held appointments)
+    homeowner_present: Optional[bool] = None
+    decision_maker_present: Optional[bool] = None
+    pitch_delivered: Optional[bool] = None
+    proposal_sent: Optional[bool] = None
 
 
 class AppointmentResponse(BaseModel):
@@ -527,6 +532,16 @@ def complete_appointment(
     - Ownership tracking (runner, closer)
     - Audit + action logging
     """
+    # Validate structured execution fields for held appointments
+    held_outcomes = {"closed", "proposal_presented", "proposal_sent", "follow_up_required"}
+    if result_data.outcome in held_outcomes:
+        if result_data.homeowner_present is None:
+            raise HTTPException(status_code=400, detail="homeowner_present is required for held appointments")
+        if result_data.decision_maker_present is None:
+            raise HTTPException(status_code=400, detail="decision_maker_present is required for held appointments")
+        if result_data.pitch_delivered is None:
+            raise HTTPException(status_code=400, detail="pitch_delivered is required for held appointments")
+
     try:
         result = process_outcome(
             db=db,
@@ -537,6 +552,20 @@ def complete_appointment(
             follow_up_date=result_data.follow_up_date,
             follow_up_note=result_data.follow_up_note,
         )
+
+        # Save structured fields to appointment
+        appt = db.query(Appointment).filter(Appointment.id == appointment_id).first()
+        if appt:
+            if result_data.homeowner_present is not None:
+                appt.homeowner_present = result_data.homeowner_present
+            if result_data.decision_maker_present is not None:
+                appt.decision_maker_present = result_data.decision_maker_present
+            if result_data.pitch_delivered is not None:
+                appt.pitch_delivered = result_data.pitch_delivered
+            if result_data.proposal_sent is not None:
+                appt.proposal_sent = result_data.proposal_sent
+            db.commit()
+
         return result
     except OutcomeError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)

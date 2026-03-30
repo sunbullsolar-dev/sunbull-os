@@ -5,10 +5,11 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Lead, Appointment, User, ConfirmationAttempt
+from app.models import Lead, Appointment, User, ConfirmationAttempt, Task
 from app.auth import get_current_user, require_role
 from services.audit import create_audit_log
 from services.scoring import calculate_lead_score
+from services.actions import log_action
 
 router = APIRouter(prefix="/api/confirmation", tags=["confirmation"])
 
@@ -680,6 +681,37 @@ def log_confirmation_attempt_enhanced(
                 lead.follow_up_required = True
     elif outcome == "voicemail":
         appointment.confirmation_status = "confirming"
+
+    # Auto-schedule retry task for no_answer / voicemail
+    if outcome in ("no_answer", "voicemail") and lead:
+        retry_title = f"Retry confirmation: {lead.first_name} {lead.last_name} ({outcome})"
+        retry_due = datetime.utcnow() + timedelta(hours=2 if outcome == "no_answer" else 4)
+        existing_retry = (
+            db.query(Task)
+            .filter(Task.lead_id == lead.id, Task.task_type == "follow_up", Task.status == "pending",
+                    Task.title.like("Retry confirmation%"))
+            .first()
+        )
+        if not existing_retry:
+            retry_task = Task(
+                lead_id=lead.id,
+                appointment_id=appointment.id,
+                assigned_to=current_user.id,
+                created_by=current_user.id,
+                task_type="follow_up",
+                title=retry_title,
+                due_date=retry_due,
+                status="pending",
+                source_outcome=outcome,
+            )
+            db.add(retry_task)
+
+    # Log action for audit trail
+    if lead:
+        log_action(db=db, lead_id=lead.id, action_type="status_change",
+                   rep_id=current_user.id,
+                   note=f"Confirmation attempt #{appointment.confirmation_attempts_count}: {outcome}" +
+                        (f" - {attempt_data.notes}" if attempt_data.notes else ""))
 
     db.add(appointment)
     if lead:

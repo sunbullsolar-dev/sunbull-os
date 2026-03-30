@@ -1209,3 +1209,142 @@ def read_all_notifications(
     from services.phase3_engines import mark_all_notifications_read
     mark_all_notifications_read(db, current_user.id)
     return {"ok": True}
+
+
+@router.get("/accountability")
+def get_accountability_dashboard(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """Real-time accountability dashboard: who's failing, what's overdue, what needs action."""
+    now = datetime.utcnow()
+    today = now.date()
+
+    # Run enforcement check first
+    run_enforcement_check(db)
+
+    # 1. Reps late today
+    late_appts = (
+        db.query(Appointment)
+        .filter(Appointment.appointment_date == today)
+        .all()
+    )
+    reps_late = []
+    for a in late_appts:
+        if getattr(a, "rep_late", False):
+            rep = db.query(User).filter(User.id == a.assigned_rep_id).first()
+            lead = db.query(Lead).filter(Lead.id == a.lead_id).first()
+            if rep and lead:
+                mins_late = 0
+                if a.rep_checked_in_at and a.appointment_time:
+                    sched = datetime.combine(a.appointment_date, a.appointment_time)
+                    mins_late = max(0, int((a.rep_checked_in_at - sched).total_seconds() / 60))
+                reps_late.append({
+                    "rep_name": rep.full_name, "rep_id": rep.id,
+                    "lead_name": f"{lead.first_name} {lead.last_name}",
+                    "mins_late": mins_late, "appointment_id": a.id,
+                })
+
+    # 2. Unacknowledged appointments
+    unacked = (
+        db.query(Appointment)
+        .filter(
+            Appointment.dispatch_status == "assigned",
+            Appointment.rep_acknowledged_at == None,
+        )
+        .all()
+    )
+    unacked_list = []
+    for a in unacked:
+        rep = db.query(User).filter(User.id == a.assigned_rep_id).first()
+        lead = db.query(Lead).filter(Lead.id == a.lead_id).first()
+        mins_waiting = int((now - (a.assigned_at or a.created_at)).total_seconds() / 60) if a.assigned_at else 0
+        unacked_list.append({
+            "appointment_id": a.id,
+            "rep_name": rep.full_name if rep else "Unknown",
+            "rep_id": a.assigned_rep_id,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else "Unknown",
+            "mins_waiting": mins_waiting,
+            "appointment_date": str(a.appointment_date),
+            "appointment_time": str(a.appointment_time) if a.appointment_time else None,
+        })
+
+    # 3. Overdue confirmations
+    overdue_confirms = (
+        db.query(Appointment)
+        .filter(
+            Appointment.confirmation_status.in_(["pending", "confirming"]),
+        )
+        .all()
+    )
+    overdue_confirm_list = []
+    for a in overdue_confirms:
+        lead = db.query(Lead).filter(Lead.id == a.lead_id).first()
+        hours_waiting = int((now - a.created_at).total_seconds() / 3600) if a.created_at else 0
+        overdue_confirm_list.append({
+            "appointment_id": a.id,
+            "lead_name": f"{lead.first_name} {lead.last_name}" if lead else "Unknown",
+            "phone": lead.phone if lead else None,
+            "hours_waiting": hours_waiting,
+            "attempts": a.confirmation_attempts_count or 0,
+            "appointment_date": str(a.appointment_date),
+            "is_overdue": hours_waiting >= 2,
+        })
+
+    # 4. Missed updates (today's appts without outcome past scheduled time)
+    missed_updates = []
+    for a in late_appts:
+        if a.appointment_time and not a.outcome:
+            sched = datetime.combine(a.appointment_date, a.appointment_time)
+            if now > sched + timedelta(hours=1) and a.appointment_status not in ("completed", "cancelled", "no_show"):
+                rep = db.query(User).filter(User.id == a.assigned_rep_id).first()
+                lead = db.query(Lead).filter(Lead.id == a.lead_id).first()
+                missed_updates.append({
+                    "appointment_id": a.id,
+                    "rep_name": rep.full_name if rep else "Unknown",
+                    "lead_name": f"{lead.first_name} {lead.last_name}" if lead else "Unknown",
+                    "status": a.appointment_status,
+                    "scheduled_time": str(a.appointment_time),
+                    "hours_overdue": int((now - sched).total_seconds() / 3600),
+                })
+
+    # 5. Active violations summary
+    active_violations = (
+        db.query(Violation)
+        .filter(Violation.acknowledged == False)
+        .order_by(Violation.created_at.desc())
+        .limit(50)
+        .all()
+    )
+    violations_list = []
+    for v in active_violations:
+        rep = db.query(User).filter(User.id == v.rep_id).first()
+        violations_list.append({
+            "id": v.id, "rep_name": rep.full_name if rep else "Unknown",
+            "type": v.violation_type, "severity": v.severity,
+            "description": v.description,
+            "created_at": str(v.created_at) if v.created_at else None,
+        })
+
+    # 6. Overdue tasks
+    overdue_tasks = db.query(Task).filter(Task.status == "overdue").count()
+    pending_tasks = db.query(Task).filter(Task.status == "pending").count()
+
+    return {
+        "reps_late_today": reps_late,
+        "unacknowledged_dispatches": unacked_list,
+        "overdue_confirmations": [c for c in overdue_confirm_list if c["is_overdue"]],
+        "pending_confirmations": [c for c in overdue_confirm_list if not c["is_overdue"]],
+        "missed_updates": missed_updates,
+        "active_violations": violations_list,
+        "overdue_tasks_count": overdue_tasks,
+        "pending_tasks_count": pending_tasks,
+        "summary": {
+            "reps_late": len(reps_late),
+            "unacked": len(unacked_list),
+            "overdue_confirms": len([c for c in overdue_confirm_list if c["is_overdue"]]),
+            "missed_updates": len(missed_updates),
+            "violations": len(violations_list),
+            "overdue_tasks": overdue_tasks,
+        },
+    }

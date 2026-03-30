@@ -246,6 +246,22 @@ class Appointment(Base):
     backup_rep_id = Column(Integer, ForeignKey("users.id"))
     rep_acknowledged_at = Column(DateTime)
 
+    # Structured Execution (rep must fill before closing)
+    homeowner_present = Column(Boolean)
+    decision_maker_present = Column(Boolean)
+    pitch_delivered = Column(Boolean)
+    proposal_sent = Column(Boolean)
+    follow_up_required_flag = Column(Boolean)
+    follow_up_date = Column(Date)
+
+    # Confirmation SLA
+    confirmation_sla_deadline = Column(DateTime)  # must be touched by this time
+    confirmation_overdue = Column(Boolean, default=False)
+
+    # Dispatch timing
+    dispatch_accept_deadline = Column(DateTime)  # rep must accept by this time
+    rep_late = Column(Boolean, default=False)  # was rep late to appointment
+
     # Outcome
     outcome = Column(String(30))
     notes = Column(Text)
