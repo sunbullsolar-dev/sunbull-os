@@ -161,8 +161,15 @@ def startup_event():
             except Exception as e:
                 print(f"Column migration note: {e}")
 
-            print("Seed data already exists.")
-            return
+            # Check if seed data actually exists (admin might exist but data was lost)
+            rep_count = db.query(User).filter(User.role == "rep").count()
+            if rep_count > 0:
+                print("Seed data already exists.")
+                return
+
+            # Admin exists but no reps — re-seed everything except admin
+            print(f"Admin exists but only {rep_count} reps found. Re-seeding data...")
+            admin = admin_user  # Use existing admin for FK references below
 
         from app.auth import hash_password
         from datetime import datetime, timedelta, date, time
@@ -170,16 +177,17 @@ def startup_event():
         import json
 
         # ---- USERS ----
-        # Admin: Abdo Yaghi (owner)
-        admin = User(
-            email="sunbullsolar@gmail.com",
-            hashed_password=hash_password("admin123"),
-            full_name="Abdo Yaghi",
-            role="admin",
-            is_active=True,
-        )
-        db.add(admin)
-        db.flush()
+        # Admin: Abdo Yaghi (owner) — only create if not already present
+        if not admin_user:
+            admin = User(
+                email="sunbullsolar@gmail.com",
+                hashed_password=hash_password("admin123"),
+                full_name="Abdo Yaghi",
+                role="admin",
+                is_active=True,
+            )
+            db.add(admin)
+            db.flush()
 
         # Real Sunbull sales reps
         rep_data = [
