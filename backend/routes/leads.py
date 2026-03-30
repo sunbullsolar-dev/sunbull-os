@@ -74,19 +74,34 @@ class LeadResponse(BaseModel):
     first_name: str
     last_name: str
     phone: str
-    email: Optional[str]
-    property_address: str
-    city: str
-    state: str
-    zip_code: str
-    source_type: str
-    deal_status: str
-    lead_quality_score: int
-    average_monthly_bill: Optional[float]
-    estimated_annual_kwh: Optional[float]
-    assigned_rep_id: Optional[int]
-    created_at: datetime
-    updated_at: datetime
+    email: Optional[str] = None
+    property_address: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    zip_code: Optional[str] = None
+    source_type: Optional[str] = None
+    deal_status: str = "new"
+    lead_quality_score: int = 0
+    average_monthly_bill: Optional[float] = None
+    estimated_annual_kwh: Optional[float] = None
+    cost_per_kwh: Optional[float] = None
+    assigned_rep_id: Optional[int] = None
+    setter_id: Optional[int] = None
+    runner_id: Optional[int] = None
+    closer_id: Optional[int] = None
+    rehash_rep_id: Optional[int] = None
+    homeowner_status: Optional[str] = None
+    property_type: Optional[str] = None
+    geo_lat: Optional[float] = None
+    geo_lng: Optional[float] = None
+    is_held: Optional[bool] = None
+    is_archived: Optional[bool] = None
+    last_outcome: Optional[str] = None
+    next_follow_up_date: Optional[str] = None
+    deal_value: Optional[float] = None
+    notes: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
