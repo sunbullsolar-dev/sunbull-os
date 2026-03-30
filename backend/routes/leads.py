@@ -222,7 +222,7 @@ def list_leads(
     deal_status: Optional[str] = Query(None),
     source_type: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(25, ge=1, le=100),
+    limit: int = Query(25, ge=1, le=500),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -512,7 +512,7 @@ def assign_lead(
     return lead
 
 
-@router.get("/rehash-queue", response_model=List[dict])
+@router.get("/rehash-queue")
 def get_rehash_queue(
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db),
