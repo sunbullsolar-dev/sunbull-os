@@ -176,7 +176,7 @@ def startup_event():
             # Check if seed data actually exists (admin might exist but data was lost)
             rep_count = db.query(User).filter(User.role == "rep").count()
             if rep_count > 0:
-                # Backfill geo coords on leads that are missing them
+                # Backfill geo coords on leads that are missing them (use raw SQL for reliability)
                 from sqlalchemy import text as _bt
                 try:
                     geo_map = {
@@ -186,14 +186,18 @@ def startup_event():
                         "Tampa": (27.9506, -82.4572), "Sacramento": (38.5816, -121.4944),
                         "Mesa": (33.4152, -111.8315), "Orlando": (28.5383, -81.3792),
                         "Dallas": (32.7767, -96.7970), "San Antonio": (29.4241, -98.4936),
+                        "Tarzana": (34.1725, -118.5353), "Encino": (34.1592, -118.5013),
                     }
-                    leads_needing_geo = db.query(Lead).filter(Lead.geo_lat == None).all()
                     updated_geo = 0
-                    for lead in leads_needing_geo:
-                        coords = geo_map.get(lead.city)
-                        if coords:
-                            lead.geo_lat, lead.geo_lng = coords
-                            updated_geo += 1
+                    with engine.connect() as conn:
+                        for city, (lat, lng) in geo_map.items():
+                            r = conn.execute(_bt(
+                                f"UPDATE leads SET geo_lat = {lat}, geo_lng = {lng} WHERE city = '{city}' AND (geo_lat IS NULL OR geo_lat = 0)"
+                            ))
+                            updated_geo += r.rowcount
+                        conn.commit()
+                    if updated_geo > 0:
+                        print(f"  Backfill: {updated_geo} leads got geo coords via raw SQL")
                     # Also ensure some appointments are dated today
                     from datetime import date as _date
                     today = _date.today()
@@ -202,12 +206,12 @@ def startup_event():
                     if today_count == 0 and len(appts) >= 3:
                         for a in appts[:3]:
                             a.appointment_date = today
-                        print(f"  Set 3 appointments to today ({today})")
-                    if updated_geo > 0 or today_count == 0:
                         db.commit()
-                        print(f"  Backfill: {updated_geo} leads got geo coords, {3 if today_count==0 else 0} appts moved to today")
+                        print(f"  Set 3 appointments to today ({today})")
                 except Exception as e:
                     print(f"  Backfill note: {e}")
+                    import traceback
+                    traceback.print_exc()
                 print("Seed data already exists.")
                 return
 
