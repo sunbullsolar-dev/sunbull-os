@@ -110,56 +110,68 @@ def startup_event():
                 db.commit()
                 print(f"Fixed {len(zero_reps)} reps with close_rate=0.")
 
-            # For existing databases: add missing columns safely
+            # Universal auto-migration: compare ALL model columns to DB and add missing ones
             try:
-                from sqlalchemy import inspect, text as _sql_text
+                from sqlalchemy import inspect, text as _sql_text, String, Integer, Float, Boolean, Text, DateTime, Date, Time, JSON
                 inspector = inspect(engine)
 
-                # Map of table -> {column_name: ALTER TABLE SQL}
-                migrations = {
-                    'leads': {
-                        'is_held': "ALTER TABLE leads ADD COLUMN is_held BOOLEAN DEFAULT FALSE",
-                        'last_outcome': "ALTER TABLE leads ADD COLUMN last_outcome VARCHAR(30)",
-                        'follow_up_note': "ALTER TABLE leads ADD COLUMN follow_up_note TEXT",
-                        'runner_id': "ALTER TABLE leads ADD COLUMN runner_id INTEGER",
-                        'rehash_rep_id': "ALTER TABLE leads ADD COLUMN rehash_rep_id INTEGER",
-                    },
-                    'users': {
-                        'close_rate': "ALTER TABLE users ADD COLUMN close_rate FLOAT DEFAULT 0.0",
-                        'total_deals': "ALTER TABLE users ADD COLUMN total_deals INTEGER DEFAULT 0",
-                        'territory': "ALTER TABLE users ADD COLUMN territory VARCHAR(100)",
-                    },
-                    'appointments': {
-                        'route_order_index': "ALTER TABLE appointments ADD COLUMN route_order_index INTEGER",
-                        'estimated_travel_time_minutes': "ALTER TABLE appointments ADD COLUMN estimated_travel_time_minutes INTEGER",
-                        'rep_checked_in_at': "ALTER TABLE appointments ADD COLUMN rep_checked_in_at TIMESTAMP",
-                        'rep_checked_out_at': "ALTER TABLE appointments ADD COLUMN rep_checked_out_at TIMESTAMP",
-                    },
-                    'deals': {
-                        'delay_reason': "ALTER TABLE deals ADD COLUMN delay_reason VARCHAR(255)",
-                    },
-                    'commissions': {
-                        'paid_at': "ALTER TABLE commissions ADD COLUMN paid_at TIMESTAMP",
-                    },
-                }
+                # Map SQLAlchemy types to PostgreSQL DDL types
+                def sa_type_to_sql(col):
+                    t = type(col.type)
+                    if t in (String,):
+                        length = getattr(col.type, 'length', None)
+                        return f"VARCHAR({length})" if length else "VARCHAR(255)"
+                    elif t in (Text,):
+                        return "TEXT"
+                    elif t in (Integer,):
+                        return "INTEGER"
+                    elif t in (Float,):
+                        return "DOUBLE PRECISION"
+                    elif t in (Boolean,):
+                        return "BOOLEAN"
+                    elif t in (DateTime,):
+                        return "TIMESTAMP"
+                    elif t in (Date,):
+                        return "DATE"
+                    elif t in (Time,):
+                        return "TIME"
+                    elif t in (JSON,):
+                        return "JSON"
+                    return "TEXT"  # fallback
 
+                added_count = 0
                 with engine.connect() as conn:
-                    for table_name, cols in migrations.items():
+                    for table in Base.metadata.sorted_tables:
                         try:
-                            existing = [c['name'] for c in inspector.get_columns(table_name)]
+                            existing_cols = {c['name'] for c in inspector.get_columns(table.name)}
                         except Exception:
-                            continue  # Table doesn't exist yet, create_all will handle it
-                        for col_name, sql in cols.items():
-                            if col_name not in existing:
+                            continue  # Table doesn't exist, create_all handles it
+                        for col in table.columns:
+                            if col.name not in existing_cols:
+                                col_type = sa_type_to_sql(col)
+                                # Build default clause
+                                default_clause = ""
+                                if col.default is not None and col.default.arg is not None and not callable(col.default.arg):
+                                    dval = col.default.arg
+                                    if isinstance(dval, bool):
+                                        default_clause = f" DEFAULT {'TRUE' if dval else 'FALSE'}"
+                                    elif isinstance(dval, (int, float)):
+                                        default_clause = f" DEFAULT {dval}"
+                                    elif isinstance(dval, str):
+                                        default_clause = f" DEFAULT '{dval}'"
+                                sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{default_clause}'
                                 try:
                                     conn.execute(_sql_text(sql))
-                                    print(f"Added {table_name}.{col_name}")
-                                except Exception:
-                                    pass
+                                    added_count += 1
+                                    print(f"  + {table.name}.{col.name} ({col_type})")
+                                except Exception as col_err:
+                                    pass  # Column might already exist due to race condition
                     conn.commit()
-                print("Column migration complete.")
+                print(f"Auto-migration complete: {added_count} columns added.")
             except Exception as e:
-                print(f"Column migration note: {e}")
+                print(f"Auto-migration error: {e}")
+                import traceback
+                traceback.print_exc()
 
             # Check if seed data actually exists (admin might exist but data was lost)
             rep_count = db.query(User).filter(User.role == "rep").count()
