@@ -190,23 +190,23 @@ function DashboardPage(){
     const[d,sD]=useState(null);const[tasks,sTasks]=useState([]);const[rehash,sRehash]=useState([]);
     const[appts,sAppts]=useState([]);const[loading,setLd]=useState(true);
     const[enforcement,setEnf]=useState(null);const[violations,setViol]=useState([]);
-    // Phase 3 state
     const[revenue,setRev]=useState(null);const[escalation,setEsc]=useState(null);
     const[topLeads,setTL]=useState([]);const[reassign,setReassign]=useState([]);
     const[leaderboard,setLB]=useState(null);const[notifs,setNotifs]=useState([]);
-    const[repLeads,setRL]=useState([]);
+    const[repLeads,setRL]=useState([]);const[showGuide,setGuide]=useState(false);
+    const refreshRef=useRef(null);
 
-    useEffect(()=>{load()},[]);
-    const load=async()=>{
-        setLd(true);
+    useEffect(()=>{load();refreshRef.current=setInterval(()=>silentLoad(),30000);return()=>clearInterval(refreshRef.current)},[]);
+    const silentLoad=async()=>{try{await loadData(false)}catch{}};
+    const load=async()=>loadData(true);
+    const loadData=async(showSpin)=>{
+        if(showSpin)setLd(true);
         try{
             const isA=user?.role==="admin";
             const[dr,ar,tr]=await Promise.all([
                 isA?af("/api/admin/dashboard"):af("/api/leads?limit=100"),
-                af("/api/appointments"),
-                af("/api/tasks"),
+                af("/api/appointments"),af("/api/tasks"),
             ]);
-            // Load notifications for everyone
             try{const nr=await af("/api/admin/notifications");if(nr.ok){const nd=await nr.json();setNotifs(nd.notifications||[])}}catch{}
             if(isA){
                 if(dr.ok)sD(await dr.json());
@@ -215,31 +215,29 @@ function DashboardPage(){
                 try{const rr=await af("/api/leads/rehash-queue");if(rr.ok)sRehash(await rr.json())}catch{}
                 try{const er=await af("/api/admin/enforcement");if(er.ok)setEnf(await er.json())}catch{}
                 try{const vr=await af("/api/admin/violations?acknowledged=false&limit=10");if(vr.ok){const vd=await vr.json();setViol(vd.violations||[])}}catch{}
-                // Phase 3 admin data
                 try{const rv=await af("/api/admin/revenue");if(rv.ok)setRev(await rv.json())}catch{}
                 try{const es=await af("/api/admin/escalation");if(es.ok)setEsc(await es.json())}catch{}
                 try{const tl=await af("/api/admin/priority-leads?limit=5");if(tl.ok){const td=await tl.json();setTL(td.leads||[])}}catch{}
                 try{const ra=await af("/api/admin/reassignment-suggestions");if(ra.ok){const rd=await ra.json();setReassign(rd.suggestions||[])}}catch{}
                 try{const lb=await af("/api/admin/leaderboard");if(lb.ok)setLB(await lb.json())}catch{}
             } else {
-                const leads=dr.ok?await dr.json():[];
-                const a=ar.ok?await ar.json():[];
-                const t=tr.ok?await tr.json():[];
-                const la=Array.isArray(leads)?leads:(leads.items||[]);
-                const ta=Array.isArray(t)?t:(t.items||[]);
+                const leads=dr.ok?await dr.json():[];const a=ar.ok?await ar.json():[];const t=tr.ok?await tr.json():[];
+                const la=Array.isArray(leads)?leads:(leads.items||[]);const ta=Array.isArray(t)?t:(t.items||[]);
                 const today=new Date().toISOString().split("T")[0];
                 sD({_rep:true,total_leads:la.length,appts_today:(Array.isArray(a)?a:[]).filter(x=>x.appointment_date===today).length,open_tasks:ta.filter(x=>x.status!=="completed").length});
-                sAppts(Array.isArray(a)?a:[]);
-                sTasks(ta);
-                // Rep leaderboard + priority leads
+                sAppts(Array.isArray(a)?a:[]);sTasks(ta);
                 try{const lb=await af("/api/admin/leaderboard");if(lb.ok)setLB(await lb.json())}catch{}
                 try{const rl=await af(`/api/admin/rep-priority-leads/${user?.id}?limit=5`);if(rl.ok){const rd=await rl.json();setRL(rd.leads||[])}}catch{}
+                // Show guide on first visit
+                if(!localStorage.getItem("sb_guide_seen"))setGuide(true);
             }
         }catch(e){console.error(e)}
-        setLd(false);
+        if(showSpin)setLd(false);
     };
 
     const markRead=async(id)=>{try{await af(`/api/admin/notifications/${id}/read`,{method:"POST"});setNotifs(n=>n.filter(x=>x.id!==id))}catch{}};
+    const quickComplete=async(tid)=>{try{const r=await af(`/api/tasks/${tid}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Completed from dashboard"})});if(r.ok){toast("ok","Task done!");load()}else{toast("err","Failed")}}catch{toast("err","Error")}};
+    const dismissGuide=()=>{setGuide(false);localStorage.setItem("sb_guide_seen","1")};
 
     if(loading)return<Spin/>;
 
@@ -249,79 +247,135 @@ function DashboardPage(){
     const pending=tasks.filter(t=>t.status==="pending");
     const dueToday=pending.filter(t=>t.due_date&&t.due_date.startsWith(today));
 
-    // === REP DASHBOARD (with UI PRESSURE + LEADERBOARD) ===
+    // === REP DASHBOARD — DAILY WORKFLOW ENGINE ===
     if(user?.role!=="admin"||d?._rep){
         const hasOverdue=overdue.length>0;
         const myRank=leaderboard?.leaderboard?.find(r=>r.rep_id===user?.id);
+        const fuTasks=tasks.filter(t=>t.task_type==="follow_up"&&t.status!=="completed");
         return(
             <div>
+                {/* Onboarding guide overlay */}
+                {showGuide&&(
+                    <div className="modal-ov" onClick={dismissGuide}><div className="modal" onClick={e=>e.stopPropagation()} style={{maxWidth:420}}>
+                        <div style={{textAlign:"center",marginBottom:20}}><div style={{fontSize:20,fontWeight:900}}><span style={{color:"#f59e0b"}}>Welcome to Sunbull OS</span></div><div style={{fontSize:12,color:"#71717a",marginTop:4}}>Your daily sales command center</div></div>
+                        <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:20}}>
+                            {[["1. Check overdue tasks","Red alerts at the top = do these FIRST","#ef4444"],["2. Run your appointments","Big buttons to go En Route, Arrive, Complete","#3b82f6"],["3. Work your priority leads","System ranks your best leads to close","#f59e0b"],["4. Complete follow-ups","Never let a follow-up slip — it tracks everything","#22c55e"]].map(([t,d,c])=>(
+                                <div key={t} style={{display:"flex",gap:12,alignItems:"flex-start"}}>
+                                    <div style={{width:8,height:8,borderRadius:"50%",background:c,marginTop:5,flexShrink:0}}/>
+                                    <div><div style={{fontSize:13,fontWeight:700}}>{t}</div><div style={{fontSize:11,color:"#71717a"}}>{d}</div></div>
+                                </div>
+                            ))}
+                        </div>
+                        <button className="btn btn-p" style={{width:"100%",padding:12,fontSize:14}} onClick={dismissGuide}>Got it — Let's Go</button>
+                    </div></div>
+                )}
+                {/* OVERDUE ALERT BAR — impossible to miss */}
                 {hasOverdue&&(
-                    <div style={{background:"#ef4444",padding:"12px 24px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                    <div style={{background:"#ef4444",padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                             <Ic d={IC.alert} s={20} c="#fff"/>
-                            <span style={{color:"#fff",fontSize:14,fontWeight:900,textTransform:"uppercase",letterSpacing:".04em"}}>YOU HAVE {overdue.length} OVERDUE TASK{overdue.length>1?"S":""}</span>
+                            <span style={{color:"#fff",fontSize:15,fontWeight:900,textTransform:"uppercase"}}>
+                                {overdue.length} OVERDUE TASK{overdue.length>1?"S":""}
+                            </span>
                         </div>
-                        <button className="btn" style={{background:"#fff",color:"#ef4444",borderColor:"#fff",fontWeight:900}} onClick={()=>nav("/tasks")}>FIX NOW</button>
+                        <button className="btn" style={{background:"#fff",color:"#ef4444",borderColor:"#fff",fontWeight:900,minHeight:44,fontSize:14}} onClick={()=>nav("/tasks")}>FIX NOW</button>
                     </div>
                 )}
-                {/* Notifications bar */}
+                {/* Notification alerts */}
                 {notifs.length>0&&(
-                    <div style={{background:"#3b82f618",padding:"8px 24px",borderBottom:"1px solid #3b82f640"}}>
-                        {notifs.slice(0,3).map(n=>(
+                    <div style={{background:"#3b82f610",padding:"6px 24px",borderBottom:"1px solid #3b82f620"}}>
+                        {notifs.slice(0,2).map(n=>(
                             <div key={n.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"4px 0"}}>
-                                <div><span style={{fontSize:11,fontWeight:700,color:n.type==="overdue"?"#ef4444":"#3b82f6"}}>{n.title}</span><span style={{fontSize:10,color:"#71717a",marginLeft:8}}>{n.message}</span></div>
-                                <button className="btn" style={{fontSize:9,padding:"2px 8px"}} onClick={()=>markRead(n.id)}>Dismiss</button>
+                                <span style={{fontSize:11,fontWeight:700,color:n.type==="overdue"?"#ef4444":"#3b82f6"}}>{n.title}: <span style={{fontWeight:500,color:"#71717a"}}>{n.message}</span></span>
+                                <button style={{background:"none",border:"none",color:"#3f3f46",cursor:"pointer",fontSize:14,padding:4}} onClick={()=>markRead(n.id)}>x</button>
                             </div>
                         ))}
                     </div>
                 )}
-                <PH title="My Dashboard" sub={`Welcome, ${user?.full_name}`} right={myRank&&<div style={{textAlign:"right"}}><div style={{fontSize:24,fontWeight:900,color:myRank.rank<=2?"#f59e0b":myRank.rank<=5?"#22c55e":"#a1a1aa"}}>#{myRank.rank}</div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>Rank of {leaderboard?.total_reps||"?"}</div></div>}/>
+                {/* HEADER with rank */}
+                <div style={{padding:"14px 24px 10px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div><h1 style={{fontSize:18,fontWeight:900}}>My Day</h1><p style={{color:"#3f3f46",fontSize:11,marginTop:1}}>Auto-refreshes every 30s</p></div>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        {myRank&&<div style={{textAlign:"center",padding:"4px 12px",borderRadius:8,background:myRank.rank<=2?"#f59e0b10":"#18181b"}}><div style={{fontSize:22,fontWeight:900,color:myRank.rank<=2?"#f59e0b":myRank.rank<=5?"#22c55e":"#a1a1aa"}}>#{myRank.rank}</div><div style={{fontSize:8,fontWeight:800,color:"#3f3f46",textTransform:"uppercase"}}>of {leaderboard?.total_reps||"?"}</div></div>}
+                        <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>
+                    </div>
+                </div>
                 <div style={{padding:"16px 24px"}}>
+                    {/* SECTION 1: OVERDUE — RED BLOCK with 1-click complete */}
                     {hasOverdue&&(
-                        <div style={{background:"#ef444415",border:"2px solid #ef4444",borderRadius:10,padding:16,marginBottom:16}}>
-                            <div style={{fontSize:13,fontWeight:900,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>BLOCKED — Complete These Tasks First</div>
-                            {overdue.map(t=><TaskRow key={t.id} t={t}/>)}
+                        <div style={{background:"#ef444412",border:"2px solid #ef4444",borderRadius:10,padding:16,marginBottom:20}}>
+                            <div style={{fontSize:12,fontWeight:900,color:"#ef4444",textTransform:"uppercase",letterSpacing:".05em",marginBottom:10}}>BLOCKED — Complete These First</div>
+                            {overdue.map(t=>(
+                                <div key={t.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #ef444420"}}>
+                                    <div><div style={{fontSize:13,fontWeight:700}}>{t.title}</div><div style={{fontSize:10,color:"#fca5a5"}}>Due {$.date(t.due_date)} &middot; {t.lead_name||""}</div></div>
+                                    <button className="btn btn-p" style={{padding:"8px 16px",fontSize:12,fontWeight:800}} onClick={()=>quickComplete(t.id)}>DONE</button>
+                                </div>
+                            ))}
                         </div>
                     )}
-                    {/* KPIs + Rank */}
-                    <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:20}}>
-                        <KPI l="My Leads" v={d?.total_leads||0}/>
-                        <KPI l="Today's Appts" v={d?.appts_today||0} t={d?.appts_today>0?"warn":null}/>
-                        <KPI l="Open Tasks" v={d?.open_tasks||0} t={d?.open_tasks>3?"hot":"ok"}/>
-                        <KPI l="Due Today" v={dueToday.length} t={dueToday.length>0?"warn":null}/>
-                        <KPI l="Overdue" v={overdue.length} t={overdue.length>0?"hot":null}/>
+                    {/* KPI bar */}
+                    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
+                        <KPI l="My Leads" v={d?.total_leads||0}/><KPI l="Appts Today" v={d?.appts_today||0} t={d?.appts_today>0?"warn":null}/><KPI l="Open Tasks" v={d?.open_tasks||0} t={d?.open_tasks>3?"hot":"ok"}/><KPI l="Overdue" v={overdue.length} t={overdue.length>0?"hot":null}/>
                         {myRank&&<KPI l="Score" v={myRank.daily_score} t={myRank.daily_score>=200?"ok":myRank.daily_score>=100?"warn":"hot"}/>}
-                        {myRank&&<KPI l="Violations" v={myRank.active_violations} t={myRank.active_violations>0?"hot":null}/>}
                     </div>
-                    {/* Priority leads for rep */}
+                    {/* SECTION 2: TODAY'S APPOINTMENTS — big action cards */}
+                    {todayAppts.length>0&&(
+                        <div style={{marginBottom:20}}>
+                            <SH title="Today's Appointments" count={todayAppts.length}/>
+                            {todayAppts.map(a=><RepApptCard key={a.id} a={a} onDone={load}/>)}
+                        </div>
+                    )}
+                    {/* SECTION 3: PRIORITY LEADS — clickable with phone links */}
                     {repLeads.length>0&&(
                         <div style={{marginBottom:20}}>
-                            <SH title="Your Top Priority Leads" count={repLeads.length}/>
+                            <SH title="Top Priority Leads" count={repLeads.length}/>
                             <div className="cd" style={{padding:0}}>
                                 {repLeads.map((l,i)=>(
-                                    <div key={l.lead_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
-                                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                            <div style={{width:24,height:24,borderRadius:"50%",background:i===0?"#f59e0b28":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i===0?"#f59e0b":"#71717a"}}>{i+1}</div>
-                                            <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.city} &middot; {sL(l.deal_status)}</div></div>
+                                    <div key={l.lead_id} style={{padding:"12px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
+                                            <div style={{width:26,height:26,borderRadius:"50%",background:i===0?"#f59e0b28":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i===0?"#f59e0b":"#71717a"}}>{i+1}</div>
+                                            <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)} &middot; {$.money(l.deal_value)}</div></div>
                                         </div>
-                                        <div style={{textAlign:"right"}}><div style={{fontSize:13,fontWeight:800,color:"#f59e0b"}}>{$.money(l.deal_value)}</div><div style={{fontSize:9,color:"#3f3f46"}}>Priority: {l.priority_score}</div></div>
+                                        {l.phone&&<a href={`tel:${l.phone}`} style={{textDecoration:"none"}} onClick={e=>e.stopPropagation()}><button className="btn btn-g" style={{padding:"8px 12px",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:4}}><Ic d={IC.phone} s={13} c="#22c55e"/>Call</button></a>}
                                     </div>
                                 ))}
                             </div>
                         </div>
                     )}
-                    {todayAppts.length>0&&(
+                    {/* SECTION 4: FOLLOW-UPS DUE */}
+                    {fuTasks.length>0&&(
                         <div style={{marginBottom:20}}>
-                            <SH title="Today's Appointments" count={todayAppts.length}/>
-                            {todayAppts.map(a=><RepApptCard key={a.id} a={a}/>)}
+                            <SH title="Follow-Ups Due" count={fuTasks.length}/>
+                            <div className="cd" style={{padding:0}}>
+                                {fuTasks.slice(0,5).map(t=>(
+                                    <div key={t.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div style={{cursor:"pointer",flex:1}} onClick={()=>nav(`/leads?id=${t.lead_id}`)}>
+                                            <div style={{fontSize:12,fontWeight:700}}>{t.title}</div>
+                                            <div style={{fontSize:10,color:"#52525b"}}>Due {$.date(t.due_date)} &middot; {t.lead_name||""}</div>
+                                        </div>
+                                        <button className="btn btn-g" style={{padding:"6px 12px",fontSize:11}} onClick={()=>quickComplete(t.id)}>Done</button>
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     )}
+                    {/* SECTION 5: DUE TODAY — remaining tasks */}
                     {dueToday.length>0&&(
-                        <div><SH title="Due Today" count={dueToday.length}/>{dueToday.map(t=><TaskRow key={t.id} t={t}/>)}</div>
+                        <div style={{marginBottom:20}}>
+                            <SH title="Due Today" count={dueToday.length}/>
+                            <div className="cd" style={{padding:0}}>
+                                {dueToday.map(t=>(
+                                    <div key={t.id} style={{padding:"8px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div><div style={{fontSize:12,fontWeight:600}}>{t.title}</div><div style={{fontSize:10,color:"#3f3f46"}}>{t.lead_name||""}</div></div>
+                                        <button className="btn btn-g" style={{padding:"6px 12px",fontSize:11}} onClick={()=>quickComplete(t.id)}>Done</button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     )}
-                    {/* Mini Leaderboard */}
+                    {/* LEADERBOARD — motivation */}
                     {leaderboard&&leaderboard.leaderboard?.length>1&&(
-                        <div style={{marginTop:20}}>
+                        <div>
                             <SH title="Leaderboard"/>
                             <div className="cd" style={{padding:0}}>
                                 {leaderboard.leaderboard.slice(0,5).map(r=>(
@@ -330,12 +384,20 @@ function DashboardPage(){
                                             <div style={{width:22,height:22,borderRadius:"50%",background:r.rank===1?"#f59e0b28":r.rank<=3?"#22c55e18":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:900,color:r.rank===1?"#f59e0b":"#71717a"}}>{r.rank}</div>
                                             <span style={{fontSize:12,fontWeight:r.rep_id===user?.id?800:600}}>{r.name}{r.rep_id===user?.id?" (You)":""}</span>
                                         </div>
-                                        <div style={{display:"flex",gap:12,fontSize:11}}>
-                                            <span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span>
-                                            <span style={{fontWeight:800}}>{r.daily_score}</span>
-                                        </div>
+                                        <div style={{display:"flex",gap:12,fontSize:11}}><span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span><span style={{fontWeight:800}}>{r.daily_score}</span></div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+                    {/* Empty state */}
+                    {!hasOverdue&&todayAppts.length===0&&repLeads.length===0&&dueToday.length===0&&(
+                        <div className="cd" style={{padding:40,textAlign:"center"}}>
+                            <div style={{fontSize:28,marginBottom:8}}>All clear</div>
+                            <div style={{color:"#3f3f46",fontSize:13}}>No overdue tasks, no appointments today. Check your leads or pipeline.</div>
+                            <div style={{display:"flex",gap:8,justifyContent:"center",marginTop:16}}>
+                                <button className="btn btn-p" onClick={()=>nav("/leads")}>View Leads</button>
+                                <button className="btn" onClick={()=>nav("/dispatch")}>Dispatch</button>
                             </div>
                         </div>
                     )}
@@ -344,122 +406,110 @@ function DashboardPage(){
         );
     }
 
-    // === ADMIN WAR ROOM (PHASE 3: REVENUE + ESCALATION + PRIORITY) ===
+    // === ADMIN WAR ROOM — DAILY OPERATIONS CENTER ===
     const enfGlobal=enforcement?.global||{};
     const highRiskReps=escalation?.high_risk_reps||[];
-    const leadsAtRisk=escalation?.leads_at_risk||[];
     const reassignSuggestions=reassign.slice(0,5);
+    // Compute today's focus summary
+    const focusItems=[];
+    if(revenue&&revenue.revenue_at_risk>0)focusItems.push({t:`${$.money(revenue.revenue_at_risk)} at risk`,c:"#ef4444",a:()=>nav("/leads")});
+    if(reassign.length>0)focusItems.push({t:`${reassign.length} lead${reassign.length>1?"s":""} need reassignment`,c:"#f59e0b",a:()=>nav("/leads")});
+    if(highRiskReps.length>0)focusItems.push({t:`${highRiskReps.length} rep${highRiskReps.length>1?"s":""} flagged high-risk`,c:"#ef4444",a:()=>nav("/reps")});
+    if((enfGlobal.total_overdue_tasks||0)>0)focusItems.push({t:`${enfGlobal.total_overdue_tasks} overdue tasks across team`,c:"#f59e0b",a:()=>nav("/tasks")});
+    if(todayAppts.filter(a=>a.appointment_status==="scheduled").length>0)focusItems.push({t:`${todayAppts.filter(a=>a.appointment_status==="scheduled").length} unconfirmed appts today`,c:"#f59e0b",a:()=>nav("/dispatch")});
     return(
         <div>
-            {/* REVENUE AT RISK ALERT BAR */}
-            {revenue&&revenue.revenue_at_risk>0&&(
-                <div style={{background:"linear-gradient(90deg,#ef444420,#f59e0b20)",padding:"12px 24px",borderBottom:"1px solid #ef444430",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:12}}>
-                        <Ic d={IC.alert} s={18} c="#ef4444"/>
-                        <span style={{fontSize:14,fontWeight:900,color:"#ef4444"}}>{$.money(revenue.revenue_at_risk)} AT RISK TODAY</span>
-                        <span style={{fontSize:11,color:"#f59e0b"}}>&middot; {revenue.leads_at_risk_count} leads with overdue actions</span>
+            {/* TODAY'S FOCUS — the #1 thing admin sees */}
+            {focusItems.length>0&&(
+                <div style={{background:"linear-gradient(90deg,#ef444410,#f59e0b10)",padding:"12px 24px",borderBottom:"1px solid #27272a"}}>
+                    <div style={{fontSize:9,fontWeight:900,color:"#71717a",textTransform:"uppercase",letterSpacing:".08em",marginBottom:6}}>Today's Focus</div>
+                    <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
+                        {focusItems.map((f,i)=>(
+                            <div key={i} style={{cursor:"pointer",display:"flex",alignItems:"center",gap:6}} onClick={f.a}>
+                                <div style={{width:6,height:6,borderRadius:"50%",background:f.c}}/>
+                                <span style={{fontSize:12,fontWeight:700,color:f.c}}>{f.t}</span>
+                            </div>
+                        ))}
                     </div>
                 </div>
             )}
-            {/* Enforcement alert bar */}
-            {(enfGlobal.total_overdue_tasks>0||enfGlobal.total_active_violations>0||highRiskReps.length>0)&&(
-                <div style={{background:highRiskReps.length>0?"#ef444418":"#f59e0b18",padding:"10px 24px",borderBottom:"1px solid "+(highRiskReps.length>0?"#ef444440":"#f59e0b40"),display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
-                    <Ic d={IC.alert} s={16} c={highRiskReps.length>0?"#ef4444":"#f59e0b"}/>
-                    <span style={{fontSize:12,fontWeight:800,color:highRiskReps.length>0?"#ef4444":"#f59e0b"}}>
-                        {enfGlobal.total_overdue_tasks} overdue &middot; {enfGlobal.total_active_violations} violations &middot; {enfGlobal.reps_in_red} reps RED
-                    </span>
-                    {highRiskReps.length>0&&<span className="badge b-red" style={{fontSize:10}}>{highRiskReps.length} HIGH RISK REP{highRiskReps.length>1?"S":""}</span>}
+            <div style={{padding:"14px 24px 10px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><h1 style={{fontSize:18,fontWeight:900}}>War Room</h1><p style={{color:"#3f3f46",fontSize:11,marginTop:1}}>Auto-refreshes every 30s</p></div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    {notifs.length>0&&<span className="badge b-blue" style={{fontSize:10}}>{notifs.length} alerts</span>}
+                    <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>
                 </div>
-            )}
-            <PH title="War Room" sub="Revenue. Control. Action." right={<div style={{display:"flex",gap:6,alignItems:"center"}}>
-                {notifs.length>0&&<span className="badge b-blue" style={{fontSize:10}}>{notifs.length} alerts</span>}
-                <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/> Refresh</button>
-            </div>}/>
+            </div>
             <div style={{padding:"16px 24px"}}>
-                {/* REVENUE ROW — the money bar */}
+                {/* REVENUE BAR */}
                 {revenue&&(
                     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-                        <KPI l="Open Pipeline" v={$.money(revenue.revenue_open)} t="warn"/>
-                        <KPI l="At Risk" v={$.money(revenue.revenue_at_risk)} t={revenue.revenue_at_risk>0?"hot":null}/>
-                        <KPI l="In Follow-ups" v={$.money(revenue.revenue_in_followups)} t="warn"/>
-                        <KPI l="In Proposals" v={$.money(revenue.revenue_in_proposals)} t="ok"/>
-                        <KPI l="New Leads $" v={$.money(revenue.revenue_new_leads)}/>
-                        <KPI l="Closed Revenue" v={$.money(revenue.revenue_closed)} t="ok"/>
+                        <KPI l="Open Pipeline" v={$.money(revenue.revenue_open)} t="warn"/><KPI l="At Risk" v={$.money(revenue.revenue_at_risk)} t={revenue.revenue_at_risk>0?"hot":null}/><KPI l="Follow-ups $" v={$.money(revenue.revenue_in_followups)} t="warn"/><KPI l="Proposals $" v={$.money(revenue.revenue_in_proposals)} t="ok"/><KPI l="Closed" v={$.money(revenue.revenue_closed)} t="ok"/>
                     </div>
                 )}
-                {/* Standard KPIs */}
+                {/* METRICS */}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20}}>
-                    <KPI l="Leads/Day" v={d?.leads_per_day?.toFixed(1)}/>
-                    <KPI l="Close Rate" v={`${d?.close_rate?.toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/>
-                    <KPI l="Held Rate" v={`${d?.held_rate?.toFixed(1)}%`} t={d?.held_rate>50?"ok":"warn"}/>
-                    <KPI l="Total Leads" v={d?.total_leads}/>
-                    <KPI l="Closed Won" v={d?.closed_won_leads} t="ok"/>
-                    <KPI l="Overdue" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/>
-                    <KPI l="Violations" v={d?.active_violations||0} t={(d?.active_violations||0)>0?"hot":null}/>
-                    <KPI l="Today Appts" v={todayAppts.length} t="warn"/>
+                    <KPI l="Close Rate" v={`${d?.close_rate?.toFixed(1)}%`} t={d?.close_rate>20?"ok":"hot"}/><KPI l="Held Rate" v={`${d?.held_rate?.toFixed(1)}%`} t={d?.held_rate>50?"ok":"warn"}/><KPI l="Leads" v={d?.total_leads}/><KPI l="Won" v={d?.closed_won_leads} t="ok"/><KPI l="Overdue" v={d?.overdue_tasks||0} t={(d?.overdue_tasks||0)>0?"hot":null}/><KPI l="Violations" v={d?.active_violations||0} t={(d?.active_violations||0)>0?"hot":null}/><KPI l="Appts Today" v={todayAppts.length} t="warn"/>
                 </div>
-                {/* TOP 5 LEADS TO CLOSE — the money list */}
+                {/* TOP LEADS TO CLOSE */}
                 {topLeads.length>0&&(
                     <div style={{marginBottom:20}}>
-                        <SH title="TOP LEADS TO CLOSE TODAY" count={topLeads.length}/>
+                        <SH title="TOP LEADS TO CLOSE" count={topLeads.length}/>
                         <div className="cd" style={{padding:0,border:"1px solid #f59e0b30"}}>
                             {topLeads.map((l,i)=>(
                                 <div key={l.lead_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
                                     <div style={{display:"flex",alignItems:"center",gap:10}}>
-                                        <div style={{width:28,height:28,borderRadius:"50%",background:i===0?"#f59e0b":i===1?"#a1a1aa40":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:900,color:i===0?"#000":"#a1a1aa"}}>{i+1}</div>
-                                        <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{l.city} &middot; {sL(l.deal_status)} &middot; {l.days_since_update}d ago</div></div>
+                                        <div style={{width:26,height:26,borderRadius:"50%",background:i===0?"#f59e0b":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i===0?"#000":"#a1a1aa"}}>{i+1}</div>
+                                        <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)} &middot; {l.days_since_update}d ago</div></div>
                                     </div>
-                                    <div style={{display:"flex",gap:16,alignItems:"center"}}>
-                                        <div style={{textAlign:"right"}}><div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div><div style={{fontSize:9,color:"#3f3f46"}}>Score: {l.priority_score}</div></div>
-                                    </div>
+                                    <div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div>
                                 </div>
                             ))}
                         </div>
                     </div>
                 )}
-                {/* 3-Column Layout */}
+                {/* 3-PANEL LAYOUT */}
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
-                    {/* LEFT: Dispatch + Reassignment */}
+                    {/* PANEL 1: Dispatch + Reassign */}
                     <div>
                         <SH title="Dispatch Board" count={todayAppts.length}/>
-                        <div className="cd" style={{padding:0,maxHeight:300,overflowY:"auto",marginBottom:12}}>
+                        <div className="cd" style={{padding:0,maxHeight:280,overflowY:"auto",marginBottom:12}}>
                             {todayAppts.length===0?<div style={{padding:24,textAlign:"center",color:"#3f3f46",fontSize:12}}>No appointments today</div>:
                             todayAppts.map(a=>(
-                                <div key={a.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/dispatch`)}>
+                                <div key={a.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav("/dispatch")}>
                                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                                         <div style={{fontSize:13,fontWeight:700}}>{a.lead_name||`Lead #${a.lead_id}`}</div>
                                         <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
                                     </div>
-                                    <div style={{fontSize:11,color:"#52525b",marginTop:3}}>{a.appointment_time||"TBD"} &middot; {a.appointment_address||""}</div>
+                                    <div style={{fontSize:11,color:"#52525b",marginTop:2}}>{a.appointment_time||"TBD"} &middot; {a.appointment_address||""}</div>
                                 </div>
                             ))}
                         </div>
-                        {/* Reassignment suggestions */}
                         {reassignSuggestions.length>0&&(
                             <div>
-                                <SH title="Reassignment Needed" count={reassign.length}/>
-                                <div className="cd" style={{padding:0,borderColor:"#f59e0b30",maxHeight:240,overflowY:"auto"}}>
+                                <SH title="Needs Reassignment" count={reassign.length}/>
+                                <div className="cd" style={{padding:0,borderColor:"#f59e0b30",maxHeight:200,overflowY:"auto"}}>
                                     {reassignSuggestions.map(s=>(
                                         <div key={s.lead_id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${s.lead_id}`)}>
                                             <div style={{display:"flex",justifyContent:"space-between"}}>
                                                 <div><div style={{fontSize:12,fontWeight:700}}>{s.lead_name}</div><div style={{fontSize:10,color:"#52525b"}}>{s.current_rep_name} &middot; {$.money(s.deal_value)}</div></div>
-                                                <span className={`badge ${s.urgency==="critical"?"b-red":s.urgency==="high"?"b-yellow":"b-gray"}`}>{s.urgency}</span>
+                                                <span className={`badge ${s.urgency==="critical"?"b-red":"b-yellow"}`}>{s.urgency}</span>
                                             </div>
-                                            <div style={{fontSize:10,color:"#ef4444",marginTop:3}}>{s.reason}</div>
+                                            <div style={{fontSize:10,color:"#ef4444",marginTop:2}}>{s.reason}</div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
                         )}
                     </div>
-                    {/* CENTER: Violations + High Risk Reps + Escalations */}
+                    {/* PANEL 2: Reps Needing Attention */}
                     <div>
                         {highRiskReps.length>0&&(
                             <div style={{marginBottom:12}}>
-                                <SH title="HIGH RISK REPS"/>
+                                <SH title="Reps Needing Attention"/>
                                 <div className="cd" style={{padding:0,borderColor:"#ef444440"}}>
                                     {highRiskReps.map(r=>(
-                                        <div key={r.rep_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div key={r.rep_id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer"}} onClick={()=>nav("/reps")}>
                                             <div><div style={{fontSize:13,fontWeight:800,color:"#ef4444"}}>{r.name}</div><div style={{fontSize:10,color:"#71717a"}}>{r.active_violations} violations &middot; {r.overdue_tasks} overdue</div></div>
                                             <span className={`badge ${r.risk_level==="critical"?"b-red":"b-yellow"}`}>{r.risk_level}</span>
                                         </div>
@@ -469,11 +519,11 @@ function DashboardPage(){
                         )}
                         {violations.length>0&&(
                             <div style={{marginBottom:12}}>
-                                <SH title="Active Violations" count={violations.length}/>
-                                <div className="cd" style={{padding:0,borderColor:"#ef444430",maxHeight:200,overflowY:"auto"}}>
+                                <SH title="Violations" count={violations.length}/>
+                                <div className="cd" style={{padding:0,borderColor:"#ef444430",maxHeight:180,overflowY:"auto"}}>
                                     {violations.map(v=>(
                                         <div key={v.id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                                            <div><div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div><div style={{fontSize:10,color:"#52525b"}}>{v.rep_name} &middot; {v.lead_name||""}</div></div>
+                                            <div><div style={{fontSize:11,fontWeight:700,color:"#ef4444"}}>{sL(v.violation_type)}</div><div style={{fontSize:10,color:"#52525b"}}>{v.rep_name}</div></div>
                                             <span className={`badge ${v.severity==="critical"?"b-red":"b-yellow"}`}>{v.severity}</span>
                                         </div>
                                     ))}
@@ -481,33 +531,29 @@ function DashboardPage(){
                             </div>
                         )}
                         {overdue.length>0&&(
-                            <div className="cd" style={{padding:14,marginBottom:10,borderColor:"#ef444430"}}>
-                                <div style={{fontSize:11,fontWeight:800,color:"#ef4444",textTransform:"uppercase",marginBottom:8}}>Overdue Tasks</div>
-                                {overdue.slice(0,5).map(t=><TaskRow key={t.id} t={t} compact/>)}
-                                {overdue.length>5&&<div style={{fontSize:11,color:"#52525b",padding:"6px 0"}}>+{overdue.length-5} more</div>}
+                            <div className="cd" style={{padding:12,borderColor:"#ef444430",marginBottom:12}}>
+                                <div style={{fontSize:11,fontWeight:800,color:"#ef4444",textTransform:"uppercase",marginBottom:6}}>Overdue Tasks ({overdue.length})</div>
+                                {overdue.slice(0,4).map(t=><TaskRow key={t.id} t={t} compact/>)}
+                                {overdue.length>4&&<div style={{fontSize:10,color:"#52525b",marginTop:4}}>+{overdue.length-4} more</div>}
                             </div>
                         )}
-                        <div className="cd" style={{padding:14}}>
-                            <div style={{fontSize:11,fontWeight:800,color:"#a1a1aa",textTransform:"uppercase",marginBottom:8}}>Quick Actions</div>
-                            <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                                <button className="btn" onClick={()=>nav("/dispatch")}>Open Dispatch</button>
-                                <button className="btn" onClick={()=>nav("/leads")}>All Leads</button>
-                                <button className="btn" onClick={()=>nav("/tasks")}>Tasks</button>
-                                <button className="btn" onClick={()=>nav("/reps")}>Rep Leaderboard</button>
-                            </div>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            <button className="btn" style={{flex:1}} onClick={()=>nav("/dispatch")}>Dispatch</button>
+                            <button className="btn" style={{flex:1}} onClick={()=>nav("/leads")}>Leads</button>
+                            <button className="btn" style={{flex:1}} onClick={()=>nav("/reps")}>Reps</button>
                         </div>
                     </div>
-                    {/* RIGHT: Leaderboard + Follow-ups + Tasks */}
+                    {/* PANEL 3: Leaderboard + Follow-ups */}
                     <div>
                         {leaderboard&&(
                             <div style={{marginBottom:12}}>
-                                <SH title="Rep Leaderboard" count={leaderboard.total_reps}/>
-                                <div className="cd" style={{padding:0,maxHeight:260,overflowY:"auto"}}>
+                                <SH title="Leaderboard" count={leaderboard.total_reps}/>
+                                <div className="cd" style={{padding:0,maxHeight:240,overflowY:"auto"}}>
                                     {(leaderboard.leaderboard||[]).map(r=>(
-                                        <div key={r.rep_id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                                        <div key={r.rep_id} style={{padding:"7px 12px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                                             <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                                <div style={{width:20,height:20,borderRadius:"50%",background:r.rank===1?"#f59e0b28":r.rank===2?"#a1a1aa18":r.rank===3?"#cd7f3218":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:r.rank<=3?"#f59e0b":"#52525b"}}>{r.rank}</div>
-                                                <div><div style={{fontSize:12,fontWeight:700}}>{r.name}</div><div style={{fontSize:9,color:r.tier==="underperforming"?"#ef4444":r.tier==="elite"?"#22c55e":"#52525b"}}>{r.tier}</div></div>
+                                                <div style={{width:20,height:20,borderRadius:"50%",background:r.rank<=3?"#f59e0b18":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:r.rank<=3?"#f59e0b":"#52525b"}}>{r.rank}</div>
+                                                <span style={{fontSize:12,fontWeight:700}}>{r.name}</span>
                                             </div>
                                             <div style={{display:"flex",gap:8,fontSize:10,alignItems:"center"}}>
                                                 <span style={{color:"#22c55e",fontWeight:700}}>{r.close_rate}%</span>
@@ -520,19 +566,14 @@ function DashboardPage(){
                             </div>
                         )}
                         <SH title="Follow-ups Due" count={rehash.length}/>
-                        <div className="cd" style={{padding:0,maxHeight:200,overflowY:"auto",marginBottom:12}}>
-                            {rehash.length===0?<div style={{padding:20,textAlign:"center",color:"#3f3f46",fontSize:12}}>No follow-ups</div>:
-                            rehash.slice(0,6).map(r=>(
-                                <div key={r.lead_id} style={{padding:"8px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${r.lead_id}`)}>
-                                    <div style={{fontSize:12,fontWeight:600}}>{r.name}</div>
-                                    <div style={{fontSize:10,color:"#52525b"}}>{r.next_follow_up_date?$.date(r.next_follow_up_date):"No date"} &middot; {r.phone}</div>
+                        <div className="cd" style={{padding:0,maxHeight:180,overflowY:"auto",marginBottom:12}}>
+                            {rehash.length===0?<div style={{padding:16,textAlign:"center",color:"#3f3f46",fontSize:12}}>No follow-ups</div>:
+                            rehash.slice(0,5).map(r=>(
+                                <div key={r.lead_id} style={{padding:"8px 14px",borderBottom:"1px solid #18181b",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center"}} onClick={()=>nav(`/leads?id=${r.lead_id}`)}>
+                                    <div><div style={{fontSize:12,fontWeight:600}}>{r.name}</div><div style={{fontSize:10,color:"#52525b"}}>{r.next_follow_up_date?$.date(r.next_follow_up_date):"No date"}</div></div>
+                                    {r.phone&&<a href={`tel:${r.phone}`} style={{textDecoration:"none"}} onClick={e=>e.stopPropagation()}><Ic d={IC.phone} s={14} c="#22c55e"/></a>}
                                 </div>
                             ))}
-                        </div>
-                        <SH title="Pending Tasks" count={dueToday.length}/>
-                        <div className="cd" style={{padding:0,maxHeight:200,overflowY:"auto"}}>
-                            {dueToday.length===0?<div style={{padding:20,textAlign:"center",color:"#3f3f46",fontSize:12}}>Nothing due today</div>:
-                            dueToday.slice(0,5).map(t=><TaskRow key={t.id} t={t} compact/>)}
                         </div>
                     </div>
                 </div>
@@ -541,9 +582,9 @@ function DashboardPage(){
     );
 }
 
-function RepApptCard({a}){
+function RepApptCard({a,onDone}){
     const{af}=useA();const toast=useT();
-    const go=async(id,st)=>{try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok)toast("ok",sL(st));else toast("err","Failed")}catch{toast("err","Error")}};
+    const go=async(id,st)=>{try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",sL(st));if(onDone)onDone()}else toast("err","Failed")}catch{toast("err","Error")}};
     return(
         <div className={`appt-card ${a.appointment_status==="en_route"||a.appointment_status==="arrived"?"live":a.appointment_status==="confirmed"?"next":"wrn"}`} style={{marginBottom:8}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
