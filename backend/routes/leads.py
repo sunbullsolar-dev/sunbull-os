@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import Lead, User, Action, Task, Appointment, Project
+from app.models import Lead, User, Action, Task, Appointment, Project, Deal, Commission
 from app.auth import get_current_user, require_role
 from services.audit import create_audit_log
 from services.scoring import calculate_lead_score
@@ -480,6 +480,43 @@ def get_lead(
     return lead
 
 
+@router.get("/{lead_id}/financials")
+def get_lead_financials(
+    lead_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Get real financial data for a lead.
+    Only returns data from Project + Commission tables (real contracts).
+    Never uses Lead.deal_value or estimated formulas.
+    """
+    lead = db.query(Lead).filter(Lead.id == lead_id).first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+
+    project = db.query(Project).filter(Project.lead_id == lead_id).first()
+    deal = db.query(Deal).filter(Deal.lead_id == lead_id).first()
+
+    commission = None
+    if deal:
+        commission = db.query(Commission).filter(Commission.deal_id == deal.id).first()
+
+    has_contract = project is not None and project.deal_value and project.deal_value > 0
+
+    return {
+        "lead_id": lead_id,
+        "has_contract": has_contract,
+        "contract_value": round(project.deal_value, 2) if has_contract else None,
+        "project_id": project.id if project else None,
+        "install_status": project.install_status if project else None,
+        "closer_id": project.closer_id if project else (deal.rep_id if deal else None),
+        "commission_rate": round(commission.commission_rate * 100, 2) if commission else None,
+        "commission_amount": round(commission.commission_amount, 2) if commission else None,
+        "commission_status": commission.status if commission else None,
+    }
+
+
 @router.put("/{lead_id}", response_model=LeadResponse)
 def update_lead(
     lead_id: int,
@@ -602,6 +639,14 @@ def update_lead(
         lead.notes = lead_data.notes
 
     if lead_data.deal_status is not None and lead.deal_status != lead_data.deal_status:
+        # ENFORCE: closed_won requires a project with contract value
+        if lead_data.deal_status == "closed_won":
+            project = db.query(Project).filter(Project.lead_id == lead.id).first()
+            if not project or not project.deal_value or project.deal_value <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Cannot mark as Closed Won without a project and contract value. Create a project first.",
+                )
         updates.append(("deal_status", lead.deal_status, lead_data.deal_status))
         lead.deal_status = lead_data.deal_status
 

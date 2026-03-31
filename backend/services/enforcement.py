@@ -4,7 +4,7 @@ Controls rep behavior and ensures process compliance.
 """
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
-from app.models import Lead, Task, Appointment, User, Violation
+from app.models import Lead, Task, Appointment, User, Violation, Project
 
 
 # =================================================================
@@ -242,16 +242,17 @@ def calculate_rep_performance(db: Session, rep_id: int) -> dict:
     held_rate = (held_count / total_completed * 100) if total_completed > 0 else 0
     close_rate = (closed_count / held_count * 100) if held_count > 0 else 0
 
-    # Revenue from closed deals
-    closed_leads = (
-        db.query(Lead)
+    # Revenue from closed deals — ONLY from Project.deal_value (real contracts)
+    closed_projects = (
+        db.query(Project)
         .filter(
-            Lead.closer_id == rep_id,
-            Lead.deal_status == "closed_won",
+            Project.closer_id == rep_id,
+            Project.deal_value != None,
+            Project.deal_value > 0,
         )
         .all()
     )
-    total_revenue = sum(l.deal_value or 0 for l in closed_leads)
+    total_revenue = sum(p.deal_value for p in closed_projects)
 
     # Open tasks
     open_tasks = (

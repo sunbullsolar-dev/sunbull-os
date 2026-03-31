@@ -132,7 +132,6 @@ def run_escalation_engine(db: Session) -> dict:
     )
 
     for lead in risk_leads:
-        deal_val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
         days_inactive = (now - lead.updated_at).days if lead.updated_at else 0
         fu_overdue_hours = None
         if lead.next_follow_up_date and lead.follow_up_required:
@@ -142,14 +141,14 @@ def run_escalation_engine(db: Session) -> dict:
             "lead_id": lead.id,
             "name": f"{lead.first_name} {lead.last_name}",
             "deal_status": lead.deal_status,
-            "deal_value": round(deal_val, 2),
+            "monthly_bill": lead.average_monthly_bill or 0,
             "assigned_rep_id": lead.assigned_rep_id,
             "days_inactive": days_inactive,
             "followup_overdue_hours": fu_overdue_hours,
             "reason": "overdue_followup" if fu_overdue_hours else "inactive",
         })
 
-    results["leads_at_risk"].sort(key=lambda x: x["deal_value"], reverse=True)
+    results["leads_at_risk"].sort(key=lambda x: x.get("days_inactive", 0), reverse=True)
 
     if results["escalated_tasks"] > 0:
         db.commit()
@@ -187,9 +186,9 @@ def calculate_lead_priority(db: Session, lead: Lead) -> dict:
     """
     now = datetime.utcnow()
 
-    # Deal value score (0-30 points)
-    deal_val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
-    value_score = min(30, deal_val / 1000)  # Cap at 30
+    # Bill size score (0-30 points) — higher bill = higher priority, but NOT revenue
+    bill = lead.average_monthly_bill or 0
+    value_score = min(30, bill / 15)  # $450/mo bill = max 30 points
 
     # Stage weight (0-60 points)
     stage_score = STAGE_WEIGHTS.get(lead.deal_status, 10)
@@ -223,10 +222,10 @@ def calculate_lead_priority(db: Session, lead: Lead) -> dict:
         "lead_id": lead.id,
         "name": f"{lead.first_name} {lead.last_name}",
         "deal_status": lead.deal_status,
-        "deal_value": round(deal_val, 2),
+        "monthly_bill": lead.average_monthly_bill or 0,
         "priority_score": total,
         "breakdown": {
-            "value": round(value_score, 1),
+            "bill_score": round(value_score, 1),
             "stage": stage_score,
             "time_urgency": round(time_score, 1),
             "followup_urgency": round(fu_score, 1),
@@ -280,82 +279,69 @@ def get_rep_top_leads(db: Session, rep_id: int, limit: int = 5) -> list:
 
 def get_revenue_dashboard(db: Session) -> dict:
     """
-    Revenue visibility for admin.
-    Shows where money is at every stage.
+    Revenue visibility — STRICT TRUTH.
+    Only Project.deal_value counts as real revenue.
+    Lead.deal_value is NEVER used for financial calculations.
+    Pipeline counts are lead counts, not dollar estimates.
     """
     now = datetime.utcnow()
 
-    active_leads = (
-        db.query(Lead)
-        .filter(Lead.is_archived == False, Lead.deal_status.notin_(["closed_won", "closed_lost"]))
-        .all()
-    )
-
-    # Revenue by category
-    revenue_open = 0        # All active deals
-    revenue_followup = 0    # In follow-up stage
-    revenue_overdue = 0     # Leads with overdue tasks/follow-ups
-    revenue_proposal = 0    # Proposal sent/presented
-    revenue_new = 0         # New leads
-
-    for lead in active_leads:
-        # Only count real contract values — no estimated formulas
-        val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
-        revenue_open += val
-
-        if lead.deal_status == "follow_up" or lead.follow_up_required:
-            revenue_followup += val
-
-        if lead.deal_status in ("new", "confirmed"):
-            revenue_new += val
-
-        # Check for overdue follow-ups or tasks
-        has_overdue = False
-        if lead.follow_up_required and lead.next_follow_up_date and lead.next_follow_up_date < now:
-            has_overdue = True
-        overdue_tasks = (
-            db.query(func.count(Task.id))
-            .filter(Task.lead_id == lead.id, Task.status == "overdue")
-            .scalar() or 0
-        )
-        if overdue_tasks > 0:
-            has_overdue = True
-        if has_overdue:
-            revenue_overdue += val
-
-    # Closed revenue — only from real project contracts, not lead estimates
+    # ---- REAL REVENUE: Only from Projects with contract values ----
     closed_projects = (
         db.query(Project)
-        .filter(Project.deal_value > 0)
+        .filter(Project.deal_value != None, Project.deal_value > 0)
         .all()
     )
     revenue_closed = sum(p.deal_value for p in closed_projects)
+    deals_closed = len(closed_projects)
 
-    # Revenue by proposal stage
-    proposal_leads = (
+    # ---- PIPELINE COUNTS (not dollar amounts) ----
+    active_leads = (
         db.query(Lead)
+        .filter(Lead.is_archived == False, Lead.deal_status.notin_(["closed_won", "closed_lost", "dead"]))
+        .all()
+    )
+
+    pipeline_total = len(active_leads)
+    pipeline_followup = sum(1 for l in active_leads if l.deal_status == "follow_up" or l.follow_up_required)
+    pipeline_new = sum(1 for l in active_leads if l.deal_status in ("new", "submitted", "confirmed"))
+    pipeline_proposal = (
+        db.query(func.count(func.distinct(Lead.id)))
         .join(Appointment, Appointment.lead_id == Lead.id)
         .filter(
             Lead.is_archived == False,
             Appointment.outcome.in_(["proposal_presented", "proposal_sent"]),
             Lead.deal_status.notin_(["closed_won", "closed_lost"]),
         )
-        .distinct()
-        .all()
+        .scalar() or 0
     )
-    for lead in proposal_leads:
-        val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
-        revenue_proposal += val
+
+    # At-risk = overdue follow-ups or overdue tasks
+    at_risk_count = 0
+    for lead in active_leads:
+        if lead.follow_up_required and lead.next_follow_up_date and lead.next_follow_up_date < now:
+            at_risk_count += 1
+            continue
+        overdue = (
+            db.query(func.count(Task.id))
+            .filter(Task.lead_id == lead.id, Task.status == "overdue")
+            .scalar() or 0
+        )
+        if overdue > 0:
+            at_risk_count += 1
 
     return {
-        "revenue_open": round(revenue_open, 2),
-        "revenue_at_risk": round(revenue_overdue, 2),
-        "revenue_in_followups": round(revenue_followup, 2),
-        "revenue_in_proposals": round(revenue_proposal, 2),
-        "revenue_new_leads": round(revenue_new, 2),
+        # Real money — only from contracts
         "revenue_closed": round(revenue_closed, 2),
-        "total_active_leads": len(active_leads),
-        "leads_at_risk_count": sum(1 for l in active_leads if l.follow_up_required and l.next_follow_up_date and l.next_follow_up_date < now),
+        "deals_closed": deals_closed,
+        # Pipeline counts — no fake dollar amounts
+        "pipeline_total": pipeline_total,
+        "pipeline_followup": pipeline_followup,
+        "pipeline_new": pipeline_new,
+        "pipeline_proposal": pipeline_proposal,
+        "leads_at_risk_count": at_risk_count,
+        # Removed: revenue_open, revenue_at_risk, revenue_in_followups,
+        # revenue_in_proposals, revenue_new_leads — all used Lead.deal_value
     }
 
 
@@ -416,11 +402,10 @@ def get_reassignment_suggestions(db: Session) -> list:
 
         if reason:
             rep = db.query(User).filter(User.id == lead.assigned_rep_id).first()
-            deal_val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
             suggestions.append({
                 "lead_id": lead.id,
                 "lead_name": f"{lead.first_name} {lead.last_name}",
-                "deal_value": round(deal_val, 2),
+                "monthly_bill": lead.average_monthly_bill or 0,
                 "current_rep_id": lead.assigned_rep_id,
                 "current_rep_name": rep.full_name if rep else "Unknown",
                 "reason": reason,
@@ -571,12 +556,13 @@ def get_rep_leaderboard(db: Session) -> dict:
         perf = calculate_rep_performance(db, rep.id)
 
         # Daily score calculation
-        # Positive: close rate, held rate, revenue
+        # Positive: close rate, held rate, closed deal count
         # Negative: violations, overdue tasks
+        # Revenue removed from scoring — only real metrics
         daily_score = round(
             perf["close_rate"] * 3
             + perf["held_rate"] * 2
-            + min(50, perf["total_revenue"] / 500)  # Revenue bonus capped at 50
+            + perf["closed_count"] * 30  # 30 pts per closed deal
             - perf["overdue_tasks"] * 20
             - perf["active_violations"] * 25,
             1
