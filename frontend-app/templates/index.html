@@ -410,7 +410,7 @@ function DashboardPage(){
                         }else if(overdueFU){
                             action={label:"FOLLOW-UP DUE",sub:`${overdueFU.lead_name||overdueFU.title} — due ${$.date(overdueFU.due_date)}`,color:"#3b82f6",icon:IC.phone,btn:"DO IT",act:()=>nav(`/leads?id=${overdueFU.lead_id}`)};
                         }else if(hvLead){
-                            action={label:"TOP LEAD TO WORK",sub:`${hvLead.name} — ${$.money(hvLead.deal_value)}`,color:"#f59e0b",icon:IC.zap,btn:"OPEN LEAD",act:()=>nav(`/leads?id=${hvLead.lead_id}`)};
+                            action={label:"TOP LEAD TO WORK",sub:`${hvLead.name}${hvLead.deal_value>0?" — "+$.money(hvLead.deal_value):""}`,color:"#f59e0b",icon:IC.zap,btn:"OPEN LEAD",act:()=>nav(`/leads?id=${hvLead.lead_id}`)};
                         }
                         if(!action)return null;
                         return(
@@ -439,7 +439,7 @@ function DashboardPage(){
                                     <div key={l.lead_id} style={{padding:"12px 14px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                                         <div style={{display:"flex",alignItems:"center",gap:10,flex:1,cursor:"pointer"}} onClick={()=>nav(`/leads?id=${l.lead_id}`)}>
                                             <div style={{width:26,height:26,borderRadius:"50%",background:i===0?"#f59e0b28":"#18181b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:i===0?"#f59e0b":"#71717a"}}>{i+1}</div>
-                                            <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)} &middot; {$.money(l.deal_value)}</div></div>
+                                            <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)}{l.deal_value>0?" · "+$.money(l.deal_value):""}</div></div>
                                         </div>
                                         {l.phone&&<a href={`tel:${l.phone}`} style={{textDecoration:"none"}} onClick={e=>e.stopPropagation()}><button className="btn btn-g" style={{padding:"8px 12px",fontSize:12,fontWeight:800,display:"flex",alignItems:"center",gap:4}}><Ic d={IC.phone} s={13} c="#22c55e"/>Call</button></a>}
                                     </div>
@@ -517,7 +517,7 @@ function DashboardPage(){
     const reassignSuggestions=reassign.slice(0,5);
     // Compute today's focus summary
     const focusItems=[];
-    if(revenue&&revenue.revenue_at_risk>0)focusItems.push({t:`${$.money(revenue.revenue_at_risk)} at risk`,c:"#ef4444",a:()=>nav("/leads")});
+    // Revenue at risk removed — no real contract-based calculation yet
     if(reassign.length>0)focusItems.push({t:`${reassign.length} lead${reassign.length>1?"s":""} need reassignment`,c:"#f59e0b",a:()=>nav("/leads")});
     if(highRiskReps.length>0)focusItems.push({t:`${highRiskReps.length} rep${highRiskReps.length>1?"s":""} flagged high-risk`,c:"#ef4444",a:()=>nav("/reps")});
     if((enfGlobal.total_overdue_tasks||0)>0)focusItems.push({t:`${enfGlobal.total_overdue_tasks} overdue tasks across team`,c:"#f59e0b",a:()=>nav("/tasks")});
@@ -546,10 +546,10 @@ function DashboardPage(){
                 </div>
             </div>
             <div style={{padding:"16px 24px"}}>
-                {/* REVENUE BAR */}
-                {revenue&&(
+                {/* REVENUE BAR — only shows closed revenue (real contract values) */}
+                {revenue&&revenue.revenue_closed>0&&(
                     <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-                        <KPI l="Open Pipeline" v={$.money(revenue.revenue_open)} t="warn"/><KPI l="At Risk" v={$.money(revenue.revenue_at_risk)} t={revenue.revenue_at_risk>0?"hot":null}/><KPI l="Follow-ups $" v={$.money(revenue.revenue_in_followups)} t="warn"/><KPI l="Proposals $" v={$.money(revenue.revenue_in_proposals)} t="ok"/><KPI l="Closed" v={$.money(revenue.revenue_closed)} t="ok"/>
+                        <KPI l="Closed Revenue" v={$.money(revenue.revenue_closed)} t="ok"/>
                     </div>
                 )}
                 {/* METRICS */}
@@ -568,7 +568,7 @@ function DashboardPage(){
                                         <div><div style={{fontSize:13,fontWeight:700}}>{l.name}</div><div style={{fontSize:10,color:"#52525b"}}>{sL(l.deal_status)} &middot; {l.days_since_update}d ago &middot; {l.rep_name||""}</div></div>
                                     </div>
                                     <div style={{display:"flex",alignItems:"center",gap:6}}>
-                                        <div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div>
+                                        {l.deal_value>0&&<div style={{fontSize:14,fontWeight:900,color:"#f59e0b"}}>{$.money(l.deal_value)}</div>}
                                         {l.phone&&<a href={`tel:${l.phone}`} onClick={e=>e.stopPropagation()} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"4px 8px",fontSize:10}}>Call</button></a>}
                                     </div>
                                 </div>
@@ -601,7 +601,7 @@ function DashboardPage(){
                                     {reassignSuggestions.map(s=>(
                                         <div key={s.lead_id} style={{padding:"8px 12px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav(`/leads?id=${s.lead_id}`)}>
                                             <div style={{display:"flex",justifyContent:"space-between"}}>
-                                                <div><div style={{fontSize:12,fontWeight:700}}>{s.lead_name}</div><div style={{fontSize:10,color:"#52525b"}}>{s.current_rep_name} → ? &middot; {$.money(s.deal_value)}</div></div>
+                                                <div><div style={{fontSize:12,fontWeight:700}}>{s.lead_name}</div><div style={{fontSize:10,color:"#52525b"}}>{s.current_rep_name} → ?{s.deal_value>0?" · "+$.money(s.deal_value):""}</div></div>
                                                 <div style={{display:"flex",alignItems:"center",gap:4}}>
                                                     <span className={`badge ${s.urgency==="critical"?"b-red":"b-yellow"}`}>{s.urgency}</span>
                                                     {s.phone&&<a href={`tel:${s.phone}`} onClick={e=>e.stopPropagation()} style={{textDecoration:"none"}}><Ic d={IC.phone} s={12} c="#3b82f6"/></a>}
@@ -1041,7 +1041,6 @@ function DispatchPage(){
     const completed=todayA.filter(a=>a.appointment_status==="completed");
     const noShow=todayA.filter(a=>["no_show","cancelled"].includes(a.appointment_status));
     const upcoming=appts.filter(a=>a.appointment_date>today).sort((a,b)=>a.appointment_date.localeCompare(b.appointment_date));
-    const totalRev=todayA.filter(a=>!["completed","cancelled","no_show"].includes(a.appointment_status)).reduce((s,a)=>{const l=leads[a.lead_id];return s+(l?.average_monthly_bill||200)*12*20*0.6},0);
     const needsDispatch=dispatchQueue.filter(q=>!q.assigned_rep_name||q.dispatch_status==="pending");
 
     if(loading)return<Spin/>;
@@ -1054,7 +1053,7 @@ function DispatchPage(){
                     <button className="btn" onClick={loadAll}><Ic d={IC.refresh} s={12}/></button>
                 </div>
                 <div style={{display:"flex",gap:6,overflowX:"auto",marginBottom:8}}>
-                    <KPI l="Today" v={todayA.length}/><KPI l="Live" v={liveNow.length} t={liveNow.length>0?"ok":null}/><KPI l="Need Dispatch" v={needsDispatch.length} t={needsDispatch.length>0?"hot":null}/><KPI l="Confirmed" v={confirmed.length} t="ok"/><KPI l="Rev at Stake" v={$.money(totalRev)} t="warn"/>
+                    <KPI l="Today" v={todayA.length}/><KPI l="Live" v={liveNow.length} t={liveNow.length>0?"ok":null}/><KPI l="Need Dispatch" v={needsDispatch.length} t={needsDispatch.length>0?"hot":null}/><KPI l="Confirmed" v={confirmed.length} t="ok"/><KPI l="Scheduled" v={scheduled.length} t={scheduled.length>0?"warn":null}/>
                 </div>
                 {user?.role==="admin"&&<div style={{display:"flex",gap:4}}>
                     {[["operations","Operations"],["dispatch","Dispatch Queue"]].map(([k,l])=>(
@@ -1163,7 +1162,6 @@ function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete,onAss
                     const l=leads[a.lead_id];const r=reps[a.assigned_rep_id];const bill=l?.average_monthly_bill;
                     const fullAddr=a.appointment_address||l?.property_address||"";
                     const cityLine=l?`${l.city||""}, ${l.state||""} ${l.zip_code||""}`:"";
-                    const dealVal=l?.deal_value||((bill||200)*12*20*0.6);
                     return(
                         <div key={a.id} className={`appt-card ${cls}`} onClick={()=>onSel(a)}>
                             {/* Row 1: Name + Time */}
@@ -1189,7 +1187,6 @@ function ASection({title,color,items,leads,reps,cls,onAct,onSel,onComplete,onAss
                             <div style={{display:"flex",gap:4,marginBottom:6,flexWrap:"wrap"}}>
                                 <span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span>
                                 {bill&&<span className="badge b-gray">{$.money(bill)}/mo</span>}
-                                {dealVal>0&&<span className="badge b-orange">{$.money(dealVal)}</span>}
                                 {l?.lead_quality_score>0&&<span className="badge" style={{background:sC(l.lead_quality_score)+"18",color:sC(l.lead_quality_score)}}>{l.lead_quality_score}pt</span>}
                             </div>
                             {/* Row 4: Last note preview */}
@@ -1265,10 +1262,13 @@ function CompleteModal({appt,lead,onClose,onDone}){
             {showPressure ? (
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:32,textAlign:"center"}}>
                     {outcome==="closed"&&<div style={{fontSize:42,fontWeight:900,color:"#22c55e",marginBottom:16}}>DEAL CLOSED!</div>}
-                    <div style={{fontSize:14,fontWeight:700,color:"#52525b",marginBottom:6}}>Deal Value</div>
-                    <div style={{fontSize:32,fontWeight:900,color:"#f59e0b",marginBottom:20}}>{$.money((lead?.average_monthly_bill||200)*12*20*0.6)}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:"#52525b",marginBottom:4}}>Est. Commission</div>
-                    <div style={{fontSize:24,fontWeight:900,color:"#22c55e",marginBottom:24}}>{$.money(((lead?.average_monthly_bill||200)*12*20*0.6)*0.08)}</div>
+                    {lead?.deal_value>0?<>
+                        <div style={{fontSize:14,fontWeight:700,color:"#52525b",marginBottom:6}}>Contract Value</div>
+                        <div style={{fontSize:32,fontWeight:900,color:"#f59e0b",marginBottom:20}}>{$.money(lead.deal_value)}</div>
+                    </>:<>
+                        <div style={{fontSize:14,fontWeight:700,color:"#52525b",marginBottom:6}}>Deal Value</div>
+                        <div style={{fontSize:18,color:"#3f3f46",marginBottom:20}}>Not calculated — enter contract value</div>
+                    </>}
                     {rankInfo&&rankInfo.rank&&<div style={{background:"#18181b",borderRadius:10,padding:14,marginBottom:16,width:"100%",maxWidth:300}}>
                         <div style={{fontSize:20,fontWeight:900,color:rankInfo.rank<=3?"#f59e0b":"#a1a1aa"}}>Rank #{rankInfo.rank}</div>
                     </div>}
@@ -1537,8 +1537,10 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
     // NEXT LEAD suggestion
     const[showNextLead,setShowNextLead]=useState(false);
     const sc=lead.lead_quality_score||0;const isAdmin=user?.role==="admin";
-    const dealVal=lead.deal_value||((lead.average_monthly_bill||200)*12*20*0.6);
-    const commission=Math.round(dealVal*0.08);
+    const hasContract=!!lead.deal_value&&lead.deal_value>0;
+    const dealVal=hasContract?lead.deal_value:null;
+    const hasCommission=hasContract&&lead.commission_rate>0;
+    const commission=hasCommission?Math.round(lead.deal_value*(lead.commission_rate/100)):null;
     const noteRef=useRef(null);const panelRef=useRef(null);
 
     useEffect(()=>{loadExtra();setActionLogged(false);setPendingAction(null);setShowNextLead(false)},[lead.id]);
@@ -1652,7 +1654,7 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
         nextAction={label:"CALL BACK NOW",sub:`No contact in ${hoursSinceActivity}h`,color:"#f59e0b",icon:IC.phone,btn:"CALL",act:()=>{if(lead.phone)window.open(`tel:${lead.phone}`)}};
     }
     if(!nextAction&&["follow_up","appointed","dispatched"].includes(lead.deal_status)&&dealVal>15000){
-        nextAction={label:"READY TO CLOSE",sub:`${$.money(dealVal)} — push for commitment`,color:"#22c55e",icon:IC.zap,btn:"UPDATE STATUS",act:()=>setStatusDD(true)};
+        nextAction={label:"READY TO CLOSE",sub:hasContract?`${$.money(dealVal)} — push for commitment`:"Push for commitment",color:"#22c55e",icon:IC.zap,btn:"UPDATE STATUS",act:()=>setStatusDD(true)};
     }
     if(!nextAction&&!["closed_won","closed_lost"].includes(lead.deal_status)){
         nextAction={label:"ADD ACTIVITY",sub:"Keep this lead moving",color:"#52525b",icon:IC.edit,btn:"ADD NOTE",act:()=>{setNoteType("general");setTimeout(()=>noteRef.current?.focus(),100)}};
@@ -1696,8 +1698,8 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
                         </div>
                         <div style={{fontSize:10,color:"#3f3f46",marginTop:2,display:"flex",gap:10,flexWrap:"wrap"}}>
                             <span>{lead.property_address||"--"}{lead.city?`, ${lead.city}`:""}</span>
-                            <span style={{color:"#f59e0b",fontWeight:700}}>{$.money(lead.average_monthly_bill)}/mo</span>
-                            <span style={{color:"#22c55e",fontWeight:700}}>{$.money(dealVal)} deal</span>
+                            {lead.average_monthly_bill&&<span style={{color:"#f59e0b",fontWeight:700}}>{$.money(lead.average_monthly_bill)}/mo</span>}
+                            {hasContract?<span style={{color:"#22c55e",fontWeight:700}}>{$.money(dealVal)} deal</span>:<span style={{color:"#3f3f46",fontSize:9}}>No contract value</span>}
                             <span style={{color:"#3f3f46",fontSize:9}}>C: call &middot; N: note &middot; S: status &middot; O: outcome &middot; []: nav</span>
                         </div>
                     </div>
@@ -1744,8 +1746,8 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
 
                     {/* Key Metrics */}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
-                        <div style={{background:"#f59e0b08",border:"1px solid #f59e0b20",borderRadius:6,padding:8,textAlign:"center"}}><div style={{fontSize:16,fontWeight:900,color:"#f59e0b"}}>{$.money(lead.average_monthly_bill)}</div><div style={{fontSize:8,color:"#52525b",fontWeight:800}}>MONTHLY</div></div>
-                        <div style={{background:"#22c55e08",border:"1px solid #22c55e20",borderRadius:6,padding:8,textAlign:"center"}}><div style={{fontSize:16,fontWeight:900,color:"#22c55e"}}>{$.money(commission)}</div><div style={{fontSize:8,color:"#52525b",fontWeight:800}}>COMMISSION</div></div>
+                        <div style={{background:"#f59e0b08",border:"1px solid #f59e0b20",borderRadius:6,padding:8,textAlign:"center"}}><div style={{fontSize:16,fontWeight:900,color:"#f59e0b"}}>{lead.average_monthly_bill?$.money(lead.average_monthly_bill):"--"}</div><div style={{fontSize:8,color:"#52525b",fontWeight:800}}>MONTHLY BILL</div></div>
+                        <div style={{background:hasContract?"#22c55e08":"#18181b",border:"1px solid "+(hasContract?"#22c55e20":"#27272a"),borderRadius:6,padding:8,textAlign:"center"}}><div style={{fontSize:hasCommission?16:10,fontWeight:900,color:hasCommission?"#22c55e":"#3f3f46"}}>{hasCommission?$.money(commission):"No contract"}</div><div style={{fontSize:8,color:"#52525b",fontWeight:800}}>COMMISSION</div></div>
                     </div>
 
                     {/* Appointment */}
@@ -1835,7 +1837,7 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                             <div>
                                 <div style={{fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase"}}>Next Best Lead</div>
-                                <div style={{fontSize:13,fontWeight:800}}>{suggestedNext.first_name} {suggestedNext.last_name} <span style={{color:"#f59e0b",fontSize:11}}>{$.money(suggestedNext.average_monthly_bill)}/mo</span> <span className={`badge ${sB(suggestedNext.deal_status)}`} style={{fontSize:9}}>{sL(suggestedNext.deal_status)}</span></div>
+                                <div style={{fontSize:13,fontWeight:800}}>{suggestedNext.first_name} {suggestedNext.last_name} {suggestedNext.average_monthly_bill&&<span style={{color:"#f59e0b",fontSize:11}}>{$.money(suggestedNext.average_monthly_bill)}/mo</span>} <span className={`badge ${sB(suggestedNext.deal_status)}`} style={{fontSize:9}}>{sL(suggestedNext.deal_status)}</span></div>
                             </div>
                             <div style={{display:"flex",gap:4}}>
                                 <button className="btn btn-p" style={{padding:"8px 16px",fontSize:12,fontWeight:800}} onClick={()=>{setShowNextLead(false);if(onNextLead)onNextLead(suggestedNext)}}>WORK THIS LEAD</button>
@@ -1995,7 +1997,7 @@ function RepsPage(){
                                 <div><div style={{fontSize:15,fontWeight:900,color:"#22c55e"}}>{r.close_rate!==undefined?r.close_rate+"%":"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Close</div></div>
                                 <div><div style={{fontSize:15,fontWeight:900,color:"#3b82f6"}}>{r.held_rate!==undefined?r.held_rate+"%":"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Held</div></div>
                                 <div><div style={{fontSize:15,fontWeight:900}}>{r.closed_count||r.total_deals||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Closed</div></div>
-                                <div><div style={{fontSize:15,fontWeight:900,color:"#f59e0b"}}>{r.total_revenue!==undefined?$.money(r.total_revenue):"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Rev</div></div>
+                                <div><div style={{fontSize:15,fontWeight:900,color:r.total_revenue>0?"#f59e0b":"#3f3f46"}}>{r.total_revenue>0?$.money(r.total_revenue):"--"}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Closed Rev</div></div>
                             </div>
                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:6,textAlign:"center",padding:"8px 0",borderTop:"1px solid #18181b"}}>
                                 <div><div style={{fontSize:13,fontWeight:800}}>{r.total_appointments||0}</div><div style={{fontSize:8,color:"#3f3f46",fontWeight:800,textTransform:"uppercase"}}>Appts</div></div>
@@ -2123,14 +2125,14 @@ function PipelinePage(){
     const total=leads.length;
     const active=leads.filter(l=>!["closed_won","closed_lost","dead"].includes(l.deal_status)).length;
     const won=leads.filter(l=>l.deal_status==="closed_won").length;
-    const totalRev=leads.filter(l=>l.deal_status==="closed_won").reduce((s,l)=>s+(l.deal_value||(l.average_monthly_bill||200)*12*20*0.6),0);
+    const totalRev=leads.filter(l=>l.deal_status==="closed_won"&&l.deal_value>0).reduce((s,l)=>s+l.deal_value,0);
 
     if(loading)return<Spin/>;
     return(
         <div>
             <PH title="Operations Pipeline" sub="Real appointment flow — submitted → sold"/>
             <div style={{padding:"12px 24px",display:"flex",gap:8,flexWrap:"wrap",borderBottom:"1px solid #18181b"}}>
-                <KPI l="Total" v={total}/><KPI l="Active" v={active} t="warn"/><KPI l="Won" v={won} t="ok"/><KPI l="Revenue" v={$.money(totalRev)} t="ok"/>
+                <KPI l="Total" v={total}/><KPI l="Active" v={active} t="warn"/><KPI l="Won" v={won} t="ok"/>{totalRev>0&&<KPI l="Closed Revenue" v={$.money(totalRev)} t="ok"/>}
             </div>
             <div style={{padding:"14px 24px",overflowX:"auto"}}>
                 <div style={{display:"flex",gap:8,minWidth:stages.length*160}}>
@@ -2435,8 +2437,8 @@ function MapPinDrawer({appt,lead,reps,repsMap,onClose,onRefresh,af,toast,user}){
                     </div>
                 )}
                 {/* Deal Value + Run This Lead */}
-                {lead&&<div style={{background:"#f59e0b12",border:"1px solid #f59e0b30",borderRadius:8,padding:12,marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <div><div style={{fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase"}}>Deal Value</div><div style={{fontSize:20,fontWeight:900,color:"#f59e0b"}}>{$.money(lead.deal_value||((lead.average_monthly_bill||200)*12*20*0.6))}</div></div>
+                {lead&&<div style={{background:lead.deal_value>0?"#f59e0b12":"#18181b",border:"1px solid "+(lead.deal_value>0?"#f59e0b30":"#27272a"),borderRadius:8,padding:12,marginBottom:14,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <div>{lead.deal_value>0?<><div style={{fontSize:9,fontWeight:800,color:"#f59e0b",textTransform:"uppercase"}}>Contract Value</div><div style={{fontSize:20,fontWeight:900,color:"#f59e0b"}}>{$.money(lead.deal_value)}</div></>:<>{lead.average_monthly_bill?<><div style={{fontSize:9,fontWeight:800,color:"#71717a",textTransform:"uppercase"}}>Monthly Bill</div><div style={{fontSize:16,fontWeight:800,color:"#f59e0b"}}>{$.money(lead.average_monthly_bill)}/mo</div></>:<div style={{fontSize:11,color:"#3f3f46"}}>No financial data</div>}</>}</div>
                     <button className="btn btn-p" style={{padding:"12px 20px",fontSize:14,fontWeight:900}} onClick={()=>{onClose();nav(`/leads?id=${lead.id}`)}}>RUN THIS LEAD</button>
                 </div>}
                 {/* Navigation */}

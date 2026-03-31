@@ -132,7 +132,7 @@ def run_escalation_engine(db: Session) -> dict:
     )
 
     for lead in risk_leads:
-        deal_val = lead.deal_value or (lead.average_monthly_bill or 200) * 12 * 20 * 0.6
+        deal_val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
         days_inactive = (now - lead.updated_at).days if lead.updated_at else 0
         fu_overdue_hours = None
         if lead.next_follow_up_date and lead.follow_up_required:
@@ -188,7 +188,7 @@ def calculate_lead_priority(db: Session, lead: Lead) -> dict:
     now = datetime.utcnow()
 
     # Deal value score (0-30 points)
-    deal_val = lead.deal_value or (lead.average_monthly_bill or 200) * 12 * 20 * 0.6
+    deal_val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
     value_score = min(30, deal_val / 1000)  # Cap at 30
 
     # Stage weight (0-60 points)
@@ -299,7 +299,8 @@ def get_revenue_dashboard(db: Session) -> dict:
     revenue_new = 0         # New leads
 
     for lead in active_leads:
-        val = lead.deal_value or (lead.average_monthly_bill or 200) * 12 * 20 * 0.6
+        # Only count real contract values — no estimated formulas
+        val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
         revenue_open += val
 
         if lead.deal_status == "follow_up" or lead.follow_up_required:
@@ -343,7 +344,7 @@ def get_revenue_dashboard(db: Session) -> dict:
         .all()
     )
     for lead in proposal_leads:
-        val = lead.deal_value or (lead.average_monthly_bill or 200) * 12 * 20 * 0.6
+        val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
         revenue_proposal += val
 
     return {
@@ -415,7 +416,7 @@ def get_reassignment_suggestions(db: Session) -> list:
 
         if reason:
             rep = db.query(User).filter(User.id == lead.assigned_rep_id).first()
-            deal_val = lead.deal_value or (lead.average_monthly_bill or 200) * 12 * 20 * 0.6
+            deal_val = lead.deal_value if lead.deal_value and lead.deal_value > 0 else 0
             suggestions.append({
                 "lead_id": lead.id,
                 "lead_name": f"{lead.first_name} {lead.last_name}",
