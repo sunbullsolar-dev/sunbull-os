@@ -1415,7 +1415,7 @@ function LeadsPage(){
         if(lr.ok){const d=await lr.json();sLeads(Array.isArray(d)?d:(d.items||[]))}
         if(ar.ok){const d=await ar.json();sAppts(Array.isArray(d)?d:[])}
     }catch(e){}sLd(false)};
-    const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}};
+    const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();const list=Array.isArray(d)?d:(d.reps||d.items||[]);sReps(list.map(x=>({...x,full_name:x.full_name||x.name||x.email||"Unknown"})))}}catch{}};
 
     const filtered=useMemo(()=>leads.filter(l=>{
         const ms=!search||`${l.first_name||""} ${l.last_name||""} ${l.city||""} ${l.phone||""} ${l.email||""}`.toLowerCase().includes(search.toLowerCase());
@@ -1777,6 +1777,7 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
                         {/* PREV/NEXT LEAD ARROWS */}
                         <button className="btn" style={{padding:"8px",minHeight:40,minWidth:32}} onClick={()=>goNextLead(-1)} title="Previous lead ["><Ic d="M15 18l-6-6 6-6" s={16}/></button>
                         {lead.phone&&<a href={`tel:${lead.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"10px 18px",fontSize:14,fontWeight:900,display:"flex",alignItems:"center",gap:5,minHeight:44}}><Ic d={IC.phone} s={16} c="#22c55e"/>CALL</button></a>}
+                        {isAdmin&&<button className="btn" style={{padding:"8px 14px",minHeight:40,fontSize:11,fontWeight:800,display:"flex",alignItems:"center",gap:4,border:assignDD?"1px solid #f59e0b":"1px solid #27272a",color:assignDD?"#f59e0b":"#a1a1aa"}} onClick={()=>{setAssignDD(!assignDD);setStatusDD(false);setOutcomeDD(false)}} title="Assign rep"><Ic d={IC.users} s={14} c={assignDD?"#f59e0b":"#a1a1aa"}/>{rn(lead.assigned_rep_id)!=="--"?rn(lead.assigned_rep_id):"ASSIGN"}</button>}
                         <button className="btn" style={{padding:"8px",minHeight:40,minWidth:32}} onClick={()=>goNextLead(1)} title="Next lead ]"><Ic d="M9 18l6-6-6-6" s={16}/></button>
                         <div style={{cursor:"pointer",padding:6}} onClick={tryClose}><Ic d={IC.x} s={18}/></div>
                     </div>
@@ -1790,12 +1791,12 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
                     {outcomes.map(o=><button key={o} className="btn" style={{fontSize:10,padding:"5px 10px",color:outcomeColors[o]||"#a1a1aa",borderColor:(outcomeColors[o]||"#27272a")+"40"}} onClick={()=>updOutcome(o)}>{sL(o)}</button>)}
                 </div>}
                 {/* INLINE ASSIGN DROPDOWN */}
-                {assignDD&&isAdmin&&<div style={{position:"absolute",top:"100%",right:60,background:"#111113",border:"1px solid #27272a",borderRadius:10,padding:8,zIndex:10,maxHeight:260,overflowY:"auto",width:260,boxShadow:"0 8px 30px #00000080"}}>
-                    <div style={{fontSize:9,fontWeight:700,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",padding:"4px 8px 8px"}}>Select Rep</div>
-                    {reps.length===0?<div style={{padding:"16px 8px",textAlign:"center",color:"#3f3f46",fontSize:12}}>No active reps. Invite reps from the Reps page first.</div>:
-                    reps.map(r=><div key={r.id} style={{padding:"8px 10px",cursor:"pointer",fontSize:12,fontWeight:600,borderRadius:6,background:lead.assigned_rep_id===r.id?"#f59e0b18":"transparent",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=lead.assigned_rep_id===r.id?"#f59e0b18":"#18181b"} onMouseLeave={e=>e.currentTarget.style.background=lead.assigned_rep_id===r.id?"#f59e0b18":"transparent"} onClick={()=>assignRep(r.id)}>
-                        <span>{r.full_name}</span>
-                        {lead.assigned_rep_id===r.id&&<span className="badge b-orange" style={{fontSize:8}}>Current</span>}
+                {assignDD&&isAdmin&&<div style={{position:"absolute",top:"100%",right:80,background:"#111113",border:"1px solid #f59e0b30",borderRadius:10,padding:8,zIndex:20,maxHeight:320,overflowY:"auto",width:280,boxShadow:"0 12px 40px #000000cc"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#f59e0b",textTransform:"uppercase",letterSpacing:".06em",padding:"4px 8px 8px"}}>Assign Rep to {lead.first_name}</div>
+                    {reps.length===0?<div style={{padding:"20px 8px",textAlign:"center"}}><div style={{color:"#3f3f46",fontSize:12,marginBottom:8}}>No active reps found.</div><div style={{color:"#52525b",fontSize:10}}>Invite reps from the Reps page first.</div></div>:
+                    reps.map(r=><div key={r.id} style={{padding:"10px 12px",cursor:"pointer",fontSize:13,fontWeight:600,borderRadius:8,background:lead.assigned_rep_id===r.id?"#f59e0b15":"transparent",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"all .15s",borderLeft:lead.assigned_rep_id===r.id?"3px solid #f59e0b":"3px solid transparent"}} onMouseEnter={e=>{if(lead.assigned_rep_id!==r.id)e.currentTarget.style.background="#18181b"}} onMouseLeave={e=>{if(lead.assigned_rep_id!==r.id)e.currentTarget.style.background="transparent"}} onClick={()=>assignRep(r.id)}>
+                        <div><div>{r.full_name}</div><div style={{fontSize:9,color:"#52525b",marginTop:1}}>{r.email||""}{r.territory?` · ${r.territory}`:""}</div></div>
+                        {lead.assigned_rep_id===r.id?<span className="badge b-orange" style={{fontSize:8}}>Current</span>:<Ic d="M9 18l6-6-6-6" s={12} c="#27272a"/>}
                     </div>)}
                 </div>}
             </div>
@@ -1838,7 +1839,7 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
                         <button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800}} onClick={()=>{setNoteType("call_log");setTimeout(()=>noteRef.current?.focus(),50)}}><Ic d={IC.message} s={12}/> LOG CALL (L)</button>
                         <button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800,color:"#f59e0b"}} onClick={()=>setStatusDD(true)}><Ic d={IC.flag} s={12} c="#f59e0b"/> STATUS (S)</button>
                         <button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800,color:"#a855f7"}} onClick={()=>{onClose();onCreateAppt(lead)}}><Ic d={IC.cal} s={12} c="#a855f7"/> APPOINTMENT</button>
-                        {isAdmin&&<button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800}} onClick={()=>setAssignDD(!assignDD)}><Ic d={IC.users} s={12}/> ASSIGN</button>}
+                        {isAdmin&&<button className="btn" style={{width:"100%",padding:8,fontSize:11,fontWeight:800}} onClick={()=>{setAssignDD(!assignDD);setStatusDD(false);setOutcomeDD(false)}}><Ic d={IC.users} s={12}/> ASSIGN</button>}
                     </div>
 
                     {/* Team */}
@@ -2132,7 +2133,7 @@ function TasksPage(){
     useEffect(()=>{load()},[statusFilter,typeFilter,repFilter]);
     useEffect(()=>{if(user?.role==="admin")loadReps()},[]);
     const load=async()=>{sLd(true);try{let url="/api/tasks";const params=[];if(statusFilter)params.push(`status=${statusFilter}`);if(typeFilter)params.push(`task_type=${typeFilter}`);if(repFilter)params.push(`assigned_to=${repFilter}`);if(params.length)url+="?"+params.join("&");const r=await af(url);if(r.ok){const d=await r.json();sTasks(Array.isArray(d)?d:(d.items||d.tasks||[]))}}catch{}sLd(false)};
-    const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();sReps(Array.isArray(d)?d:(d.reps||d.items||[]))}}catch{}};
+    const loadReps=async()=>{try{const r=await af("/api/admin/reps");if(r.ok){const d=await r.json();const list=Array.isArray(d)?d:(d.reps||d.items||[]);sReps(list.map(x=>({...x,full_name:x.full_name||x.name||x.email||"Unknown"})))}}catch{}};
     const complete=async id=>{try{const r=await af(`/api/tasks/${id}/complete`,{method:"POST",body:JSON.stringify({completion_notes:"Done"})});if(r.ok){toast("ok","Completed");load()}}catch{toast("err","Failed")}};
     const taskTypes=[...new Set(tasks.map(t=>t.task_type).filter(Boolean))].sort();
     if(loading)return<Spin/>;
