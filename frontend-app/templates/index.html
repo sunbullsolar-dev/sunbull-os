@@ -2479,13 +2479,19 @@ function MapPage(){
         if(showSpin)sLd(false);
     };
 
-    useEffect(()=>{
-        if(!mapInstance.current&&mapRef.current&&typeof L!=="undefined"){
-            mapInstance.current=L.map(mapRef.current).setView([34.0,-118.0],7);
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapInstance.current);
+    // Map init — use callback ref pattern to init when DOM element appears
+    const mapCbRef=useCallback(node=>{
+        if(node&&!mapInstance.current&&typeof L!=="undefined"){
+            mapRef.current=node;
+            const m=L.map(node).setView([34.0,-118.0],7);
+            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(m);
+            mapInstance.current=m;
+            // Ensure tiles render after layout settles
+            setTimeout(()=>m.invalidateSize(),100);
         }
-        return()=>{if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null}}
-    },[loading]);
+    },[]);
+    // Cleanup on unmount only
+    useEffect(()=>()=>{if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null}},[]);
 
     useEffect(()=>{
         if(!mapInstance.current)return;
@@ -2582,7 +2588,7 @@ function MapPage(){
                 {(mapMode==="appointments"?apptStatuses:leadStatuses).map(s=><button key={s} className={`btn ${mapFilter===s?"btn-p":""}`} style={{fontSize:10,padding:"4px 10px"}} onClick={()=>setFilter(s)}>{sL(s)}</button>)}
             </div>
             <div style={{flex:1,position:"relative"}}>
-                <div ref={mapRef} style={{position:"absolute",inset:0,background:"#09090b"}}/>
+                <div ref={mapCbRef} style={{position:"absolute",inset:0,background:"#09090b"}}/>
                 {/* Legend */}
                 <div style={{position:"absolute",bottom:16,left:16,background:"#0c0c0fdd",border:"1px solid #27272a",borderRadius:8,padding:"8px 12px",zIndex:1000,fontSize:10}}>
                     {mapMode==="appointments"?

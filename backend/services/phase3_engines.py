@@ -9,7 +9,7 @@ from typing import Optional, List
 from sqlalchemy.orm import Session
 from sqlalchemy import func, and_, or_
 from app.models import (
-    Task, Lead, User, Appointment, Violation, Notification,
+    Task, Lead, User, Appointment, Violation, Notification, Project,
 )
 
 
@@ -323,13 +323,13 @@ def get_revenue_dashboard(db: Session) -> dict:
         if has_overdue:
             revenue_overdue += val
 
-    # Closed revenue
-    closed_leads = (
-        db.query(Lead)
-        .filter(Lead.deal_status == "closed_won")
+    # Closed revenue — only from real project contracts, not lead estimates
+    closed_projects = (
+        db.query(Project)
+        .filter(Project.deal_value > 0)
         .all()
     )
-    revenue_closed = sum(l.deal_value or 0 for l in closed_leads)
+    revenue_closed = sum(p.deal_value for p in closed_projects)
 
     # Revenue by proposal stage
     proposal_leads = (
