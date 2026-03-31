@@ -11,7 +11,7 @@ from app.models import (
     AccountabilityFlag, InstallerProfile, Task, Project, Violation,
     Notification, ConfirmationAttempt, FollowUp, RehashEntry,
     AutomationRule, Action, Invite, Comment, FileUpload,
-    BillAnalysis, WebsitePage, SolarEstimate,
+    BillAnalysis, WebsitePage, SolarEstimate, LeadOwnershipHistory,
 )
 from app.auth import get_current_user, require_role, hash_password
 from services.outcome_engine import mark_overdue_tasks
@@ -1364,108 +1364,65 @@ def clean_slate(
 ):
     """
     Delete ALL operational data (leads, appointments, reps, tasks, etc.).
-    Keeps only the admin account. Use this to move from demo to production.
+    Keeps only the admin account. Uses raw SQL with correct FK ordering.
     """
+    from sqlalchemy import text
     admin_email = "sunbullsolar@gmail.com"
-    admin_id = current_user.id
     deleted = {}
 
-    # Order matters: delete children before parents to respect FK constraints
-    # 1. Violations
-    c = db.query(Violation).delete()
-    deleted["violations"] = c
+    # Strict FK-safe deletion order: deepest children first, parents last
+    # Using raw SQL DELETE for reliability with FK constraints
+    tables_in_order = [
+        # Layer 1: No FK children (leaf tables)
+        ("commissions", "DELETE FROM commissions"),
+        ("violations", "DELETE FROM violations"),
+        ("comments", "DELETE FROM comments"),
+        ("file_uploads", "DELETE FROM file_uploads"),
+        ("lead_ownership_history", "DELETE FROM lead_ownership_history"),
+        ("accountability_flags", "DELETE FROM accountability_flags"),
+        ("solar_estimates", "DELETE FROM solar_estimates"),
+        ("bill_analyses", "DELETE FROM bill_analyses"),
+        ("audit_log", "DELETE FROM audit_log"),
+        ("notifications", "DELETE FROM notifications"),
+        # Layer 2: Reference leads/appointments but no children
+        ("actions", "DELETE FROM actions"),
+        ("confirmation_attempts", "DELETE FROM confirmation_attempts"),
+        ("follow_ups", "DELETE FROM follow_ups"),
+        ("rehash_queue", "DELETE FROM rehash_queue"),
+        ("tasks", "DELETE FROM tasks"),
+        # Layer 3: Projects (references leads + appointments)
+        ("projects", "DELETE FROM projects"),
+        # Layer 4: Deals (references leads + users)
+        ("deals", "DELETE FROM deals"),
+        # Layer 5: Appointments (references leads + users)
+        ("appointments", "DELETE FROM appointments"),
+        # Layer 6: Leads (references users)
+        ("leads", "DELETE FROM leads"),
+        # Layer 7: Supporting user data
+        ("invites", "DELETE FROM invites"),
+        ("installer_profiles", "DELETE FROM installer_profiles"),
+        ("automation_rules", "DELETE FROM automation_rules"),
+        # Layer 8: Users except admin
+        ("users", f"DELETE FROM users WHERE email != '{admin_email}'"),
+    ]
 
-    # 2. Comments
-    c = db.query(Comment).delete()
-    deleted["comments"] = c
+    try:
+        with db.connection().connection.cursor() as raw_cursor:
+            pass  # Test if raw access works
+    except Exception:
+        pass
 
-    # 3. File uploads
-    c = db.query(FileUpload).delete()
-    deleted["file_uploads"] = c
-
-    # 4. Commissions
-    c = db.query(Commission).delete()
-    deleted["commissions"] = c
-
-    # 5. Projects
-    c = db.query(Project).delete()
-    deleted["projects"] = c
-
-    # 6. Deals
-    c = db.query(Deal).delete()
-    deleted["deals"] = c
-
-    # 7. Tasks
-    c = db.query(Task).delete()
-    deleted["tasks"] = c
-
-    # 8. Actions (activity log)
-    c = db.query(Action).delete()
-    deleted["actions"] = c
-
-    # 9. Confirmation attempts
-    c = db.query(ConfirmationAttempt).delete()
-    deleted["confirmation_attempts"] = c
-
-    # 10. Follow-ups
-    c = db.query(FollowUp).delete()
-    deleted["follow_ups"] = c
-
-    # 11. Rehash entries
-    c = db.query(RehashEntry).delete()
-    deleted["rehash_entries"] = c
-
-    # 12. Notifications
-    c = db.query(Notification).delete()
-    deleted["notifications"] = c
-
-    # 13. Accountability flags
-    c = db.query(AccountabilityFlag).delete()
-    deleted["accountability_flags"] = c
-
-    # 14. Audit log
-    c = db.query(AuditLog).delete()
-    deleted["audit_log"] = c
-
-    # 15. Solar estimates
-    c = db.query(SolarEstimate).delete()
-    deleted["solar_estimates"] = c
-
-    # 16. Bill analyses
-    c = db.query(BillAnalysis).delete()
-    deleted["bill_analyses"] = c
-
-    # 17. Appointments (before leads)
-    c = db.query(Appointment).delete()
-    deleted["appointments"] = c
-
-    # 18. Leads
-    c = db.query(Lead).delete()
-    deleted["leads"] = c
-
-    # 19. Invites
-    c = db.query(Invite).delete()
-    deleted["invites"] = c
-
-    # 20. Installer profiles
-    c = db.query(InstallerProfile).delete()
-    deleted["installer_profiles"] = c
-
-    # 21. Automation rules
-    c = db.query(AutomationRule).delete()
-    deleted["automation_rules"] = c
-
-    # 22. Website pages (keep these — they're useful)
-    # c = db.query(WebsitePage).delete()
-    # deleted["website_pages"] = c
-
-    # 23. Users — delete ALL except admin
-    c = db.query(User).filter(User.email != admin_email).delete()
-    deleted["users_deleted"] = c
+    # Execute each delete via SQLAlchemy text()
+    for table_name, sql in tables_in_order:
+        try:
+            result = db.execute(text(sql))
+            deleted[table_name] = result.rowcount
+        except Exception as e:
+            deleted[table_name] = f"error: {str(e)[:80]}"
 
     db.commit()
 
-    total = sum(deleted.values())
+    total = sum(v for v in deleted.values() if isinstance(v, int))
     return {
         "status": "clean_slate_complete",
         "total_records_deleted": total,
