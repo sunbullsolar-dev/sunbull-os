@@ -2485,7 +2485,7 @@ function MapPage(){
             L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{attribution:"© OpenStreetMap"}).addTo(mapInstance.current);
         }
         return()=>{if(mapInstance.current){mapInstance.current.remove();mapInstance.current=null}}
-    },[]);
+    },[loading]);
 
     useEffect(()=>{
         if(!mapInstance.current)return;
