@@ -9,6 +9,9 @@ from app.database import get_db
 from app.models import (
     Lead, User, Appointment, Deal, Commission, AuditLog,
     AccountabilityFlag, InstallerProfile, Task, Project, Violation,
+    Notification, ConfirmationAttempt, FollowUp, RehashEntry,
+    AutomationRule, Action, Invite, Comment, FileUpload,
+    BillAnalysis, WebsitePage, SolarEstimate,
 )
 from app.auth import get_current_user, require_role, hash_password
 from services.outcome_engine import mark_overdue_tasks
@@ -1347,4 +1350,125 @@ def get_accountability_dashboard(
             "violations": len(violations_list),
             "overdue_tasks": overdue_tasks,
         },
+    }
+
+
+# =================================================================
+# PRODUCTION: CLEAN SLATE — Delete all demo/seed data
+# =================================================================
+
+@router.post("/clean-slate")
+def clean_slate(
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+):
+    """
+    Delete ALL operational data (leads, appointments, reps, tasks, etc.).
+    Keeps only the admin account. Use this to move from demo to production.
+    """
+    admin_email = "sunbullsolar@gmail.com"
+    admin_id = current_user.id
+    deleted = {}
+
+    # Order matters: delete children before parents to respect FK constraints
+    # 1. Violations
+    c = db.query(Violation).delete()
+    deleted["violations"] = c
+
+    # 2. Comments
+    c = db.query(Comment).delete()
+    deleted["comments"] = c
+
+    # 3. File uploads
+    c = db.query(FileUpload).delete()
+    deleted["file_uploads"] = c
+
+    # 4. Commissions
+    c = db.query(Commission).delete()
+    deleted["commissions"] = c
+
+    # 5. Projects
+    c = db.query(Project).delete()
+    deleted["projects"] = c
+
+    # 6. Deals
+    c = db.query(Deal).delete()
+    deleted["deals"] = c
+
+    # 7. Tasks
+    c = db.query(Task).delete()
+    deleted["tasks"] = c
+
+    # 8. Actions (activity log)
+    c = db.query(Action).delete()
+    deleted["actions"] = c
+
+    # 9. Confirmation attempts
+    c = db.query(ConfirmationAttempt).delete()
+    deleted["confirmation_attempts"] = c
+
+    # 10. Follow-ups
+    c = db.query(FollowUp).delete()
+    deleted["follow_ups"] = c
+
+    # 11. Rehash entries
+    c = db.query(RehashEntry).delete()
+    deleted["rehash_entries"] = c
+
+    # 12. Notifications
+    c = db.query(Notification).delete()
+    deleted["notifications"] = c
+
+    # 13. Accountability flags
+    c = db.query(AccountabilityFlag).delete()
+    deleted["accountability_flags"] = c
+
+    # 14. Audit log
+    c = db.query(AuditLog).delete()
+    deleted["audit_log"] = c
+
+    # 15. Solar estimates
+    c = db.query(SolarEstimate).delete()
+    deleted["solar_estimates"] = c
+
+    # 16. Bill analyses
+    c = db.query(BillAnalysis).delete()
+    deleted["bill_analyses"] = c
+
+    # 17. Appointments (before leads)
+    c = db.query(Appointment).delete()
+    deleted["appointments"] = c
+
+    # 18. Leads
+    c = db.query(Lead).delete()
+    deleted["leads"] = c
+
+    # 19. Invites
+    c = db.query(Invite).delete()
+    deleted["invites"] = c
+
+    # 20. Installer profiles
+    c = db.query(InstallerProfile).delete()
+    deleted["installer_profiles"] = c
+
+    # 21. Automation rules
+    c = db.query(AutomationRule).delete()
+    deleted["automation_rules"] = c
+
+    # 22. Website pages (keep these — they're useful)
+    # c = db.query(WebsitePage).delete()
+    # deleted["website_pages"] = c
+
+    # 23. Users — delete ALL except admin
+    c = db.query(User).filter(User.email != admin_email).delete()
+    deleted["users_deleted"] = c
+
+    db.commit()
+
+    total = sum(deleted.values())
+    return {
+        "status": "clean_slate_complete",
+        "total_records_deleted": total,
+        "details": deleted,
+        "kept": {"admin": admin_email},
     }

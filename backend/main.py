@@ -75,63 +75,6 @@ app.include_router(uploads_router)
 app.include_router(projects_router)
 
 
-@app.get("/api/admin/fix-geo")
-def fix_geo_columns():
-    """Debug: ensure geo columns exist and backfill coords."""
-    from sqlalchemy import inspect, text as _t
-    results = []
-    inspector = inspect(engine)
-    existing = {c['name'] for c in inspector.get_columns('leads')}
-    results.append(f"Existing columns: {len(existing)}")
-    results.append(f"geo_lat exists: {'geo_lat' in existing}")
-    results.append(f"geo_lng exists: {'geo_lng' in existing}")
-
-    with engine.connect() as conn:
-        for col in ['geo_lat', 'geo_lng']:
-            if col not in existing:
-                try:
-                    conn.execute(_t(f'ALTER TABLE leads ADD COLUMN {col} DOUBLE PRECISION'))
-                    results.append(f"Added {col}")
-                except Exception as e:
-                    results.append(f"Error adding {col}: {e}")
-        geo_map = {
-            "Phoenix": (33.4484, -112.0740), "Los Angeles": (34.0522, -118.2437),
-            "Houston": (29.7604, -95.3698), "San Diego": (32.7157, -117.1611),
-            "Austin": (30.2672, -97.7431), "Miami": (25.7617, -80.1918),
-            "Tampa": (27.9506, -82.4572), "Sacramento": (38.5816, -121.4944),
-            "Mesa": (33.4152, -111.8315), "Orlando": (28.5383, -81.3792),
-            "Dallas": (32.7767, -96.7970), "San Antonio": (29.4241, -98.4936),
-            "Tarzana": (34.1725, -118.5353), "Encino": (34.1592, -118.5013),
-            "Burbank": (34.1808, -118.3090), "Granada Hills": (34.2764, -118.5015),
-        }
-        total = 0
-        for city, (lat, lng) in geo_map.items():
-            r = conn.execute(_t(f"UPDATE leads SET geo_lat = :lat, geo_lng = :lng WHERE city = :city AND (geo_lat IS NULL)"), {"lat": lat, "lng": lng, "city": city})
-            total += r.rowcount
-        conn.commit()
-        results.append(f"Updated {total} leads with geo coords")
-        # Verify by reading back
-        rows = conn.execute(_t("SELECT id, city, geo_lat, geo_lng FROM leads WHERE geo_lat IS NOT NULL LIMIT 5"))
-        verified = [{"id": r[0], "city": r[1], "geo_lat": r[2], "geo_lng": r[3]} for r in rows]
-        results.append(f"Verified {len(verified)} leads with geo in DB")
-        if verified:
-            results.append(str(verified[:3]))
-    # Also check ORM vs raw SQL
-    db = SessionLocal()
-    try:
-        orm_lead = db.query(Lead).filter(Lead.city == "Phoenix").first()
-        if orm_lead:
-            results.append(f"ORM Lead {orm_lead.id}: city={orm_lead.city}, geo_lat={orm_lead.geo_lat}")
-            # Try raw SQL on same lead
-            from sqlalchemy import text as _t2
-            raw = db.execute(_t2(f"SELECT geo_lat, geo_lng FROM leads WHERE id = {orm_lead.id}")).first()
-            results.append(f"Raw SQL same lead: geo_lat={raw[0] if raw else 'N/A'}")
-    except Exception as e:
-        results.append(f"ORM check error: {e}")
-    finally:
-        db.close()
-    return {"results": results}
-
 
 @app.on_event("startup")
 def startup_event():
@@ -142,164 +85,83 @@ def startup_event():
     # Add new columns to existing tables (already handled in seed logic below)
     print("Database initialization complete.")
 
+    # Universal auto-migration: compare ALL model columns to DB and add missing ones
+    try:
+        from sqlalchemy import inspect, text as _sql_text, String, Integer, Float, Boolean, Text, DateTime, Date, Time, JSON
+        inspector = inspect(engine)
+
+        def sa_type_to_sql(col):
+            t = type(col.type)
+            if t in (String,):
+                length = getattr(col.type, 'length', None)
+                return f"VARCHAR({length})" if length else "VARCHAR(255)"
+            elif t in (Text,):
+                return "TEXT"
+            elif t in (Integer,):
+                return "INTEGER"
+            elif t in (Float,):
+                return "DOUBLE PRECISION"
+            elif t in (Boolean,):
+                return "BOOLEAN"
+            elif t in (DateTime,):
+                return "TIMESTAMP"
+            elif t in (Date,):
+                return "DATE"
+            elif t in (Time,):
+                return "TIME"
+            elif t in (JSON,):
+                return "JSON"
+            return "TEXT"
+
+        added_count = 0
+        with engine.connect() as conn:
+            for table in Base.metadata.sorted_tables:
+                try:
+                    existing_cols = {c['name'] for c in inspector.get_columns(table.name)}
+                except Exception:
+                    continue
+                for col in table.columns:
+                    if col.name not in existing_cols:
+                        col_type = sa_type_to_sql(col)
+                        default_clause = ""
+                        if col.default is not None and col.default.arg is not None and not callable(col.default.arg):
+                            dval = col.default.arg
+                            if isinstance(dval, bool):
+                                default_clause = f" DEFAULT {'TRUE' if dval else 'FALSE'}"
+                            elif isinstance(dval, (int, float)):
+                                default_clause = f" DEFAULT {dval}"
+                            elif isinstance(dval, str):
+                                default_clause = f" DEFAULT '{dval}'"
+                        sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{default_clause}'
+                        try:
+                            conn.execute(_sql_text(sql))
+                            added_count += 1
+                            print(f"  + {table.name}.{col.name} ({col_type})")
+                        except Exception:
+                            pass
+            conn.commit()
+        print(f"Auto-migration complete: {added_count} columns added.")
+    except Exception as e:
+        print(f"Auto-migration error: {e}")
+        import traceback
+        traceback.print_exc()
+
+    # ============================================================
+    # PRODUCTION MODE — Ensure admin account exists, no demo seeding
+    # ============================================================
     db = SessionLocal()
     try:
-        # Only seed if no admin exists
         admin_user = db.query(User).filter(User.email == "sunbullsolar@gmail.com").first()
         if admin_user:
             from app.auth import hash_password as _hp, verify_password as _vp
-
-            # Always re-hash admin password to guarantee login works
             if not _vp("admin123", admin_user.hashed_password):
                 admin_user.hashed_password = _hp("admin123")
                 db.commit()
                 print("Fixed admin password hash.")
             else:
                 print("Admin password hash OK.")
-
-            # Fix any reps with close_rate=0 (from earlier seed)
-            import random as _rand
-            zero_reps = db.query(User).filter(User.role == "rep", User.close_rate == 0.0).all()
-            if zero_reps:
-                for rep in zero_reps:
-                    rep.close_rate = round(_rand.uniform(0.18, 0.35), 2)
-                    if rep.total_deals == 0:
-                        rep.total_deals = _rand.randint(2, 15)
-                db.commit()
-                print(f"Fixed {len(zero_reps)} reps with close_rate=0.")
-
-            # Explicit geo column migration (auto-migration sometimes misses these)
-            try:
-                from sqlalchemy import text as _geo_text
-                with engine.connect() as gc:
-                    for col_name in ['geo_lat', 'geo_lng']:
-                        try:
-                            gc.execute(_geo_text(f'ALTER TABLE "leads" ADD COLUMN "{col_name}" DOUBLE PRECISION'))
-                            print(f"  + leads.{col_name} (explicit)")
-                        except Exception:
-                            pass  # Already exists
-                    gc.commit()
-            except Exception as ge:
-                print(f"  Geo column note: {ge}")
-
-            # Universal auto-migration: compare ALL model columns to DB and add missing ones
-            try:
-                from sqlalchemy import inspect, text as _sql_text, String, Integer, Float, Boolean, Text, DateTime, Date, Time, JSON
-                inspector = inspect(engine)
-
-                # Map SQLAlchemy types to PostgreSQL DDL types
-                def sa_type_to_sql(col):
-                    t = type(col.type)
-                    if t in (String,):
-                        length = getattr(col.type, 'length', None)
-                        return f"VARCHAR({length})" if length else "VARCHAR(255)"
-                    elif t in (Text,):
-                        return "TEXT"
-                    elif t in (Integer,):
-                        return "INTEGER"
-                    elif t in (Float,):
-                        return "DOUBLE PRECISION"
-                    elif t in (Boolean,):
-                        return "BOOLEAN"
-                    elif t in (DateTime,):
-                        return "TIMESTAMP"
-                    elif t in (Date,):
-                        return "DATE"
-                    elif t in (Time,):
-                        return "TIME"
-                    elif t in (JSON,):
-                        return "JSON"
-                    return "TEXT"  # fallback
-
-                added_count = 0
-                with engine.connect() as conn:
-                    for table in Base.metadata.sorted_tables:
-                        try:
-                            existing_cols = {c['name'] for c in inspector.get_columns(table.name)}
-                        except Exception:
-                            continue  # Table doesn't exist, create_all handles it
-                        for col in table.columns:
-                            if col.name not in existing_cols:
-                                col_type = sa_type_to_sql(col)
-                                # Build default clause
-                                default_clause = ""
-                                if col.default is not None and col.default.arg is not None and not callable(col.default.arg):
-                                    dval = col.default.arg
-                                    if isinstance(dval, bool):
-                                        default_clause = f" DEFAULT {'TRUE' if dval else 'FALSE'}"
-                                    elif isinstance(dval, (int, float)):
-                                        default_clause = f" DEFAULT {dval}"
-                                    elif isinstance(dval, str):
-                                        default_clause = f" DEFAULT '{dval}'"
-                                sql = f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {col_type}{default_clause}'
-                                try:
-                                    conn.execute(_sql_text(sql))
-                                    added_count += 1
-                                    print(f"  + {table.name}.{col.name} ({col_type})")
-                                except Exception as col_err:
-                                    pass  # Column might already exist due to race condition
-                    conn.commit()
-                print(f"Auto-migration complete: {added_count} columns added.")
-            except Exception as e:
-                print(f"Auto-migration error: {e}")
-                import traceback
-                traceback.print_exc()
-
-            # Check if seed data actually exists (admin might exist but data was lost)
-            rep_count = db.query(User).filter(User.role == "rep").count()
-            if rep_count > 0:
-                # Backfill geo coords on leads that are missing them (use raw SQL for reliability)
-                from sqlalchemy import text as _bt
-                try:
-                    geo_map = {
-                        "Phoenix": (33.4484, -112.0740), "Los Angeles": (34.0522, -118.2437),
-                        "Houston": (29.7604, -95.3698), "San Diego": (32.7157, -117.1611),
-                        "Austin": (30.2672, -97.7431), "Miami": (25.7617, -80.1918),
-                        "Tampa": (27.9506, -82.4572), "Sacramento": (38.5816, -121.4944),
-                        "Mesa": (33.4152, -111.8315), "Orlando": (28.5383, -81.3792),
-                        "Dallas": (32.7767, -96.7970), "San Antonio": (29.4241, -98.4936),
-                        "Tarzana": (34.1725, -118.5353), "Encino": (34.1592, -118.5013),
-                        "Burbank": (34.1808, -118.3090), "Granada Hills": (34.2764, -118.5015),
-                    }
-                    updated_geo = 0
-                    with engine.connect() as conn:
-                        for city, (lat, lng) in geo_map.items():
-                            r = conn.execute(_bt(
-                                f"UPDATE leads SET geo_lat = {lat}, geo_lng = {lng} WHERE city = '{city}' AND (geo_lat IS NULL OR geo_lat = 0)"
-                            ))
-                            updated_geo += r.rowcount
-                        conn.commit()
-                    if updated_geo > 0:
-                        print(f"  Backfill: {updated_geo} leads got geo coords via raw SQL")
-                    # Also ensure some appointments are dated today
-                    from datetime import date as _date
-                    today = _date.today()
-                    appts = db.query(Appointment).all()
-                    today_count = sum(1 for a in appts if a.appointment_date == today)
-                    if today_count == 0 and len(appts) >= 3:
-                        for a in appts[:3]:
-                            a.appointment_date = today
-                        db.commit()
-                        print(f"  Set 3 appointments to today ({today})")
-                except Exception as e:
-                    print(f"  Backfill note: {e}")
-                    import traceback
-                    traceback.print_exc()
-                print("Seed data already exists.")
-                return
-
-            # Admin exists but no reps — re-seed everything except admin
-            print(f"Admin exists but only {rep_count} reps found. Re-seeding data...")
-            admin = admin_user  # Use existing admin for FK references below
-
-        from app.auth import hash_password
-        from datetime import datetime, timedelta, date, time
-        import random
-        import json
-
-        # ---- USERS ----
-        # Admin: Abdo Yaghi (owner) — only create if not already present
-        if not admin_user:
+        else:
+            from app.auth import hash_password
             admin = User(
                 email="sunbullsolar@gmail.com",
                 hashed_password=hash_password("admin123"),
@@ -308,393 +170,13 @@ def startup_event():
                 is_active=True,
             )
             db.add(admin)
-            db.flush()
+            db.commit()
+            print("Admin account created.")
 
-        # Real Sunbull sales reps
-        rep_data = [
-            ("Nick Secor", "nicholassecor100@gmail.com"),
-            ("Johannes Ayarian", "ohannes.ayarian@gmail.com"),
-            ("Tyler Breskin", "breskinty@yahoo.com"),
-            ("Baraa Alkassir", "baraa.alkassir@gmail.com"),
-            ("Zack Diment", "zacharydiment26@gmail.com"),
-            ("Ralph Munoz", "ralphhmun@gmail.com"),
-            ("Angelo Mora", "jr.adasha99@gmail.com"),
-            ("Eddie Walker", "thisiseddieemail@gmail.com"),
-            ("Anna Aslanian", "aslanian_anna@yahoo.com"),
-            ("Joshua Kirshner", "joshuabkirshner@gmail.com"),
-            ("Mesrop Panosyan", "mesroppanosyano@gmail.com"),
-            ("Benny Bruskin", "bensterb@gmail.com"),
-            ("Rowan Nasser", "rowan.nasser96@gmail.com"),
-            ("Juan Gudiel", "juangudiel90@icloud.com"),
-            ("Nikka Gem Lumanac", "nikkageml@gmail.com"),
-            ("Erik Estrada", "eoe8891@gmail.com"),
-            ("Brian Fusi", "brianmfusi@gmail.com"),
-            ("Alexander Dominguez", "alexdominguez_69@gmail.com"),
-            ("Jordan Kahaner", "jordankahaner@gmail.com"),
-            ("Ruben Bagdasarian", "rubenlida2000@gmail.com"),
-            ("Itamar Azulay", "itamarazulay1@gmail.com"),
-            ("Rome Yostin", "romeyostin@gmail.com"),
-            ("Jane Millers", "janee.millers@gmail.com"),
-            ("Hazel Parker", "hazel.parker.tact@gmail.com"),
-            ("Vera Salem", "veralopezre@gmail.com"),
-            ("Sarah Jacob", "sarahhjacob003@gmail.com"),
-        ]
-
-        # Placeholder close rates (spread across reps realistically)
-        placeholder_close_rates = [
-            0.32, 0.28, 0.25, 0.30, 0.22, 0.27, 0.35, 0.20, 0.24, 0.29,
-            0.26, 0.31, 0.23, 0.19, 0.33, 0.21, 0.28, 0.24, 0.30, 0.26,
-            0.22, 0.34, 0.27, 0.25, 0.29, 0.23,
-        ]
-
-        all_reps = []
-        for i, (name, email_addr) in enumerate(rep_data):
-            rep = User(
-                email=email_addr,
-                hashed_password=hash_password("sunbull2026"),
-                full_name=name,
-                role="rep",
-                close_rate=placeholder_close_rates[i],
-                total_deals=random.randint(2, 15),
-                territory=str(900 + i),
-                is_active=True,
-            )
-            db.add(rep)
-            all_reps.append(rep)
-        db.flush()
-
-        # Use first 3 reps for seed data references
-        rep1, rep2, rep3 = all_reps[0], all_reps[1], all_reps[2]
-
-        conf = User(
-            email="confirm@sunbull.com",
-            hashed_password=hash_password("sunbull2026"),
-            full_name="Confirmation Team",
-            role="confirmation",
-            is_active=True,
-        )
-        db.add(conf)
-
-        inst1 = User(
-            email="installer1@sunbull.com",
-            hashed_password=hash_password("sunbull2026"),
-            full_name="Install Team A",
-            role="installer",
-            is_active=True,
-        )
-        inst2 = User(
-            email="installer2@sunbull.com",
-            hashed_password=hash_password("sunbull2026"),
-            full_name="Install Team B",
-            role="installer",
-            is_active=True,
-        )
-        db.add_all([inst1, inst2])
-        db.flush()  # Get IDs
-
-        # ---- LEADS ----
-        # (first_name, last_name, property_address, city, state, zip_code, phone, email,
-        #  average_monthly_bill, estimated_annual_kwh, source_type, deal_status)
-        # (first_name, last_name, address, city, state, zip, phone, email, bill, kwh, source, status, lat, lng)
-        leads_data = [
-            ("Robert", "Garcia", "123 Oak St", "Phoenix", "AZ", "85001", "555-1001", "robert@email.com", 285.0, 14400, "door_to_door", "confirmed", 33.4484, -112.0740),
-            ("Emily", "Davis", "456 Pine Ave", "Los Angeles", "CA", "90001", "555-1002", "emily@email.com", 320.0, 16800, "call_center", "confirmed", 34.0522, -118.2437),
-            ("David", "Wilson", "789 Maple Dr", "Houston", "TX", "77001", "555-1003", "david@email.com", 195.0, 10800, "web", "new", 29.7604, -95.3698),
-            ("Sarah", "Anderson", "321 Elm St", "San Diego", "CA", "92101", "555-1004", "sarah@email.com", 410.0, 21600, "door_to_door", "appointed", 32.7157, -117.1611),
-            ("Michael", "Brown", "654 Cedar Ln", "Austin", "TX", "78701", "555-1005", "michael@email.com", 175.0, 9600, "web", "confirming", 30.2672, -97.7431),
-            ("Jessica", "Taylor", "987 Birch Rd", "Miami", "FL", "33101", "555-1006", "jessica@email.com", 350.0, 18000, "call_center", "new", 25.7617, -80.1918),
-            ("James", "Thomas", "111 Spruce Way", "Tampa", "FL", "33601", "555-1007", "james@email.com", 265.0, 13200, "door_to_door", "confirmed", 27.9506, -82.4572),
-            ("Amanda", "Jackson", "222 Willow Ct", "Sacramento", "CA", "95801", "555-1008", "amanda@email.com", 290.0, 15000, "web", "new", 38.5816, -121.4944),
-            ("Christopher", "White", "333 Ash Blvd", "Mesa", "AZ", "85201", "555-1009", "chris@email.com", 225.0, 12000, "call_center", "unconfirmed", 33.4152, -111.8315),
-            ("Ashley", "Harris", "444 Redwood St", "Orlando", "FL", "32801", "555-1010", "ashley@email.com", 380.0, 19800, "door_to_door", "appointed", 28.5383, -81.3792),
-            ("Daniel", "Martin", "555 Sequoia Dr", "Dallas", "TX", "75201", "555-1011", "daniel@email.com", 155.0, 8400, "web", "follow_up", 32.7767, -96.7970),
-            ("Nicole", "Lopez", "666 Cypress Ave", "San Antonio", "TX", "78201", "555-1012", "nicole@email.com", 340.0, 17400, "call_center", "confirmed", 29.4241, -98.4936),
-        ]
-
-        from services.scoring import calculate_lead_score
-        reps = [rep1, rep2, rep3]
-        lead_objects = []
-        now = datetime.utcnow()
-
-        for i, (fn, ln, addr, city, st, zc, ph, em, bill, kwh, src, stat, lat, lng) in enumerate(leads_data):
-            score = calculate_lead_score(
-                average_monthly_bill=bill,
-                city=city,
-                state=st,
-                confirmation_strength=1 if stat == "confirmed" else 0,
-            )
-            cost_per_kwh = round(bill * 12 / kwh, 4) if kwh else None
-
-            lead = Lead(
-                first_name=fn,
-                last_name=ln,
-                property_address=addr,
-                city=city,
-                state=st,
-                zip_code=zc,
-                phone=ph,
-                email=em,
-                average_monthly_bill=bill,
-                estimated_annual_kwh=float(kwh),
-                cost_per_kwh=cost_per_kwh,
-                source_type=src,
-                deal_status=stat,
-                lead_quality_score=score,
-                homeowner_status="owner",
-                property_type="single_family",
-                assigned_rep_id=reps[i % 3].id if stat != "new" else None,
-                setter_id=reps[i % 3].id,
-                geo_lat=lat,
-                geo_lng=lng,
-                created_at=now - timedelta(days=random.randint(1, 30)),
-            )
-            db.add(lead)
-            lead_objects.append(lead)
-        db.flush()
-
-        # ---- APPOINTMENTS ----
-        for i, lead in enumerate(lead_objects[:6]):
-            if lead.assigned_rep_id:
-                appt_date = (now + timedelta(days=random.choice([0, 0, 0, 1, 2, 3]))).date()
-                appt_time = time(hour=random.choice([9, 10, 11, 13, 14, 15, 16]))
-                appt = Appointment(
-                    lead_id=lead.id,
-                    assigned_rep_id=lead.assigned_rep_id,
-                    appointment_date=appt_date,
-                    appointment_time=appt_time,
-                    scheduled_duration_minutes=90,
-                    appointment_status="scheduled" if i < 3 else "confirmed",
-                    confirmation_status="pending" if i < 3 else "confirmed",
-                    appointment_address=lead.property_address,
-                    created_at=now - timedelta(days=random.randint(0, 5)),
-                )
-                db.add(appt)
-        db.flush()
-
-        # ---- DEALS (from closed leads) ----
-        for lead in lead_objects[:2]:
-            lead.deal_status = "closed_won"
-            lead.closer_id = lead.assigned_rep_id
-            deal_val = round(lead.average_monthly_bill * 12 * 20 * 0.6, 2)
-            lead.deal_value = deal_val
-
-            deal = Deal(
-                lead_id=lead.id,
-                rep_id=lead.assigned_rep_id,
-                deal_value=deal_val,
-                pipeline_stage="sold",
-                installer_id=inst1.id,
-                responsible_party="installer",
-                sold_at=now - timedelta(days=random.randint(5, 15)),
-                stage_entered_at=now - timedelta(days=random.randint(5, 15)),
-            )
-            db.add(deal)
-            db.flush()
-
-            commission_amount = round(deal_val * 0.14, 2)
-            commission = Commission(
-                deal_id=deal.id,
-                rep_id=lead.assigned_rep_id,
-                deal_value=deal_val,
-                commission_rate=0.14,
-                commission_amount=commission_amount,
-                company_revenue=round(deal_val * 0.86, 2),
-                status="pending",
-            )
-            db.add(commission)
-
-            lead.commission_amount = commission_amount
-        db.flush()
-
-        # ---- INSTALLER PROFILES ----
-        for inst in [inst1, inst2]:
-            profile = InstallerProfile(
-                user_id=inst.id,
-                company_name=f"{inst.full_name}'s Solar Install",
-                jobs_assigned=random.randint(10, 30),
-                jobs_completed=random.randint(5, 20),
-                avg_install_days=round(random.uniform(3, 8), 1),
-                cancellation_rate=round(random.uniform(0.02, 0.15), 3),
-                funding_delay_avg_days=round(random.uniform(5, 20), 1),
-                performance_score=round(random.uniform(60, 95), 1),
-                tier=random.choice(["bronze", "silver", "gold"]),
-                is_active=True,
-            )
-            db.add(profile)
-
-        # ---- AUTOMATION RULES ----
-        rules = [
-            AutomationRule(
-                name="High-Value Lead → Top Rep",
-                description="Assign leads with bills over $300 to the rep with the highest close rate",
-                condition_field="average_monthly_bill",
-                condition_operator="gt",
-                condition_value="300",
-                action_type="assign_rep",
-                action_params=json.dumps({"strategy": "highest_close_rate"}),
-                is_active=True,
-                priority=10,
-                created_by=admin.id,
-            ),
-            AutomationRule(
-                name="Unconfirmed → Auto Reschedule",
-                description="If lead is unconfirmed after 3 attempts, auto-reschedule",
-                condition_field="deal_status",
-                condition_operator="eq",
-                condition_value="unconfirmed",
-                action_type="change_status",
-                action_params=json.dumps({"new_status": "reschedule"}),
-                is_active=True,
-                priority=20,
-                created_by=admin.id,
-            ),
-            AutomationRule(
-                name="Missed Update Alert",
-                description="Flag rep if no status update within 30 minutes after appointment",
-                condition_field="deal_status",
-                condition_operator="eq",
-                condition_value="appointed",
-                action_type="send_alert",
-                action_params=json.dumps({"alert_type": "missed_update", "notify_admin": True}),
-                is_active=True,
-                priority=5,
-                created_by=admin.id,
-            ),
-            AutomationRule(
-                name="Low Bill → Standard Queue",
-                description="Leads under $150 go to standard dispatch queue",
-                condition_field="average_monthly_bill",
-                condition_operator="lt",
-                condition_value="150",
-                action_type="assign_rep",
-                action_params=json.dumps({"strategy": "round_robin"}),
-                is_active=False,
-                priority=30,
-                created_by=admin.id,
-            ),
-        ]
-        db.add_all(rules)
-
-        # ---- CONFIRMATION ATTEMPTS ----
-        for lead in lead_objects[6:9]:
-            for attempt_num in range(1, random.randint(2, 4)):
-                ca = ConfirmationAttempt(
-                    lead_id=lead.id,
-                    agent_id=conf.id,
-                    attempt_number=attempt_num,
-                    outcome=random.choice(["answered", "no_answer", "voicemail"]),
-                    called_at=now - timedelta(hours=random.randint(1, 48)),
-                )
-                db.add(ca)
-
-        # ---- FOLLOW-UPS ----
-        follow_up_lead = lead_objects[10]  # Daniel Martin - follow_up status
-        follow_up_lead.follow_up_required = True
-        follow_up_lead.next_follow_up_date = now + timedelta(days=2)
-        follow_up = FollowUp(
-            lead_id=follow_up_lead.id,
-            assigned_rep_id=follow_up_lead.assigned_rep_id or rep1.id,
-            reason="Customer wants more info on financing",
-            scheduled_date=now + timedelta(days=2),
-            status="pending",
-            notes="Follow-up requested - customer interested but needs financing details",
-        )
-        db.add(follow_up)
-
-        # ---- REHASH QUEUE ----
-        rehash = RehashEntry(
-            lead_id=lead_objects[10].id,
-            original_rep_id=rep1.id,
-            assigned_rep_id=rep2.id,
-            reason="Follow-up requested - customer wants more info",
-            callback_at=now + timedelta(days=2),
-            attempts=1,
-            status="pending",
-        )
-        db.add(rehash)
-
-        # ---- NOTIFICATIONS ----
-        notifs = [
-            Notification(user_id=rep1.id, title="New Lead Assigned", message="Robert Garcia has been assigned to you", type="new_lead"),
-            Notification(user_id=rep2.id, title="Appointment Confirmed", message="Emily Davis confirmed for tomorrow at 2 PM", type="success"),
-            Notification(user_id=admin.id, title="Missed Update", message="Carlos Martinez has not updated status for appointment #3", type="warning"),
-        ]
-        db.add_all(notifs)
-
-        # ---- AUDIT LOG ENTRIES ----
-        for lead in lead_objects[:5]:
-            entry = AuditLog(
-                user_id=admin.id,
-                action="create",
-                entity_type="lead",
-                entity_id=lead.id,
-                details=f"Lead created: {lead.first_name} {lead.last_name}",
-                created_at=lead.created_at,
-            )
-            db.add(entry)
-
-        # ---- WEBSITE PAGES ----
-        pages = [
-            WebsitePage(
-                slug="homepage",
-                title="Go Solar with Sunbull",
-                subtitle="Save money. Save the planet. Get your free solar estimate today.",
-                body_content="Sunbull helps homeowners switch to solar with zero upfront cost. Our team handles everything from design to installation.",
-                meta_description="Sunbull Solar - Free solar estimates for homeowners. Save up to 30% on your electric bill.",
-                cta_text="Get My Free Estimate",
-                cta_link="/savings-plan",
-                sort_order=1,
-                is_published=True,
-            ),
-            WebsitePage(
-                slug="bill_upload",
-                title="Upload Your Electric Bill",
-                subtitle="We'll analyze your usage and show you exactly how much you can save.",
-                body_content="Upload a photo or PDF of your latest electric bill. We'll extract your usage data and generate a personalized savings plan.",
-                cta_text="Upload Bill",
-                cta_link="/upload",
-                sort_order=2,
-                is_published=True,
-            ),
-            WebsitePage(
-                slug="qualification_form",
-                title="See If You Qualify",
-                subtitle="Answer a few quick questions to get your personalized solar proposal.",
-                body_content="Our qualification process is simple. We need your address, electric bill info, and a few details about your home.",
-                cta_text="Check My Eligibility",
-                cta_link="/qualify",
-                sort_order=3,
-                is_published=True,
-            ),
-            WebsitePage(
-                slug="appointment_booking",
-                title="Book Your Free Consultation",
-                subtitle="Schedule a no-obligation appointment with a solar expert.",
-                body_content="Choose a time that works for you. One of our certified solar consultants will visit your home and provide a detailed proposal.",
-                cta_text="Book Now",
-                cta_link="/book",
-                sort_order=4,
-                is_published=True,
-            ),
-            WebsitePage(
-                slug="faq",
-                title="Frequently Asked Questions",
-                subtitle="Everything you need to know about going solar with Sunbull.",
-                body_content="Q: How much does solar cost? A: With our financing options, most homeowners pay $0 upfront.\nQ: How long does installation take? A: Typically 1-3 days.\nQ: Will I still have an electric bill? A: You may have a small grid connection fee, but your solar system will offset most or all of your usage.",
-                cta_text="Still Have Questions? Contact Us",
-                cta_link="/contact",
-                sort_order=5,
-                is_published=True,
-            ),
-        ]
-        db.add_all(pages)
-
-        db.commit()
-        print(f"Seeded: {len(leads_data)} leads, {len(rep_data)} reps, 2 installers, {len(rules)} rules, appointments, deals, commissions, website pages")
-
+        print("Startup complete. Production mode — no demo data seeded.")
     except Exception as e:
         db.rollback()
-        print(f"Seed error: {e}")
+        print(f"Startup error: {e}")
         import traceback
         traceback.print_exc()
     finally:
