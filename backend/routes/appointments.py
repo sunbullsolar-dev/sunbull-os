@@ -165,6 +165,7 @@ def create_appointment(
 @router.get("", response_model=List[AppointmentResponse])
 def list_appointments(
     assigned_rep_id: Optional[int] = Query(None),
+    lead_id: Optional[int] = Query(None),
     appointment_status: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
@@ -174,7 +175,16 @@ def list_appointments(
     """List appointments filtered by role/rep, enriched with lead name."""
     query = db.query(Appointment)
 
-    if current_user.role == "rep":
+    # If lead_id is provided, return all appointments for that lead
+    # (reps can see appointments for their assigned leads)
+    if lead_id:
+        query = query.filter(Appointment.lead_id == lead_id)
+        # For reps, verify they own this lead
+        if current_user.role == "rep":
+            lead = db.query(Lead).filter(Lead.id == lead_id).first()
+            if not lead or lead.assigned_rep_id != current_user.id:
+                return []
+    elif current_user.role == "rep":
         query = query.filter(Appointment.assigned_rep_id == current_user.id)
     elif current_user.role == "admin" and assigned_rep_id:
         query = query.filter(Appointment.assigned_rep_id == assigned_rep_id)

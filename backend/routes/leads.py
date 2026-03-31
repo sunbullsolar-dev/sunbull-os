@@ -717,6 +717,18 @@ def assign_lead(
     db.add(lead)
     db.flush()
 
+    # Also update all pending/scheduled appointments for this lead to the new rep
+    pending_appts = (
+        db.query(Appointment)
+        .filter(
+            Appointment.lead_id == lead_id,
+            Appointment.appointment_status.in_(["scheduled", "confirmed"]),
+        )
+        .all()
+    )
+    for appt in pending_appts:
+        appt.assigned_rep_id = assignment.rep_id
+
     # Create audit log
     create_audit_log(
         db=db,
@@ -726,7 +738,7 @@ def assign_lead(
         entity_id=lead.id,
         previous_value=old_rep_id,
         new_value=assignment.rep_id,
-        details=f"Lead assigned from rep {old_rep_id} to rep {assignment.rep_id}",
+        details=f"Lead assigned from rep {old_rep_id} to rep {assignment.rep_id} ({len(pending_appts)} appointments reassigned)",
     )
 
     # Log action to timeline

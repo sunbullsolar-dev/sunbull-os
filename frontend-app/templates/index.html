@@ -1614,7 +1614,7 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
     useEffect(()=>{loadExtra();setActionLogged(false);setPendingAction(null);setShowNextLead(false);setFin(null)},[lead.id]);
     const loadExtra=async()=>{
         try{
-            const calls=[af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af("/api/appointments")];
+            const calls=[af(`/api/leads/${lead.id}/timeline`),af(`/api/tasks?lead_id=${lead.id}`),af(`/api/appointments?lead_id=${lead.id}`)];
             if(isAdmin)calls.push(af(`/api/admin/lead-lock/${lead.id}`));
             const[tr,tskr,ar,lr]=await Promise.all(calls);
             if(tr.ok)sTL(await tr.json());
@@ -1790,8 +1790,13 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
                     {outcomes.map(o=><button key={o} className="btn" style={{fontSize:10,padding:"5px 10px",color:outcomeColors[o]||"#a1a1aa",borderColor:(outcomeColors[o]||"#27272a")+"40"}} onClick={()=>updOutcome(o)}>{sL(o)}</button>)}
                 </div>}
                 {/* INLINE ASSIGN DROPDOWN */}
-                {assignDD&&isAdmin&&<div style={{position:"absolute",top:"100%",right:60,background:"#111113",border:"1px solid #27272a",borderRadius:8,padding:6,zIndex:10,maxHeight:200,overflowY:"auto",width:220,boxShadow:"0 8px 30px #00000080"}}>
-                    {reps.map(r=><div key={r.id} style={{padding:"6px 10px",cursor:"pointer",fontSize:12,fontWeight:600,borderRadius:4,background:lead.assigned_rep_id===r.id?"#f59e0b18":"transparent",display:"flex",justifyContent:"space-between"}} onClick={()=>assignRep(r.id)}><span>{r.full_name}</span>{lead.assigned_rep_id===r.id&&<span style={{color:"#f59e0b",fontSize:9}}>CURRENT</span>}</div>)}
+                {assignDD&&isAdmin&&<div style={{position:"absolute",top:"100%",right:60,background:"#111113",border:"1px solid #27272a",borderRadius:10,padding:8,zIndex:10,maxHeight:260,overflowY:"auto",width:260,boxShadow:"0 8px 30px #00000080"}}>
+                    <div style={{fontSize:9,fontWeight:700,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",padding:"4px 8px 8px"}}>Select Rep</div>
+                    {reps.length===0?<div style={{padding:"16px 8px",textAlign:"center",color:"#3f3f46",fontSize:12}}>No active reps. Invite reps from the Reps page first.</div>:
+                    reps.map(r=><div key={r.id} style={{padding:"8px 10px",cursor:"pointer",fontSize:12,fontWeight:600,borderRadius:6,background:lead.assigned_rep_id===r.id?"#f59e0b18":"transparent",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background .1s"}} onMouseEnter={e=>e.currentTarget.style.background=lead.assigned_rep_id===r.id?"#f59e0b18":"#18181b"} onMouseLeave={e=>e.currentTarget.style.background=lead.assigned_rep_id===r.id?"#f59e0b18":"transparent"} onClick={()=>assignRep(r.id)}>
+                        <span>{r.full_name}</span>
+                        {lead.assigned_rep_id===r.id&&<span className="badge b-orange" style={{fontSize:8}}>Current</span>}
+                    </div>)}
                 </div>}
             </div>
 
