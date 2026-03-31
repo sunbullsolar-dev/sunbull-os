@@ -152,7 +152,8 @@ def get_rep_performance(
         rep_data.append(
             {
                 "id": rep.id,
-                "name": rep.full_name,
+                "full_name": rep.full_name or rep.email or f"Rep #{rep.id}",
+                "name": rep.full_name or rep.email or f"Rep #{rep.id}",
                 "email": rep.email,
                 "territory": rep.territory,
                 "total_leads": len(leads),
