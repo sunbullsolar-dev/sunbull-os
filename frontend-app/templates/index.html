@@ -2085,23 +2085,34 @@ function RepsPage(){
 }
 
 function InviteModal({onClose,onDone}){
-    const{af}=useA();const toast=useT();const[email,sE]=useState("");const[name,sN]=useState("");const[busy,sBusy]=useState(false);const[link,sLink]=useState("");
-    const send=async()=>{if(!email||!name){toast("err","Fill all fields");return}sBusy(true);try{const r=await af("/api/auth/invite",{method:"POST",body:JSON.stringify({email,full_name:name,role:"rep"})});if(r.ok){const d=await r.json();sLink(`${window.location.origin}/register?token=${d.token}`);toast("ok","Invite created")}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}sBusy(false)};
+    const{af}=useA();const toast=useT();const[email,sE]=useState("");const[name,sN]=useState("");const[busy,sBusy]=useState(false);const[link,sLink]=useState("");const[emailSent,setEmailSent]=useState(false);
+    const send=async()=>{if(!email||!name){toast("err","Fill all fields");return}sBusy(true);try{const r=await af("/api/auth/invite",{method:"POST",body:JSON.stringify({email,full_name:name,role:"rep"})});if(r.ok){const d=await r.json();sLink(`${window.location.origin}/register?token=${d.token}`);setEmailSent(d.email_sent===true);toast("ok",d.email_sent?"Invite sent!":"Invite created")}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}sBusy(false)};
     const copy=()=>{navigator.clipboard.writeText(link);toast("ok","Copied!")};
     return(
         <div className="modal-ov" onClick={onClose}><div className="modal" onClick={e=>e.stopPropagation()}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:16}}><h3 style={{fontSize:16,fontWeight:800}}>Invite Rep</h3><div style={{cursor:"pointer"}} onClick={onClose}><Ic d={IC.x}/></div></div>
             {!link?(
                 <div>
-                    <div style={{marginBottom:12}}><label className="lbl">Full Name</label><input className="inp" value={name} onChange={e=>sN(e.target.value)}/></div>
-                    <div style={{marginBottom:16}}><label className="lbl">Email</label><input className="inp" type="email" value={email} onChange={e=>sE(e.target.value)}/></div>
-                    <button className="btn btn-p" style={{width:"100%",padding:10}} disabled={busy} onClick={send}>{busy?"Creating...":"Create Invite Link"}</button>
+                    <div style={{marginBottom:12}}><label className="lbl">Full Name</label><input className="inp" value={name} onChange={e=>sN(e.target.value)} placeholder="e.g. Nick Secor"/></div>
+                    <div style={{marginBottom:16}}><label className="lbl">Email</label><input className="inp" type="email" value={email} onChange={e=>sE(e.target.value)} placeholder="rep@email.com"/></div>
+                    <button className="btn btn-p" style={{width:"100%",padding:12,fontSize:13}} disabled={busy} onClick={send}>{busy?"Sending invite...":"Send Invite"}</button>
                 </div>
             ):(
                 <div>
-                    <div style={{fontSize:12,color:"#71717a",marginBottom:10}}>Send this link to the rep:</div>
-                    <div style={{background:"#09090b",border:"1px solid #27272a",borderRadius:8,padding:10,fontSize:11,color:"#f59e0b",wordBreak:"break-all",marginBottom:12}}>{link}</div>
-                    <div style={{display:"flex",gap:6}}><button className="btn btn-p" style={{flex:1}} onClick={copy}>Copy Link</button><button className="btn" style={{flex:1}} onClick={onDone}>Done</button></div>
+                    {emailSent?(
+                        <div style={{background:"#052e16",border:"1px solid #166534",borderRadius:10,padding:14,marginBottom:14,textAlign:"center"}}>
+                            <div style={{fontSize:14,fontWeight:700,color:"#22c55e",marginBottom:4}}>Invite email sent!</div>
+                            <div style={{fontSize:12,color:"#71717a"}}>{email} will receive a link to create their account.</div>
+                        </div>
+                    ):(
+                        <div style={{background:"#451a03",border:"1px solid #92400e",borderRadius:10,padding:14,marginBottom:14}}>
+                            <div style={{fontSize:12,fontWeight:700,color:"#f59e0b",marginBottom:4}}>Email not configured yet</div>
+                            <div style={{fontSize:11,color:"#a1a1aa",lineHeight:1.5}}>Copy the link below and send it manually. To enable auto-emails, set SMTP_USER and SMTP_PASS in Railway.</div>
+                        </div>
+                    )}
+                    <div style={{fontSize:11,fontWeight:600,color:"#52525b",marginBottom:6}}>Registration link:</div>
+                    <div style={{background:"#09090b",border:"1px solid #27272a",borderRadius:8,padding:12,fontSize:11,color:"#f59e0b",wordBreak:"break-all",marginBottom:14,lineHeight:1.5}}>{link}</div>
+                    <div style={{display:"flex",gap:8}}><button className="btn btn-p" style={{flex:1,padding:10}} onClick={copy}>Copy Link</button><button className="btn" style={{flex:1,padding:10}} onClick={onDone}>Done</button></div>
                 </div>
             )}
         </div></div>

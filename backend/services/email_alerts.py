@@ -121,3 +121,40 @@ def notify_appointment_booked(
     # Also notify admin
     if rep_email != ADMIN_EMAIL:
         _send_email(ADMIN_EMAIL, subject, body)
+
+
+def send_invite_email(
+    rep_name: str,
+    rep_email: str,
+    invite_link: str,
+) -> bool:
+    """Send an invite email to a new rep with their registration link."""
+    subject = f"You're invited to join Sunbull Solar"
+    body = f"""
+    <div style="font-family:-apple-system,sans-serif;max-width:500px;margin:0 auto;padding:20px;">
+        <div style="text-align:center;margin-bottom:30px;">
+            <h1 style="color:#FF9F0A;font-size:28px;margin:0;">Sunbull Solar</h1>
+            <p style="color:#86868b;font-size:14px;margin-top:4px;">Command Center</p>
+        </div>
+        <h2 style="color:#1d1d1f;margin-bottom:16px;">Welcome, {rep_name}!</h2>
+        <p style="color:#424245;font-size:15px;line-height:1.6;">
+            You've been invited to join the Sunbull Solar team. Click the button below to create your account and get started.
+        </p>
+        <div style="text-align:center;margin:32px 0;">
+            <a href="{invite_link}" style="display:inline-block;background:#FF9F0A;color:#000;text-decoration:none;padding:14px 32px;border-radius:10px;font-weight:700;font-size:16px;">
+                Create Your Account
+            </a>
+        </div>
+        <p style="color:#86868b;font-size:13px;line-height:1.5;">
+            If the button doesn't work, copy and paste this link into your browser:
+        </p>
+        <p style="color:#FF9F0A;font-size:12px;word-break:break-all;background:#f5f5f7;padding:12px;border-radius:8px;">
+            {invite_link}
+        </p>
+        <hr style="border:none;border-top:1px solid #e5e5e7;margin:24px 0;">
+        <p style="color:#86868b;font-size:11px;text-align:center;">
+            Sunbull Solar &mdash; Powered by Sunbull OS
+        </p>
+    </div>
+    """
+    return _send_email(rep_email, subject, body)

@@ -14,7 +14,9 @@ from app.auth import (
 )
 from app.database import get_db
 from app.models import User, Invite
+from services.email_alerts import send_invite_email
 import secrets
+import os
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -185,12 +187,22 @@ def create_invite(
     db.commit()
     db.refresh(invite)
 
+    # Build full invite URL and send email
+    base_url = os.environ.get("BASE_URL", "https://web-production-1d7ec.up.railway.app")
+    full_link = f"{base_url}/register?token={invite.token}"
+    email_sent = send_invite_email(
+        rep_name=invite.full_name,
+        rep_email=invite.email,
+        invite_link=full_link,
+    )
+
     return {
         "invite_id": invite.id,
         "token": invite.token,
         "email": invite.email,
         "full_name": invite.full_name,
         "invite_link": f"/register?token={invite.token}",
+        "email_sent": email_sent,
     }
 
 
