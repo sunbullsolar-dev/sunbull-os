@@ -13,75 +13,125 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
         *{margin:0;padding:0;box-sizing:border-box}
-        body{font-family:'Inter',sans-serif;background:#09090b;color:#e4e4e7;-webkit-font-smoothing:antialiased}
-        ::-webkit-scrollbar{width:5px}::-webkit-scrollbar-thumb{background:#27272a;border-radius:3px}
-        .sb{width:200px;background:#0c0c0f;min-height:100vh;position:fixed;left:0;top:0;z-index:30;display:flex;flex-direction:column;border-right:1px solid #18181b}
-        .sb-link{display:flex;align-items:center;gap:9px;padding:9px 16px;color:#52525b;font-size:13px;font-weight:500;cursor:pointer;border-radius:7px;margin:1px 8px;transition:all .12s}
-        .sb-link:hover{color:#a1a1aa;background:#18181b}.sb-link.on{color:#f59e0b;background:#f59e0b10}
-        .mc{margin-left:200px;min-height:100vh}
-        .cd{background:#111113;border:1px solid #1e1e21;border-radius:10px}
-        .badge{display:inline-flex;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase}
-        .b-green{background:#22c55e18;color:#22c55e}.b-yellow{background:#eab30818;color:#eab308}.b-red{background:#ef444418;color:#ef4444}
-        .b-blue{background:#3b82f618;color:#3b82f6}.b-gray{background:#ffffff08;color:#71717a}.b-orange{background:#f59e0b18;color:#f59e0b}
-        .b-purple{background:#a855f718;color:#a855f7}
-        .kpi{display:flex;flex-direction:column;padding:12px 16px;border-radius:8px;background:#111113;border:1px solid #1e1e21;min-width:100px}
-        .kpi.hot{border-color:#ef444440;background:#ef444408}.kpi.warn{border-color:#f59e0b40;background:#f59e0b08}.kpi.ok{border-color:#22c55e40;background:#22c55e08}
-        .tr{display:grid;align-items:center;padding:9px 14px;border-bottom:1px solid #18181b;font-size:13px;cursor:pointer;transition:background .08s}
-        .tr:hover{background:#ffffff04}
-        .dov{position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:40;animation:fi .15s forwards;opacity:0}
-        .drw{position:fixed;right:0;top:0;bottom:0;width:520px;background:#0c0c0f;z-index:50;border-left:1px solid #1e1e21;transform:translateX(100%);animation:sl .2s forwards;overflow-y:auto}
+        html{scroll-behavior:smooth}
+        body{font-family:'Inter',sans-serif;background:#09090b;color:#e4e4e7;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;line-height:1.5}
+        ::selection{background:#f59e0b30;color:#fbbf24}
+        ::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:#27272a;border-radius:3px}::-webkit-scrollbar-thumb:hover{background:#3f3f46}
+
+        /* SIDEBAR */
+        .sb{width:220px;background:linear-gradient(180deg,#0a0a0d 0%,#0c0c0f 100%);min-height:100vh;position:fixed;left:0;top:0;z-index:30;display:flex;flex-direction:column;border-right:1px solid #18181b}
+        .sb-link{display:flex;align-items:center;gap:10px;padding:10px 16px;color:#52525b;font-size:13px;font-weight:500;cursor:pointer;border-radius:8px;margin:2px 10px;transition:all .15s ease}
+        .sb-link:hover{color:#a1a1aa;background:#18181b}.sb-link.on{color:#f59e0b;background:#f59e0b0d;box-shadow:inset 3px 0 0 #f59e0b}
+        .mc{margin-left:220px;min-height:100vh;padding-bottom:40px}
+
+        /* CARDS & PANELS */
+        .cd{background:#111113;border:1px solid #1e1e21;border-radius:12px;transition:border-color .15s ease}
+
+        /* BADGES */
+        .badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;transition:opacity .15s}
+        .b-green{background:#22c55e14;color:#22c55e}.b-yellow{background:#eab30814;color:#eab308}.b-red{background:#ef444414;color:#ef4444}
+        .b-blue{background:#3b82f614;color:#3b82f6}.b-gray{background:#ffffff08;color:#71717a}.b-orange{background:#f59e0b14;color:#f59e0b}
+        .b-purple{background:#a855f714;color:#a855f7}
+
+        /* KPI CARDS */
+        .kpi{display:flex;flex-direction:column;padding:14px 18px;border-radius:10px;background:#111113;border:1px solid #1e1e21;min-width:110px;transition:all .15s ease}
+        .kpi:hover{border-color:#27272a}
+        .kpi.hot{border-color:#ef444440;background:#ef444406}.kpi.warn{border-color:#f59e0b40;background:#f59e0b06}.kpi.ok{border-color:#22c55e40;background:#22c55e06}
+
+        /* TABLE ROWS */
+        .tr{display:grid;align-items:center;padding:10px 16px;border-bottom:1px solid #18181b;font-size:13px;cursor:pointer;transition:background .1s ease}
+        .tr:hover{background:#ffffff06}
+
+        /* DRAWER & OVERLAY */
+        .dov{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:40;animation:fi .2s ease forwards;opacity:0}
+        .drw{position:fixed;right:0;top:0;bottom:0;width:520px;background:#0c0c0f;z-index:50;border-left:1px solid #1e1e21;transform:translateX(100%);animation:sl .25s cubic-bezier(.4,0,.2,1) forwards;overflow-y:auto}
         @keyframes fi{to{opacity:1}}@keyframes sl{to{transform:translateX(0)}}
-        .toast{position:fixed;bottom:20px;right:20px;z-index:60;padding:10px 18px;border-radius:10px;font-size:12px;font-weight:700;color:#fff;animation:ti .25s forwards}
-        .t-ok{background:#22c55e}.t-err{background:#ef4444}@keyframes ti{from{transform:translateY(12px);opacity:0}to{transform:translateY(0);opacity:1}}
-        .inp{width:100%;padding:9px 12px;border:1px solid #27272a;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#09090b;color:#e4e4e7;transition:border .12s}
-        .inp:focus{border-color:#f59e0b}
-        select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
-        textarea.inp{resize:vertical;min-height:60px}
-        .btn{padding:8px 16px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;border:1px solid #27272a;background:transparent;color:#a1a1aa;font-family:inherit;transition:all .1s}
-        .btn:hover{background:#18181b;border-color:#3f3f46}
-        .btn-p{background:#f59e0b;border-color:#f59e0b;color:#000}.btn-p:hover{background:#d97706}
-        .btn-p:disabled{opacity:.35;cursor:not-allowed}
+
+        /* TOAST */
+        .toast{position:fixed;bottom:24px;right:24px;z-index:60;padding:12px 20px;border-radius:10px;font-size:12px;font-weight:600;color:#fff;animation:ti .3s cubic-bezier(.4,0,.2,1) forwards;box-shadow:0 8px 24px rgba(0,0,0,.4)}
+        .t-ok{background:#16a34a}.t-err{background:#dc2626}@keyframes ti{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+        /* INPUTS */
+        .inp{width:100%;padding:10px 14px;border:1px solid #27272a;border-radius:8px;font-size:13px;font-family:inherit;outline:none;background:#09090b;color:#e4e4e7;transition:border-color .15s ease,box-shadow .15s ease}
+        .inp:focus{border-color:#f59e0b;box-shadow:0 0 0 3px #f59e0b18}
+        .inp::placeholder{color:#3f3f46}
+        select.inp{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 24 24' fill='none' stroke='%2352525b' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 12px center}
+        textarea.inp{resize:vertical;min-height:72px}
+
+        /* BUTTONS */
+        .btn{padding:9px 18px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid #27272a;background:transparent;color:#a1a1aa;font-family:inherit;transition:all .15s ease;letter-spacing:.01em}
+        .btn:hover{background:#18181b;border-color:#3f3f46;transform:translateY(-1px)}
+        .btn:active{transform:translateY(0)}
+        .btn-p{background:#f59e0b;border-color:#f59e0b;color:#000;font-weight:700}.btn-p:hover{background:#d97706;border-color:#d97706}
+        .btn-p:disabled{opacity:.35;cursor:not-allowed;transform:none}
         .btn-g{border-color:#22c55e40;color:#22c55e}.btn-g:hover{background:#22c55e10}
         .btn-r{border-color:#ef444440;color:#ef4444}.btn-r:hover{background:#ef444410}
-        .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:50;display:flex;align-items:center;justify-content:center}
-        .modal{background:#111113;border:1px solid #1e1e21;border-radius:14px;padding:24px;width:480px;max-width:92vw;max-height:85vh;overflow-y:auto}
-        .spin{border:3px solid #18181b;border-top:3px solid #f59e0b;border-radius:50%;width:28px;height:28px;animation:sp .6s linear infinite}
+
+        /* MODALS */
+        .modal-ov{position:fixed;inset:0;background:rgba(0,0,0,.65);backdrop-filter:blur(4px);-webkit-backdrop-filter:blur(4px);z-index:50;display:flex;align-items:center;justify-content:center;animation:fi .2s ease forwards;opacity:0}
+        .modal{background:#111113;border:1px solid #1e1e21;border-radius:16px;padding:28px;width:480px;max-width:92vw;max-height:85vh;overflow-y:auto;animation:mo .25s cubic-bezier(.4,0,.2,1) forwards;transform:scale(.96);opacity:0}
+        @keyframes mo{to{transform:scale(1);opacity:1}}
+
+        /* SPINNER */
+        .spin{border:3px solid #18181b;border-top:3px solid #f59e0b;border-radius:50%;width:28px;height:28px;animation:sp .7s linear infinite}
         @keyframes sp{to{transform:rotate(360deg)}}
-        .tab{padding:8px 16px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.04em;border-bottom:2px solid transparent;color:#52525b;transition:all .1s}
+
+        /* TABS */
+        .tab{padding:9px 18px;font-size:11px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.05em;border-bottom:2px solid transparent;color:#52525b;transition:all .15s ease}
         .tab.on{color:#f59e0b;border-color:#f59e0b}
         .tab:hover{color:#a1a1aa}
-        .appt-card{background:#111113;border:1px solid #1e1e21;border-radius:10px;padding:14px;cursor:pointer;transition:all .12s;position:relative}
-        .appt-card:hover{border-color:#27272a;background:#141416}
+
+        /* APPOINTMENT CARDS */
+        .appt-card{background:#111113;border:1px solid #1e1e21;border-radius:12px;padding:16px;cursor:pointer;transition:all .15s ease;position:relative}
+        .appt-card:hover{border-color:#27272a;background:#141416;transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.2)}
         .appt-card.live{border-left:3px solid #22c55e}.appt-card.risk{border-left:3px solid #ef4444}.appt-card.wrn{border-left:3px solid #f59e0b}.appt-card.next{border-left:3px solid #3b82f6}
+
+        /* TIMELINE */
         .tl-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;margin-top:5px}
         .tl-line{width:1px;background:#27272a;margin-left:3px;flex-shrink:0;min-height:20px}
+
+        /* EMPTY STATES */
+        .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;text-align:center;color:#3f3f46}
+        .empty-state svg{margin-bottom:16px;opacity:.4}
+        .empty-state .es-title{font-size:14px;font-weight:600;color:#52525b;margin-bottom:6px}
+        .empty-state .es-sub{font-size:12px;color:#3f3f46;max-width:280px;line-height:1.6}
+
+        /* PAGE TRANSITIONS */
+        .page-fade{animation:pf .2s ease forwards;opacity:0}
+        @keyframes pf{to{opacity:1}}
+
+        /* RESPONSIVE */
         @media(max-width:768px){
-            .sb{width:52px}.sb .nl,.sb .lt,.sb .ls{display:none}.sb-link{justify-content:center;padding:10px}.mc{margin-left:52px}.drw{width:100%!important}
-            .btn{padding:8px 14px;font-size:12px;min-height:40px}
+            .sb{width:56px}.sb .nl,.sb .lt,.sb .ls{display:none}.sb-link{justify-content:center;padding:10px;box-shadow:none!important}.mc{margin-left:56px}.drw{width:100%!important}
+            .btn{padding:9px 14px;font-size:12px;min-height:40px}
             .appt-card{padding:16px}
             .modal{width:95%;max-height:90vh;overflow-y:auto}
             .tr{font-size:11px}
             .ph-title{font-size:16px}
             .cd{overflow-x:auto}
-            .kpi{min-width:80px;padding:10px 12px}
+            .kpi{min-width:80px;padding:12px}
             .drw-left{display:none!important}
         }
         @media(max-width:480px){
             .sb{width:0;display:none}.mc{margin-left:0}
             .btn{padding:10px 16px;font-size:13px;min-height:44px}
             .appt-card{padding:14px}
-            .kpi{min-width:70px;padding:8px 10px}
-            .modal{width:100%;max-width:100%;border-radius:12px 12px 0 0;position:fixed;bottom:0;max-height:92vh}
+            .kpi{min-width:70px;padding:10px}
+            .modal{width:100%;max-width:100%;border-radius:16px 16px 0 0;position:fixed;bottom:0;max-height:92vh}
         }
-        /* Touch target enforcement */
         @media(pointer:coarse){
             .btn{min-height:44px;min-width:44px}
             a[href^="tel:"]{min-height:44px;display:inline-flex;align-items:center}
             .sb-link{min-height:44px}
             .tab{min-height:44px;display:flex;align-items:center}
         }
-        .map-tip{background:#18181b!important;border:1px solid #27272a!important;color:#e4e4e7!important;font-family:'Inter',sans-serif!important;font-size:11px!important;padding:6px 10px!important;border-radius:6px!important;box-shadow:0 4px 12px rgba(0,0,0,.5)!important}
+
+        /* MAP TOOLTIPS */
+        .map-tip{background:#18181b!important;border:1px solid #27272a!important;color:#e4e4e7!important;font-family:'Inter',sans-serif!important;font-size:11px!important;padding:8px 12px!important;border-radius:8px!important;box-shadow:0 4px 16px rgba(0,0,0,.5)!important}
         .map-tip .leaflet-tooltip-tip{display:none!important}
+
+        /* FOCUS RING */
+        :focus-visible{outline:2px solid #f59e0b40;outline-offset:2px;border-radius:4px}
     </style>
 </head>
 <body>
@@ -179,14 +229,17 @@ function Login(){
     const{login}=useA();const[e,sE]=useState("");const[p,sP]=useState("");const[err,sErr]=useState("");const[busy,sB]=useState(false);
     const go=async ev=>{ev.preventDefault();sErr("");sB(true);try{await login(e,p);nav("/dashboard")}catch{sErr("Invalid credentials")}sB(false)};
     return(
-        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"16px"}}>
-            <div style={{width:"100%",maxWidth:360,background:"#111113",border:"1px solid #1e1e21",borderRadius:16,padding:"36px 28px"}}>
-                <div style={{textAlign:"center",marginBottom:28}}><div style={{fontSize:26,fontWeight:900}}><span style={{color:"#f59e0b"}}>Sunbull</span> OS</div><div style={{color:"#52525b",fontSize:12,marginTop:3}}>Command Center</div></div>
+        <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:"20px",background:"radial-gradient(ellipse at 50% 0%,#18130a 0%,#09090b 60%)"}}>
+            <div className="page-fade" style={{width:"100%",maxWidth:380,background:"#111113",border:"1px solid #1e1e21",borderRadius:20,padding:"44px 32px",boxShadow:"0 16px 48px rgba(0,0,0,.4)"}}>
+                <div style={{textAlign:"center",marginBottom:36}}>
+                    <div style={{fontSize:28,fontWeight:900,letterSpacing:"-.03em"}}><span style={{color:"#f59e0b"}}>Sunbull</span> <span style={{color:"#52525b"}}>OS</span></div>
+                    <div style={{color:"#3f3f46",fontSize:12,marginTop:6,fontWeight:500}}>Command Center</div>
+                </div>
                 <form onSubmit={go}>
-                    <div style={{marginBottom:14}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Email</label><input className="inp" type="email" value={e} onChange={x=>sE(x.target.value)} required/></div>
-                    <div style={{marginBottom:20}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:5,textTransform:"uppercase",letterSpacing:".06em"}}>Password</label><input className="inp" type="password" value={p} onChange={x=>sP(x.target.value)} required/></div>
-                    {err&&<div style={{color:"#ef4444",fontSize:12,marginBottom:14,textAlign:"center"}}>{err}</div>}
-                    <button className="btn btn-p" type="submit" disabled={busy} style={{width:"100%",padding:12,fontSize:14}}>{busy?"Signing in...":"Sign In"}</button>
+                    <div style={{marginBottom:16}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:6,textTransform:"uppercase",letterSpacing:".08em"}}>Email</label><input className="inp" type="email" value={e} onChange={x=>sE(x.target.value)} required placeholder="you@sunbull.com" autoComplete="email"/></div>
+                    <div style={{marginBottom:24}}><label style={{display:"block",fontSize:10,fontWeight:700,color:"#52525b",marginBottom:6,textTransform:"uppercase",letterSpacing:".08em"}}>Password</label><input className="inp" type="password" value={p} onChange={x=>sP(x.target.value)} required placeholder="Enter password" autoComplete="current-password"/></div>
+                    {err&&<div style={{color:"#ef4444",fontSize:12,marginBottom:14,textAlign:"center",fontWeight:600}}>{err}</div>}
+                    <button className="btn btn-p" type="submit" disabled={busy} style={{width:"100%",padding:"13px 20px",fontSize:14,borderRadius:10}}>{busy?"Signing in...":"Sign In"}</button>
                 </form>
             </div>
         </div>
@@ -209,11 +262,11 @@ function Sidebar(){
     ];
     return(
         <div className="sb">
-            <div style={{padding:"16px 14px 12px",borderBottom:"1px solid #18181b"}}><div style={{fontSize:16,fontWeight:900}}><span style={{color:"#f59e0b"}}>SB</span> <span className="lt">OS</span></div><div className="ls" style={{color:"#3f3f46",fontSize:9,marginTop:1,textTransform:"uppercase",letterSpacing:".08em",fontWeight:800}}>Command Center</div></div>
-            <nav style={{flex:1,padding:"8px 0"}}>{lnk.map(l=><div key={l.p} className={`sb-link ${h.startsWith(l.p)?"on":""}`} onClick={()=>nav(l.p)}><Ic d={l.i}/><span className="nl">{l.l}</span></div>)}</nav>
-            <div style={{padding:"10px 8px",borderTop:"1px solid #18181b"}}>
-                <div style={{padding:"6px 10px",marginBottom:4}}><div style={{color:"#a1a1aa",fontSize:11,fontWeight:700}}>{user?.full_name}</div><div style={{color:"#3f3f46",fontSize:9,textTransform:"uppercase",fontWeight:800}}>{user?.role}</div></div>
-                <div className="sb-link" onClick={logout}><Ic d={IC.out}/><span className="nl">Sign Out</span></div>
+            <div style={{padding:"18px 16px 14px",borderBottom:"1px solid #18181b"}}><div style={{fontSize:17,fontWeight:900,letterSpacing:"-.02em"}}><span style={{color:"#f59e0b"}}>Sunbull</span> <span className="lt" style={{color:"#52525b"}}>OS</span></div><div className="ls" style={{color:"#3f3f46",fontSize:9,marginTop:2,textTransform:"uppercase",letterSpacing:".1em",fontWeight:700}}>Command Center</div></div>
+            <nav style={{flex:1,padding:"10px 0",display:"flex",flexDirection:"column",gap:1}}>{lnk.map(l=><div key={l.p} className={`sb-link ${h.startsWith(l.p)?"on":""}`} onClick={()=>nav(l.p)}><Ic d={l.i} s={16}/><span className="nl">{l.l}</span></div>)}</nav>
+            <div style={{padding:"12px 10px",borderTop:"1px solid #18181b"}}>
+                <div style={{padding:"8px 12px",marginBottom:4}}><div style={{color:"#a1a1aa",fontSize:12,fontWeight:600,lineHeight:1.3}}>{user?.full_name}</div><div style={{color:"#3f3f46",fontSize:9,textTransform:"uppercase",fontWeight:700,marginTop:2,letterSpacing:".06em"}}>{user?.role}</div></div>
+                <div className="sb-link" onClick={logout}><Ic d={IC.out} s={16}/><span className="nl">Sign Out</span></div>
             </div>
         </div>
     );
@@ -538,11 +591,11 @@ function DashboardPage(){
                     </div>
                 </div>
             )}
-            <div style={{padding:"14px 24px 10px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <div><h1 style={{fontSize:18,fontWeight:900}}>War Room</h1><p style={{color:"#3f3f46",fontSize:11,marginTop:1}}>Auto-refreshes every 30s</p></div>
-                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <div style={{padding:"20px 28px 16px",borderBottom:"1px solid #18181b",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div><h1 style={{fontSize:20,fontWeight:800,letterSpacing:"-.02em"}}>War Room</h1><p style={{color:"#52525b",fontSize:12,marginTop:3,fontWeight:500}}>Live operations dashboard</p></div>
+                <div style={{display:"flex",gap:8,alignItems:"center"}}>
                     {notifs.length>0&&<span className="badge b-blue" style={{fontSize:10}}>{notifs.length} alerts</span>}
-                    <button className="btn" onClick={load}><Ic d={IC.refresh} s={12}/></button>
+                    <button className="btn" onClick={load} style={{padding:"8px 12px"}}><Ic d={IC.refresh} s={14}/></button>
                 </div>
             </div>
             <div style={{padding:"16px 24px"}}>
@@ -587,7 +640,7 @@ function DashboardPage(){
                     <div>
                         <SH title="Dispatch Board" count={todayAppts.length}/>
                         <div className="cd" style={{padding:0,maxHeight:280,overflowY:"auto",marginBottom:12}}>
-                            {todayAppts.length===0?<div style={{padding:24,textAlign:"center",color:"#3f3f46",fontSize:12}}>No appointments today</div>:
+                            {todayAppts.length===0?<Empty icon={IC.cal} title="No appointments today" sub="Appointments will appear here once dispatched"/>:
                             todayAppts.map(a=>(
                                 <div key={a.id} style={{padding:"10px 14px",borderBottom:"1px solid #18181b",cursor:"pointer"}} onClick={()=>nav("/dispatch")}>
                                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
@@ -768,6 +821,21 @@ function DashboardPage(){
                         </div>
                     </div>
                 </div>
+                {/* ADMIN TOOLS — Production Controls */}
+                <div style={{marginTop:24,borderTop:"1px solid #18181b",paddingTop:20}}>
+                    <SH title="System Controls"/>
+                    <div className="cd" style={{padding:16,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                        <div>
+                            <div style={{fontSize:13,fontWeight:700}}>Clean Slate</div>
+                            <div style={{fontSize:11,color:"#52525b",marginTop:2}}>Delete all demo data. Keeps admin account only.</div>
+                        </div>
+                        <button className="btn btn-r" onClick={async()=>{
+                            if(!confirm("DELETE ALL DATA? This removes every lead, rep, appointment, task, project, and deal. Only your admin account will remain. This cannot be undone."))return;
+                            if(!confirm("Are you absolutely sure? Type YES in next prompt.")){return}
+                            try{const r=await af("/api/admin/clean-slate",{method:"POST"});if(r.ok){const d=await r.json();toast("ok",`Clean slate complete: ${d.total_records_deleted} records deleted`);load()}else{const e=await r.json();toast("err",e.detail||"Failed")}}catch{toast("err","Error running clean slate")}
+                        }}>Wipe All Data</button>
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -911,7 +979,7 @@ function AppointmentDrawer({appt,leads,reps,onClose,onRefresh}){
                                 )}
                                 <div style={{marginBottom:12}}>
                                     <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Reassign Rep</div>
-                                    <select className="inp" onChange={e=>{if(e.target.value){af(`/api/admin/reassign`,{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:appt.id,new_rep_id:parseInt(e.target.value)})}).then(r=>{if(r.ok){toast("ok","Reassigned");onRefresh()}else{toast("err","Failed")}})}}}>
+                                    <select className="inp" onChange={e=>{if(e.target.value){af(`/api/admin/reassign`,{method:"POST",body:JSON.stringify({entity_type:"appointment",entity_id:appt.id,new_rep_id:parseInt(e.target.value)})}).then(r=>{if(r.ok){toast("ok","Reassigned");onRefresh()}else{toast("err","Failed")}}).catch(()=>toast("err","Error"))}}}>
                                         <option value="">Select rep...</option>
                                         {Object.values(reps).map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}
                                     </select>
@@ -1070,7 +1138,7 @@ function DispatchPage(){
                 {tab==="dispatch"&&user?.role==="admin"&&<div>
                     {/* DISPATCH QUEUE - confirmed appointments needing rep assignment */}
                     <SH title="Confirmed Appointments — Assign & Dispatch" count={dispatchQueue.length}/>
-                    {dispatchQueue.length===0?<div className="cd" style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No appointments waiting for dispatch</div>:
+                    {dispatchQueue.length===0?<div className="cd"><Empty icon={IC.zap} title="Dispatch queue clear" sub="Confirmed appointments will appear here for rep assignment"/></div>:
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         {dispatchQueue.map(q=>{
                             const hasConflict=q.conflicts&&q.conflicts.length>0;
@@ -1118,7 +1186,7 @@ function DispatchPage(){
                     {confirmed.length>0&&<ASection title="Ready to Dispatch" color="#3b82f6" items={confirmed} leads={leads} reps={reps} cls="next" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
                     {(completed.length>0||noShow.length>0)&&<ASection title="Results" color="#52525b" items={[...completed,...noShow]} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC}/>}
                     {upcoming.length>0&&<ASection title="Upcoming" color="#3f3f46" items={upcoming.slice(0,12)} leads={leads} reps={reps} cls="" onAct={updSt} onSel={setSA} onComplete={setSC} onAssign={user?.role==="admin"?openAssign:null}/>}
-                    {todayA.length===0&&upcoming.length===0&&<div className="cd" style={{padding:48,textAlign:"center",color:"#3f3f46"}}>No appointments</div>}
+                    {todayA.length===0&&upcoming.length===0&&<div className="cd"><Empty icon={IC.cal} title="No appointments" sub="Submit appointments via /submit or create them from leads"/></div>}
                 </div>}
             </div>
             {selA&&<AppointmentDrawer appt={selA} leads={leads} reps={reps} onClose={()=>setSA(null)} onRefresh={loadAll}/>}
@@ -1503,13 +1571,13 @@ function LeadsPage(){
                             </div>}
                         </div>
                     ))}
-                    {groups.length===0&&<div className="cd" style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No leads match filters</div>}
+                    {groups.length===0&&<div className="cd"><Empty icon={IC.search} title="No leads match filters" sub="Try adjusting your search or filter criteria"/></div>}
                 </div>}
 
                 {/* ===== TABLE VIEW (flat list) ===== */}
                 {viewMode==="table"&&<div className="cd" style={{overflow:"hidden"}}>
                     <ColHead/>
-                    {filtered.length===0&&<div style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No leads</div>}
+                    {filtered.length===0&&<Empty icon={IC.users} title="No leads" sub="Create your first lead or submit an appointment at /submit"/>}
                     {filtered.map(l=><LeadRow key={l.id} l={l}/>)}
                 </div>}
             </div>
@@ -2064,7 +2132,7 @@ function TasksPage(){
                     {!typeFilter&&<select className="inp" style={{minWidth:100}} value={typeFilter} onChange={e=>setTF(e.target.value)}><option value="">Task Type: All</option>{taskTypes.map(t=><option key={t} value={t}>{sL(t)}</option>)}</select>}
                     {user?.role==="admin"&&reps.length>0&&<select className="inp" style={{minWidth:100}} value={repFilter} onChange={e=>setRepFilter(e.target.value)}><option value="">Assigned To: All</option>{reps.map(r=><option key={r.id} value={r.id}>{r.full_name}</option>)}</select>}
                 </div>
-                {tasks.length===0?<div className="cd" style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No tasks</div>:
+                {tasks.length===0?<div className="cd"><Empty icon={IC.check} title="No tasks" sub="Tasks are created automatically from appointments and follow-ups"/></div>:
                 <div className="cd" style={{overflow:"hidden"}}>
                     <div style={{display:"grid",gridTemplateColumns:"2fr 1.5fr .8fr .8fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}><div>Task</div><div>Lead</div><div>Due</div><div>Status</div><div/></div>
                     {tasks.map(t=>(
@@ -2241,7 +2309,7 @@ function ProjectsPage(){
                 </div>
 
                 {viewMode==="table"&&<div className="cd" style={{overflow:"hidden"}}>
-                    {filtered.length===0?<div style={{padding:32,textAlign:"center",color:"#3f3f46"}}>No projects</div>:
+                    {filtered.length===0?<Empty icon={IC.flag} title="No projects" sub="Projects are created when deals close with a contract value"/>:
                     <div>
                         <div style={{display:"grid",gridTemplateColumns:"2fr 1fr 1fr .8fr .8fr .5fr",padding:"8px 14px",borderBottom:"1px solid #18181b",fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em"}}>
                             <div>Lead</div><div>Deal Value</div><div>Closer</div><div>Install</div><div>Funding</div><div/>
@@ -2341,7 +2409,7 @@ function ProjectsPage(){
                             <div>
                                 <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Install Status</label>
                                 <select className="inp" defaultValue={selProject.install_status||"pending_survey"} onChange={e=>{
-                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({install_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}})
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({install_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}}).catch(()=>toast("err","Error"))
                                 }}>
                                     <option value="pending_survey">Pending Survey</option><option value="pending_permit">Pending Permit</option><option value="pending_install">Pending Install</option><option value="installed">Installed</option><option value="inspection">Inspection</option><option value="pto">PTO</option><option value="completed">Completed</option><option value="cancelled">Cancelled</option>
                                 </select>
@@ -2349,7 +2417,7 @@ function ProjectsPage(){
                             <div>
                                 <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Funding Status</label>
                                 <select className="inp" defaultValue={selProject.funding_status||"pending"} onChange={e=>{
-                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({funding_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}})
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({funding_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}}).catch(()=>toast("err","Error"))
                                 }}>
                                     <option value="pending">Pending</option><option value="submitted">Submitted</option><option value="approved">Approved</option><option value="funded">Funded</option><option value="declined">Declined</option>
                                 </select>
@@ -2357,7 +2425,7 @@ function ProjectsPage(){
                             <div>
                                 <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Payment Status</label>
                                 <select className="inp" defaultValue={selProject.payment_status||"pending"} onChange={e=>{
-                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({payment_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}})
+                                    af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({payment_status:e.target.value})}).then(r=>{if(r.ok){toast("ok","Updated");load()}else{toast("err","Failed")}}).catch(()=>toast("err","Error"))
                                 }}>
                                     <option value="pending">Pending</option><option value="invoiced">Invoiced</option><option value="paid">Paid</option>
                                 </select>
@@ -2366,15 +2434,15 @@ function ProjectsPage(){
                         <div style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",marginBottom:6}}>Key Dates</div>
                         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:8,marginBottom:16}}>
                             {[["survey_date","Survey"],["permit_date","Permit"],["install_date","Install"],["inspection_date","Inspection"],["pto_date","PTO"],["funded_date","Funded"],["paid_date","Paid"]].map(([k,l])=>(
-                                <div key={k}><label style={{fontSize:9,color:"#3f3f46",display:"block",marginBottom:2}}>{l}</label><input type="date" className="inp" defaultValue={selProject[k]?selProject[k].split("T")[0]:""} onChange={e=>{if(e.target.value){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({[k]:e.target.value})}).then(r=>{if(r.ok)toast("ok",`${l} updated`);else toast("err","Failed")})}}}/></div>
+                                <div key={k}><label style={{fontSize:9,color:"#3f3f46",display:"block",marginBottom:2}}>{l}</label><input type="date" className="inp" defaultValue={selProject[k]?selProject[k].split("T")[0]:""} onChange={e=>{if(e.target.value){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({[k]:e.target.value})}).then(r=>{if(r.ok)toast("ok",`${l} updated`);else toast("err","Failed")}).catch(()=>toast("err","Error"))}}}/></div>
                             ))}
                         </div>
                         <div style={{marginBottom:16}}>
                             <label style={{fontSize:10,fontWeight:800,color:"#52525b",textTransform:"uppercase",display:"block",marginBottom:4}}>Notes</label>
-                            <textarea className="inp" defaultValue={selProject.notes||""} placeholder="Project notes..." onBlur={e=>{if(e.target.value!==selProject.notes){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({notes:e.target.value})}).then(r=>{if(r.ok)toast("ok","Notes saved");else toast("err","Failed")})}}}/>
+                            <textarea className="inp" defaultValue={selProject.notes||""} placeholder="Project notes..." onBlur={e=>{if(e.target.value!==selProject.notes){af(`/api/projects/${selProject.id}`,{method:"PUT",body:JSON.stringify({notes:e.target.value})}).then(r=>{if(r.ok)toast("ok","Notes saved");else toast("err","Failed")}).catch(()=>toast("err","Error"))}}}/>
                         </div>
                         </>}
-                        {selProject.notes&&!user?.role==="admin"&&<div style={{background:"#18181b",borderRadius:8,padding:12,marginBottom:16}}><div style={{fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:4}}>Notes</div><div style={{fontSize:12,color:"#a1a1aa"}}>{selProject.notes}</div></div>}
+                        {selProject.notes&&user?.role!=="admin"&&<div style={{background:"#18181b",borderRadius:8,padding:12,marginBottom:16}}><div style={{fontSize:10,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",marginBottom:4}}>Notes</div><div style={{fontSize:12,color:"#a1a1aa"}}>{selProject.notes}</div></div>}
                         <div style={{display:"flex",gap:6}}>
                             <button className="btn btn-p" style={{flex:1}} onClick={()=>{setSelProject(null);nav(`/leads?id=${selProject.lead_id}`)}}>View Lead</button>
                             <button className="btn" style={{flex:1}} onClick={()=>setSelProject(null)}>Close</button>
@@ -2531,7 +2599,7 @@ function MapPage(){
                 });
                 // Tooltip with name + time
                 const name=`${lead.first_name} ${lead.last_name}`;
-                const time=a.appointment_time?a.appointment_time.slice(0,5):"TBD";
+                const time=a.appointment_time?$.t12(a.appointment_time):"TBD";
                 marker.bindTooltip(`<b>${name}</b><br>${sL(a.appointment_status)} · ${time}`,{className:"map-tip",direction:"top",offset:[0,-8]});
                 marker.on("click",()=>setSelAppt(a));
                 marker.addTo(mapInstance.current);
@@ -2688,7 +2756,7 @@ function TelemarketingPage(){
                 <KPI l="Urgent (Past Due)" v={urgentQ.length} t={urgentQ.length>0?"hot":null}/>
             </div>
             <div style={{padding:"16px 24px"}}>
-                {queue.length===0?<div className="cd" style={{padding:40,textAlign:"center",color:"#3f3f46"}}><div style={{fontSize:36,marginBottom:8}}>✓</div>Queue empty — all caught up!</div>:
+                {queue.length===0?<div className="cd"><Empty icon={IC.check} title="Queue empty" sub="All caught up! New appointments will appear here for confirmation"/></div>:
                 <div style={{display:"flex",flexDirection:"column",gap:8}}>
                     {/* Urgent first, then by date */}
                     {queue.sort((a,b)=>(a.appointment_date||"").localeCompare(b.appointment_date||"")||(a.appointment_time||"").localeCompare(b.appointment_time||"")).map(q=>{
@@ -2795,12 +2863,13 @@ function TelemarketingPage(){
 // ========================================================================
 // SHARED COMPONENTS
 // ========================================================================
-function PH({title,sub,right}){return<div style={{padding:"16px 24px 12px",borderBottom:"1px solid #18181b",display:"flex",alignItems:"center",justifyContent:"space-between"}}><div><h1 style={{fontSize:18,fontWeight:900}}>{title}</h1>{sub&&<p style={{color:"#3f3f46",fontSize:11,marginTop:1}}>{sub}</p>}</div>{right}</div>}
-function KPI({l,v,t}){return<div className={`kpi ${t||""}`}><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".06em",marginBottom:3}}>{l}</div><div style={{fontSize:18,fontWeight:900,color:t==="hot"?"#ef4444":t==="warn"?"#f59e0b":t==="ok"?"#22c55e":"#e4e4e7"}}>{v}</div></div>}
-function SH({title,count}){return<div style={{display:"flex",alignItems:"center",gap:6,marginBottom:8}}><span style={{fontSize:11,fontWeight:800,color:"#52525b",textTransform:"uppercase",letterSpacing:".05em"}}>{title}</span>{count!=null&&<span style={{fontSize:10,color:"#3f3f46"}}>{count}</span>}</div>}
-function DF({l,v,c}){return<div><div style={{fontSize:9,fontWeight:800,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".04em",marginBottom:2}}>{l}</div><div style={{fontSize:12,fontWeight:600,color:c||"#a1a1aa"}}>{v||"--"}</div></div>}
-function TaskRow({t,compact}){return<div style={{padding:compact?"6px 0":"8px 12px",borderBottom:"1px solid #18181b20",display:"flex",justifyContent:"space-between",alignItems:"center"}}><div><div style={{fontSize:compact?11:12,fontWeight:600}}>{t.title}</div><div style={{fontSize:10,color:"#3f3f46"}}>Due {$.date(t.due_date)}</div></div><span className={`badge ${t.status==="overdue"?"b-red":"b-yellow"}`}>{sL(t.status)}</span></div>}
-function Spin(){return<div style={{display:"flex",justifyContent:"center",padding:60}}><div className="spin"/></div>}
+function PH({title,sub,right}){return<div style={{padding:"20px 28px 16px",borderBottom:"1px solid #18181b",display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}><div><h1 className="ph-title" style={{fontSize:20,fontWeight:800,letterSpacing:"-.02em",lineHeight:1.2}}>{title}</h1>{sub&&<p style={{color:"#52525b",fontSize:12,marginTop:4,fontWeight:500}}>{sub}</p>}</div>{right&&<div style={{flexShrink:0}}>{right}</div>}</div>}
+function KPI({l,v,t}){return<div className={`kpi ${t||""}`}><div style={{fontSize:9,fontWeight:700,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em",marginBottom:4}}>{l}</div><div style={{fontSize:20,fontWeight:800,letterSpacing:"-.02em",color:t==="hot"?"#ef4444":t==="warn"?"#f59e0b":t==="ok"?"#22c55e":"#e4e4e7"}}>{v}</div></div>}
+function SH({title,count}){return<div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}><span style={{fontSize:11,fontWeight:700,color:"#52525b",textTransform:"uppercase",letterSpacing:".06em"}}>{title}</span>{count!=null&&<span className="badge b-gray" style={{fontSize:9}}>{count}</span>}</div>}
+function DF({l,v,c}){return<div style={{marginBottom:2}}><div style={{fontSize:9,fontWeight:700,color:"#3f3f46",textTransform:"uppercase",letterSpacing:".05em",marginBottom:3}}>{l}</div><div style={{fontSize:13,fontWeight:600,color:c||"#a1a1aa"}}>{v||"--"}</div></div>}
+function TaskRow({t,compact}){return<div style={{padding:compact?"7px 0":"10px 14px",borderBottom:"1px solid #18181b20",display:"flex",justifyContent:"space-between",alignItems:"center",transition:"background .1s"}}><div><div style={{fontSize:compact?11:12,fontWeight:600}}>{t.title}</div><div style={{fontSize:10,color:"#3f3f46",marginTop:2}}>Due {$.date(t.due_date)}</div></div><span className={`badge ${t.status==="overdue"?"b-red":"b-yellow"}`}>{sL(t.status)}</span></div>}
+function Spin(){return<div style={{display:"flex",justifyContent:"center",padding:64}}><div className="spin"/></div>}
+function Empty({icon,title,sub}){return<div className="empty-state"><Ic d={icon||IC.list} s={40} c="#27272a"/><div className="es-title">{title||"Nothing here yet"}</div>{sub&&<div className="es-sub">{sub}</div>}</div>}
 
 // ========================================================================
 // APP
@@ -2809,13 +2878,18 @@ function Shell(){
     const h=useH();const p=h.split("?")[0];
     const routes={"/dashboard":DashboardPage,"/dispatch":DispatchPage,"/leads":LeadsPage,"/reps":RepsPage,"/tasks":TasksPage,"/pipeline":PipelinePage,"/projects":ProjectsPage,"/map":MapPage,"/telemarketing":TelemarketingPage};
     const P=routes[p]||DashboardPage;
-    return<div><Sidebar/><div className="mc"><P/></div></div>;
+    return<div><Sidebar/><div className="mc page-fade" key={p}><P/></div></div>;
 }
 
-function App(){const{user,loading}=useA();if(loading)return<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center"}}><div className="spin"/></div>;if(!user)return<Login/>;return<Shell/>}
+function App(){
+    const{user,loading}=useA();
+    if(loading)return<div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#09090b"}}><div className="spin"/></div>;
+    if(!user)return<Login/>;
+    return<Shell/>;
+}
 
 ReactDOM.createRoot(document.getElementById("root")).render(<AP><TP><App/></TP></AP>);
 </script>
-<style>.lbl{display:block;font-size:10px;font-weight:800;color:#52525b;margin-bottom:4px;text-transform:uppercase;letter-spacing:.05em}</style>
+<style>.lbl{display:block;font-size:10px;font-weight:700;color:#52525b;margin-bottom:5px;text-transform:uppercase;letter-spacing:.06em}</style>
 </body>
 </html>
