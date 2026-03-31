@@ -76,6 +76,14 @@ app.include_router(projects_router)
 
 
 
+@app.get("/api/config/public")
+def get_public_config():
+    """Return non-secret config values for frontend (e.g. Google Maps API key)."""
+    return {
+        "google_maps_api_key": os.environ.get("GOOGLE_MAPS_API_KEY", ""),
+    }
+
+
 @app.on_event("startup")
 def startup_event():
     """Create database tables and seed initial data."""

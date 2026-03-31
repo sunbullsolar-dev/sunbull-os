@@ -140,6 +140,7 @@
 
 <script>
 let currentSource = "telemarketing";
+let selectedGeo = {lat: null, lng: null};
 
 function setSource(el) {
     document.querySelectorAll('.source-btn').forEach(b => b.classList.remove('active'));
@@ -193,6 +194,8 @@ async function submitForm() {
         summary: get('summary') || null,
         submitted_by_name: get('submitted_by_name') || null,
         source: currentSource,
+        geo_lat: selectedGeo.lat,
+        geo_lng: selectedGeo.lng,
     };
 
     try {
@@ -236,6 +239,30 @@ function resetForm() {
 const tomorrow = new Date();
 tomorrow.setDate(tomorrow.getDate() + 1);
 document.getElementById('appointment_date').value = tomorrow.toISOString().split('T')[0];
+
+// Google Maps address autocomplete
+fetch("/api/config/public").then(r=>r.json()).then(cfg=>{
+    const k=cfg.google_maps_api_key;
+    if(!k)return;
+    const s=document.createElement("script");
+    s.src=`https://maps.googleapis.com/maps/api/js?key=${k}&libraries=places`;
+    s.onload=()=>{
+        const inp=document.getElementById("property_address");
+        const ac=new google.maps.places.Autocomplete(inp,{types:["address"],componentRestrictions:{country:"us"}});
+        ac.addListener("place_changed",()=>{
+            const p=ac.getPlace();if(!p.address_components)return;
+            const g=(t)=>{const c=p.address_components.find(x=>x.types.includes(t));return c?c.short_name||c.long_name:""};
+            const street=`${g("street_number")} ${g("route")}`.trim();
+            inp.value=street;
+            document.getElementById("city").value=g("locality")||g("sublocality_level_1")||g("administrative_area_level_2");
+            const st=g("administrative_area_level_1");
+            if(st){const sel=document.getElementById("state");for(let i=0;i<sel.options.length;i++){if(sel.options[i].value===st){sel.selectedIndex=i;break}}}
+            document.getElementById("zip_code").value=g("postal_code");
+            if(p.geometry&&p.geometry.location){selectedGeo.lat=p.geometry.location.lat();selectedGeo.lng=p.geometry.location.lng()}
+        });
+    };
+    document.head.appendChild(s);
+}).catch(()=>{});
 </script>
 </body>
 </html>

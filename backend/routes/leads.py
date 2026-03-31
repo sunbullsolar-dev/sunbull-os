@@ -183,6 +183,8 @@ class AppointmentSubmission(BaseModel):
     summary: Optional[str] = None
     submitted_by_name: Optional[str] = None
     source: str = "telemarketing"  # telemarketing, canvasser, web, admin
+    geo_lat: Optional[float] = None
+    geo_lng: Optional[float] = None
 
 
 @router.post("/submit-appointment")
@@ -251,6 +253,11 @@ def submit_appointment_public(
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid date or time format")
 
+    # Store geo on lead if available
+    if data.geo_lat and data.geo_lng:
+        lead.geo_lat = data.geo_lat
+        lead.geo_lng = data.geo_lng
+
     # Create appointment
     appointment = Appointment(
         lead_id=lead.id,
@@ -267,6 +274,8 @@ def submit_appointment_public(
         submitted_by_name=data.submitted_by_name,
         submission_source=data.source,
         dispatch_status="pending",
+        geo_lat=data.geo_lat,
+        geo_lng=data.geo_lng,
     )
     db.add(appointment)
 

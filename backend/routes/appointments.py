@@ -461,15 +461,37 @@ def mark_en_route(
     }
 
 
+class ArrivalCheckin(BaseModel):
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+def _haversine_miles(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Calculate distance in miles between two lat/lng points."""
+    import math
+    R = 3959  # Earth radius in miles
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = (math.sin(dlat / 2) ** 2 +
+         math.cos(math.radians(lat1)) * math.cos(math.radians(lat2)) *
+         math.sin(dlng / 2) ** 2)
+    return R * 2 * math.asin(math.sqrt(a))
+
+
+MAX_ARRIVAL_DISTANCE_MILES = 0.5  # ~0.5 mile radius
+
+
 @router.post("/{appointment_id}/arrived")
 def mark_arrived(
     appointment_id: int,
+    checkin: ArrivalCheckin = ArrivalCheckin(),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """
     Step 2: Rep marks themselves arrived.
     Only allowed from 'en_route' status.
+    Requires geolocation — must be within 0.5 miles of appointment address.
     Updates appointment + lead status. Logs action.
     """
     appointment = db.query(Appointment).filter(Appointment.id == appointment_id).first()
@@ -485,6 +507,37 @@ def mark_arrived(
             detail=f"Cannot arrive from '{appointment.appointment_status}'. Must be en_route.",
         )
 
+    # Geolocation verification
+    geo_verified = False
+    distance_miles = None
+    if checkin.lat is not None and checkin.lng is not None:
+        # Check against appointment geo or lead geo
+        appt_lat = appointment.geo_lat
+        appt_lng = appointment.geo_lng
+        if appt_lat is None or appt_lng is None:
+            lead = db.query(Lead).filter(Lead.id == appointment.lead_id).first()
+            if lead:
+                appt_lat = getattr(lead, "geo_lat", None)
+                appt_lng = getattr(lead, "geo_lng", None)
+
+        if appt_lat is not None and appt_lng is not None:
+            distance_miles = _haversine_miles(checkin.lat, checkin.lng, appt_lat, appt_lng)
+            geo_verified = distance_miles <= MAX_ARRIVAL_DISTANCE_MILES
+            if not geo_verified:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Too far from appointment location ({distance_miles:.2f} miles away). Must be within {MAX_ARRIVAL_DISTANCE_MILES} miles.",
+                )
+        else:
+            # No geo on appointment — accept but log as unverified
+            geo_verified = False
+    else:
+        # No location sent — require it
+        raise HTTPException(
+            status_code=400,
+            detail="Location required. Enable location services and try again.",
+        )
+
     appointment.appointment_status = "arrived"
     appointment.actual_start_time = datetime.utcnow()
 
@@ -494,16 +547,21 @@ def mark_arrived(
 
     db.flush()
 
+    geo_note = (
+        f"Geo verified: {distance_miles:.2f} mi away" if geo_verified
+        else "Geo: location not verified (no appointment coordinates)"
+    )
+
     create_audit_log(
         db=db, user_id=current_user.id, action="arrived",
         entity_type="appointment", entity_id=appointment.id,
-        details="Rep arrived at location",
+        details=f"Rep arrived at location. {geo_note}",
     )
 
     log_action(
         db=db, lead_id=appointment.lead_id, action_type="arrived",
         rep_id=current_user.id, appointment_id=appointment.id,
-        note=f"{current_user.full_name} arrived at location",
+        note=f"{current_user.full_name} arrived at location. {geo_note}",
     )
 
     db.commit()
@@ -513,6 +571,8 @@ def mark_arrived(
         "id": appointment.id,
         "appointment_status": appointment.appointment_status,
         "lead_status": lead.deal_status if lead else None,
+        "geo_verified": geo_verified,
+        "distance_miles": round(distance_miles, 2) if distance_miles else None,
     }
 
 

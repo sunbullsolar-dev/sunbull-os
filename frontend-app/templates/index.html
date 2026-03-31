@@ -842,24 +842,47 @@ function DashboardPage(){
 }
 
 function RepApptCard({a,onDone}){
-    const{af}=useA();const toast=useT();
-    const go=async(id,st)=>{try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",sL(st));if(onDone)onDone()}else toast("err","Failed")}catch{toast("err","Error")}};
+    const{af}=useA();const toast=useT();const[busy,sBusy]=useState(false);
+    const goStatus=async(id,st)=>{try{const r=await af(`/api/appointments/${id}/status`,{method:"PUT",body:JSON.stringify({appointment_status:st})});if(r.ok){toast("ok",sL(st));if(onDone)onDone()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}};
+    const goEnRoute=async(id)=>{sBusy(true);try{const r=await af(`/api/appointments/${id}/en-route`,{method:"POST"});if(r.ok){toast("ok","En Route");if(onDone)onDone()}else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}}catch{toast("err","Error")}sBusy(false)};
+    const goArrived=async(id)=>{
+        sBusy(true);
+        if(!navigator.geolocation){toast("err","Location not supported on this device");sBusy(false);return}
+        navigator.geolocation.getCurrentPosition(
+            async(pos)=>{
+                try{
+                    const r=await af(`/api/appointments/${id}/arrived`,{method:"POST",body:JSON.stringify({lat:pos.coords.latitude,lng:pos.coords.longitude})});
+                    if(r.ok){const d=await r.json();toast("ok",d.geo_verified?`Arrived ✓ (${d.distance_miles} mi)`:"Arrived (unverified)");if(onDone)onDone()}
+                    else{const d=await r.json().catch(()=>({}));toast("err",d.detail||"Failed")}
+                }catch{toast("err","Error")}sBusy(false);
+            },
+            (err)=>{toast("err","Enable location services to check in");sBusy(false)},
+            {enableHighAccuracy:true,timeout:15000}
+        );
+    };
+    const addr=a.appointment_address||"No addr";
+    const mapsUrl=`https://maps.google.com/?q=${encodeURIComponent(addr)}`;
     return(
         <div className={`appt-card ${a.appointment_status==="en_route"||a.appointment_status==="arrived"?"live":a.appointment_status==="confirmed"?"next":"wrn"}`} style={{marginBottom:8}}>
             <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
-                <div>
+                <div style={{minWidth:0,flex:1}}>
                     <div style={{fontSize:15,fontWeight:800}}>{a.lead_name||`Lead #${a.lead_id}`}</div>
-                    <div style={{fontSize:11,color:"#71717a"}}>{a.appointment_address||"No addr"}</div>
+                    <a href={mapsUrl} target="_blank" rel="noopener" style={{fontSize:11,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:3,marginTop:2}}><Ic d={IC.map} s={11} c="#3b82f6"/>{addr}</a>
                     {a.lead_phone&&<a href={`tel:${a.lead_phone}`} style={{fontSize:12,color:"#3b82f6",textDecoration:"none",display:"flex",alignItems:"center",gap:3,marginTop:2}} onClick={e=>e.stopPropagation()}><Ic d={IC.phone} s={11} c="#3b82f6"/>{a.lead_phone}</a>}
+                    {a.telemarketing_summary&&<div style={{fontSize:10,color:"#52525b",marginTop:4,padding:"4px 6px",background:"#18181b",borderRadius:4,lineHeight:1.4}}>{a.telemarketing_summary}</div>}
                 </div>
-                <div style={{textAlign:"right"}}><div style={{fontSize:18,fontWeight:900,color:"#f59e0b"}}>{$.t12(a.appointment_time)}</div><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
+                <div style={{textAlign:"right",flexShrink:0}}><div style={{fontSize:18,fontWeight:900,color:"#f59e0b"}}>{$.t12(a.appointment_time)}</div><span className={`badge ${sB(a.appointment_status)}`}>{sL(a.appointment_status)}</span></div>
             </div>
             <div style={{display:"flex",gap:6}}>
                 {(a.lead_phone||a.phone)&&<a href={`tel:${a.lead_phone||a.phone}`} style={{textDecoration:"none"}}><button className="btn btn-g" style={{padding:"12px 14px",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",gap:4}}><Ic d={IC.phone} s={13} c="#22c55e"/>CALL</button></a>}
-                {a.appointment_status==="scheduled"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"confirmed")}>CONFIRM</button>}
-                {a.appointment_status==="confirmed"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"en_route")}>START EN ROUTE</button>}
-                {a.appointment_status==="en_route"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>go(a.id,"arrived")}>MARK ARRIVED</button>}
+                {a.appointment_status==="scheduled"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>goStatus(a.id,"confirmed")}>CONFIRM</button>}
+                {a.appointment_status==="confirmed"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} disabled={busy} onClick={()=>goEnRoute(a.id)}>{busy?"...":"START EN ROUTE"}</button>}
+                {a.appointment_status==="en_route"&&<button className="btn btn-g" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800,position:"relative"}} disabled={busy} onClick={()=>goArrived(a.id)}>{busy?"Checking location...":"📍 CHECK IN — ARRIVED"}</button>}
                 {a.appointment_status==="arrived"&&<button className="btn btn-p" style={{flex:1,padding:"12px 16px",fontSize:14,fontWeight:800}} onClick={()=>nav(`/dispatch?complete=${a.id}`)}>COMPLETE</button>}
+            </div>
+            <div style={{marginTop:6,display:"flex",gap:6}}>
+                <button className="btn" style={{flex:1,padding:"8px",fontSize:11,fontWeight:700,color:"#71717a"}} onClick={()=>nav(`/leads?id=${a.lead_id}`)}>View Full Lead & Notes</button>
+                {a.notes&&<div style={{fontSize:10,color:"#52525b",flex:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",padding:"8px 0"}}>{a.notes}</div>}
             </div>
         </div>
     );
@@ -1950,6 +1973,45 @@ function LeadDrawer({lead,reps,allLeads,onClose,onRefresh,onCreateAppt,onNextLea
     );
 }
 
+// ===== ADDRESS AUTOCOMPLETE (Google Places) =====
+const _gMapsLoaded={v:false,loading:false,key:""};
+function loadGMaps(cb){
+    if(_gMapsLoaded.v){cb();return}
+    if(_gMapsLoaded.loading){const iv=setInterval(()=>{if(_gMapsLoaded.v){clearInterval(iv);cb()}},200);return}
+    _gMapsLoaded.loading=true;
+    fetch("/api/config/public").then(r=>r.json()).then(d=>{
+        const k=d.google_maps_api_key;_gMapsLoaded.key=k;
+        if(!k){_gMapsLoaded.loading=false;return}
+        const s=document.createElement("script");
+        s.src=`https://maps.googleapis.com/maps/api/js?key=${k}&libraries=places`;
+        s.onload=()=>{_gMapsLoaded.v=true;_gMapsLoaded.loading=false;cb()};
+        s.onerror=()=>{_gMapsLoaded.loading=false};
+        document.head.appendChild(s);
+    }).catch(()=>{_gMapsLoaded.loading=false});
+}
+function AddressInput({value,onChange,onSelect,placeholder,className}){
+    const ref=useRef(null);const acRef=useRef(null);
+    useEffect(()=>{
+        loadGMaps(()=>{
+            if(!ref.current||acRef.current||!window.google?.maps?.places)return;
+            const ac=new window.google.maps.places.Autocomplete(ref.current,{types:["address"],componentRestrictions:{country:"us"}});
+            ac.addListener("place_changed",()=>{
+                const p=ac.getPlace();if(!p.address_components)return;
+                const get=(t)=>{const c=p.address_components.find(x=>x.types.includes(t));return c?c.short_name||c.long_name:""};
+                const street=`${get("street_number")} ${get("route")}`.trim();
+                const city=get("locality")||get("sublocality_level_1")||get("administrative_area_level_2");
+                const state=get("administrative_area_level_1");
+                const zip=get("postal_code");
+                const lat=p.geometry?.location?.lat();const lng=p.geometry?.location?.lng();
+                if(onSelect)onSelect({address:street,city,state,zip,lat,lng,formatted:p.formatted_address||street});
+                if(onChange)onChange(street);
+            });
+            acRef.current=ac;
+        });
+    },[]);
+    return<input ref={ref} className={className||"inp"} value={value} onChange={e=>{if(onChange)onChange(e.target.value)}} placeholder={placeholder||"Start typing address..."} autoComplete="off"/>;
+}
+
 // ===== CREATE LEAD MODAL =====
 function CreateLeadModal({onClose,onDone}){
     const{af}=useA();const toast=useT();const[busy,sBusy]=useState(false);
@@ -1971,7 +2033,7 @@ function CreateLeadModal({onClose,onDone}){
                 <div><label className="lbl">Last Name *</label><input className="inp" value={f.last_name} onChange={e=>set("last_name",e.target.value)}/></div>
                 <div><label className="lbl">Phone *</label><input className="inp" value={f.phone} onChange={e=>set("phone",e.target.value)}/></div>
                 <div><label className="lbl">Email</label><input className="inp" value={f.email} onChange={e=>set("email",e.target.value)}/></div>
-                <div style={{gridColumn:"span 2"}}><label className="lbl">Address *</label><input className="inp" value={f.property_address} onChange={e=>set("property_address",e.target.value)}/></div>
+                <div style={{gridColumn:"span 2"}}><label className="lbl">Address *</label><AddressInput value={f.property_address} onChange={v=>set("property_address",v)} onSelect={p=>{set("property_address",p.address);if(p.city)set("city",p.city);if(p.state)set("state",p.state);if(p.zip)set("zip_code",p.zip)}} placeholder="Start typing address..."/></div>
                 <div><label className="lbl">City</label><input className="inp" value={f.city} onChange={e=>set("city",e.target.value)}/></div>
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                     <div><label className="lbl">State</label><select className="inp" value={f.state} onChange={e=>set("state",e.target.value)}>{states.map(s=><option key={s}>{s}</option>)}</select></div>
